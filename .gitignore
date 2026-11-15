@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing & Linting
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets & Environment variables
+.env
+.env.*
+!.env.example
+firmware/include/config.h
+
+# Mosquitto password files
+deploy/passwd
+deploy/mosquitto.passwd
+deploy/*.passwd
+
+# Database & Data
+data/*
+!data/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# PlatformIO & IDE
+firmware/.pio/
+firmware/.vscode/
+.idea/
+.vscode/
+
+# OS metadata
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
