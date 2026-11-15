@@ -12,8 +12,9 @@ class Settings(BaseSettings):
     port: int = 8000
     tz: str = "Asia/Jakarta"
 
-    # Database
+    # Database & Perangkat
     database_url: str = "sqlite:///./data/energy.db"
+    default_mcb_watt: int = 2200
 
     # MQTT Broker (Default non-rahasia untuk local testing)
     mqtt_host: str = "localhost"
