@@ -26,11 +26,10 @@
 ## Contoh laporan harian
 ```
 Laporan 15 Nov 2026 (Warung)
-Pemakaian: 3,2 kWh | Biaya: ±Rp4.600
-Puncak: 1.420 W pukul 12.10
-Dibanding kemarin: +12%
-Proyeksi bulan ini: ±Rp138.000
-Catatan: beban malam naik 35 W dari biasanya.
+Pemakaian: 8,434 kWh | Biaya: ±Rp12.185
+Puncak: 1.069,7 W pukul 18.35 WIB
+Proyeksi bulan ini: ±Rp461.011 (Basis 7 Hari)
+Catatan: beban malam stabil sesuai profil wajar.
 ```
 
 ## Contoh alert
