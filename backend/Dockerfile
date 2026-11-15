@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS runtime
 
 # Mencegah penulisan bytecode .pyc dan memastikan output log unbuffered
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -24,4 +24,18 @@ USER appuser
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Stage test: diturunkan dari runtime untuk menjalankan test suite dengan dependensi dev
+FROM runtime AS test
+USER root
+COPY backend/requirements-dev.txt /app/requirements-dev.txt
+RUN pip install --no-cache-dir -r /app/requirements-dev.txt
+COPY backend/tests /app/backend/tests
+COPY pyproject.toml /app/pyproject.toml
+USER appuser
+ENV DATABASE_URL="sqlite:///:memory:" \
+    APP_ENV="test" \
+    JWT_SECRET="test_jwt_secret_at_least_32_chars_1234567890" \
+    DASHBOARD_PASSWORD="test_password_12chars"
+CMD ["pytest", "-v", "-m", "not perf"]
 

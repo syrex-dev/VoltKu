@@ -8,7 +8,6 @@ from app.models import Base, DailyStat, Device, HourlyStat, Setting
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
 from sqlalchemy.pool import StaticPool
 
 client = TestClient(app)

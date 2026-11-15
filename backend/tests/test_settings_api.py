@@ -5,7 +5,6 @@ from app.models import Base, Setting
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
 from sqlalchemy.pool import StaticPool
 
 client = TestClient(app)

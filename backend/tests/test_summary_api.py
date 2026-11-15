@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.auth import create_access_token
@@ -8,7 +8,6 @@ from app.models import Base, DailyStat, Device, Reading, Setting
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
 from sqlalchemy.pool import StaticPool
 
 client = TestClient(app)
@@ -146,5 +145,173 @@ def test_summary_exact_past_day_boundaries_frozen_tariff():
     data = res.json()
     assert data["cost_estimated"] is False  # Rentang pas hari lampau bukan estimasi
     assert data["cost_rp"] == 14447 + 14447  # Jumlah tepat cost_rp harian dari daily_stats
+
+    app.dependency_overrides.clear()
+
+
+def test_summary_range_today_equals_daily_stat():
+    session = setup_summary_db()
+    from app.services.aggregation import update_daily_stat
+    from app.services.cost import calculate_cost_rp
+
+    now_wib = datetime.now(tz=TZ_WIB)
+    start_today = datetime.combine(now_wib.date(), time(0, 0, 0), tzinfo=TZ_WIB)
+    ts_start = int(start_today.timestamp())
+
+    # Masukkan data 8.434 kWh hari ini
+    r1 = Reading(
+        device_id="esp_sum",
+        ts=ts_start + 1800,
+        v=220.0,
+        i=2.0,
+        p=440.0,
+        e_kwh=10.0,
+        delta_kwh=8.434,
+        f=50.0,
+        pf=1.0,
+        rssi=-60,
+    )
+    session.add(r1)
+    session.commit()
+
+    # Hitung daily_stat hari ini
+    d_stat = update_daily_stat(session, "esp_sum", ts_start + 1800)
+    session.commit()
+
+    res = client.get("/api/devices/esp_sum/summary?range=today", headers=auth_headers)
+    assert res.status_code == 200
+    data = res.json()
+    expected_cost = calculate_cost_rp(8.434, 144470, 0.0)
+    assert expected_cost == 12185
+    assert abs(data["cost_rp"] - d_stat.cost_rp) <= 1
+    assert data["cost_rp"] == 12185
+
+    app.dependency_overrides.clear()
+
+
+def test_summary_sub_day_decimal_cost():
+    session = setup_summary_db()
+    from app.services.cost import calculate_cost_rp
+
+    now_wib = datetime.now(tz=TZ_WIB)
+    start_today = datetime.combine(now_wib.date(), time(0, 0, 0), tzinfo=TZ_WIB)
+    ts_start = int(start_today.timestamp())
+
+    # Jendela sub-hari: 10:00 s.d. 12:00 WIB (2 jam)
+    sub_from = ts_start + (10 * 3600)
+    sub_to = ts_start + (12 * 3600)
+
+    # Masukkan reading 3.2 kWh di dalam jendela
+    r = Reading(
+        device_id="esp_sum",
+        ts=sub_from + 1800,
+        v=220.0,
+        i=1.5,
+        p=330.0,
+        e_kwh=13.2,
+        delta_kwh=3.2,
+        f=50.0,
+        pf=1.0,
+        rssi=-60,
+    )
+    session.add(r)
+    session.commit()
+
+    res = client.get(
+        f"/api/devices/esp_sum/summary?from={sub_from}&to={sub_to}", headers=auth_headers
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["kwh"] == 3.2
+    # 3.2 kWh pada tarif 144470 sen -> Rp 4623
+    expected_cost = calculate_cost_rp(3.2, 144470, 0.0)
+    assert data["cost_rp"] == expected_cost == 4623
+    assert data["cost_estimated"] is True
+
+    app.dependency_overrides.clear()
+
+
+def test_summary_week_and_month_equals_sum_of_daily_costs():
+    session = setup_summary_db()
+    from app.services.cost import calculate_cost_rp
+
+    now_wib = datetime.now(tz=TZ_WIB)
+    today_date = now_wib.date()
+
+    # Pastikan ada 2 hari lampau di daily_stats
+    past1 = (today_date - timedelta(days=2)).strftime("%Y-%m-%d")
+    past2 = (today_date - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    d1 = DailyStat(
+        device_id="esp_sum",
+        day=past1,
+        kwh=10.0,
+        cost_rp=14447,
+        tariff_sen=144470,
+        p_max=1000.0,
+        p_base=150.0,
+    )
+    d2 = DailyStat(
+        device_id="esp_sum",
+        day=past2,
+        kwh=10.0,
+        cost_rp=14447,
+        tariff_sen=144470,
+        p_max=1000.0,
+        p_base=150.0,
+    )
+    session.add_all([d1, d2])
+
+    # Masukkan data hari ini 2.0 kWh
+    start_today = datetime.combine(today_date, time(0, 0, 0), tzinfo=TZ_WIB)
+    ts_today = int(start_today.timestamp()) + 3600
+    session.add(
+        Reading(
+            device_id="esp_sum",
+            ts=ts_today,
+            v=220.0,
+            i=1.0,
+            p=220.0,
+            e_kwh=22.0,
+            delta_kwh=2.0,
+            f=50.0,
+            pf=1.0,
+            rssi=-60,
+        )
+    )
+    session.commit()
+
+    today_cost = calculate_cost_rp(2.0, 144470, 0.0)
+    res_month = client.get("/api/devices/esp_sum/summary?range=month", headers=auth_headers)
+    assert res_month.status_code == 200
+    data_month = res_month.json()
+    # Harus sama dengan jumlah cost_rp harian (hari lampau + hari ini)
+    expected_month_cost = d1.cost_rp + d2.cost_rp + today_cost
+    assert data_month["cost_rp"] == expected_month_cost
+
+    app.dependency_overrides.clear()
+
+
+def test_summary_validation_errors():
+    setup_summary_db()
+
+    # 1. range bersama from/to -> 422
+    res1 = client.get(
+        "/api/devices/esp_sum/summary?range=today&from=1700000000", headers=auth_headers
+    )
+    assert res1.status_code == 422
+
+    # 2. from > to -> 422
+    res2 = client.get(
+        "/api/devices/esp_sum/summary?from=1700002000&to=1700001000", headers=auth_headers
+    )
+    assert res2.status_code == 422
+
+    # 3. Rentang > 366 hari -> 422
+    res3 = client.get(
+        f"/api/devices/esp_sum/summary?from=1700000000&to={1700000000 + (367 * 86400)}",
+        headers=auth_headers,
+    )
+    assert res3.status_code == 422
 
     app.dependency_overrides.clear()

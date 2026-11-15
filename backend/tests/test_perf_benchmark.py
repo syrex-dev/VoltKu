@@ -86,29 +86,45 @@ def test_benchmark_series_p95_latency():
     session.execute(insert(HourlyStat), hourly_dicts)
     session.commit()
 
-    # 4. Jalankan kueri series 5-menit on-the-fly (rentang 3 hari) sebanyak 50 kali
+    # 4. Jalankan kueri series 5-menit on-the-fly (rentang 3 hari) sebanyak 35 kali
     query_from = t_start + (5 * 86400)
     query_to = query_from + (3 * 86400)
-    url = f"/api/devices/{device_id}/series?from={query_from}&to={query_to}&resolution=5m"
+    url_5m = f"/api/devices/{device_id}/series?from={query_from}&to={query_to}&resolution=5m"
 
-    latencies_sec = []
-    n_iterations = 50
-
-    for _ in range(n_iterations):
+    latencies_5m = []
+    for _ in range(35):
         t0 = time.perf_counter()
-        res = client.get(url, headers=auth_headers)
+        res = client.get(url_5m, headers=auth_headers)
         dt = time.perf_counter() - t0
         assert res.status_code == 200
-        latencies_sec.append(dt)
+        latencies_5m.append(dt * 1000.0)
 
-    latencies_sec.sort()
-    idx_p95 = int(0.95 * len(latencies_sec))
-    p95_sec = latencies_sec[idx_p95]
-    p95_ms = p95_sec * 1000.0
+    latencies_5m.sort()
+    p50_5m = latencies_5m[int(0.50 * len(latencies_5m))]
+    p95_5m = latencies_5m[int(0.95 * len(latencies_5m))]
+    max_5m = max(latencies_5m)
 
-    print("\n[PERF BENCHMARK RESULT] 14 days raw + 30 days hourly:")
-    print(f"Total readings: {n_samples}, Total hourly: {len(hourly_dicts)}")
-    print(f"p95 latency: {p95_ms:.2f} ms (Target: < 500.00 ms)")
+    # 5. Jalankan kueri series 1-jam (rentang 60 hari) sebanyak 35 kali
+    url_1h = (
+        f"/api/devices/{device_id}/series?from={t_start}&to={t_start + (60 * 86400)}&resolution=1h"
+    )
+    latencies_1h = []
+    for _ in range(35):
+        t0 = time.perf_counter()
+        res = client.get(url_1h, headers=auth_headers)
+        dt = time.perf_counter() - t0
+        assert res.status_code == 200
+        latencies_1h.append(dt * 1000.0)
 
-    assert p95_ms < 500.0, f"p95 latency {p95_ms:.2f} ms exceeded target 500 ms!"
+    latencies_1h.sort()
+    p50_1h = latencies_1h[int(0.50 * len(latencies_1h))]
+    p95_1h = latencies_1h[int(0.95 * len(latencies_1h))]
+    max_1h = max(latencies_1h)
+
+    print("\n[PERF BENCHMARK RESULT]")
+    print(f"(a) 3 hari 5m: p50={p50_5m:.2f} ms, p95={p95_5m:.2f} ms, max={max_5m:.2f} ms")
+    print(f"(b) 60 hari 1h: p50={p50_1h:.2f} ms, p95={p95_1h:.2f} ms, max={max_1h:.2f} ms")
+
+    assert p95_5m < 200.0, f"5m p95 {p95_5m:.2f} ms exceeded target 200 ms"
+    assert p95_1h < 200.0, f"1h p95 {p95_1h:.2f} ms exceeded target 200 ms"
     app.dependency_overrides.clear()

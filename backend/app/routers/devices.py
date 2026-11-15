@@ -4,7 +4,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -103,10 +103,15 @@ def get_device_series(
     delta_sec = end_time - start_time
     if delta_sec < 0:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
-                "error": {"code": 400, "message": "'from' timestamp must be <= 'to' timestamp"}
+                "error": {"code": 422, "message": "'from' timestamp must be <= 'to' timestamp"}
             },
+        )
+    if delta_sec > 366 * 86400:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": {"code": 422, "message": "Time range cannot exceed 366 days"}},
         )
 
     res = resolution
@@ -133,6 +138,7 @@ def get_device_series(
                 Reading.ts <= end_time,
             )
             .order_by(Reading.ts.asc())
+            .limit(2001)
         )
         rows = session.execute(stmt).all()
         for r in rows:
@@ -148,7 +154,7 @@ def get_device_series(
 
     elif res == "5m":
         interval_seconds = 300
-        bucket_expr = (Reading.ts / 300) * 300
+        bucket_expr = cast(Reading.ts / 300, Integer) * 300
         stmt = (
             select(
                 bucket_expr.label("bucket_ts"),
@@ -164,6 +170,7 @@ def get_device_series(
             )
             .group_by("bucket_ts")
             .order_by("bucket_ts")
+            .limit(2001)
         )
         rows = session.execute(stmt).all()
         for r in rows:
@@ -192,6 +199,7 @@ def get_device_series(
                 HourlyStat.hour_start <= end_time,
             )
             .order_by(HourlyStat.hour_start.asc())
+            .limit(2001)
         )
         rows = session.execute(stmt).all()
         for r in rows:
@@ -211,6 +219,7 @@ def get_device_series(
             select(DailyStat.day, DailyStat.kwh, DailyStat.p_max)
             .where(DailyStat.device_id == device_id)
             .order_by(DailyStat.day.asc())
+            .limit(2001)
         )
         rows = session.execute(stmt).all()
         for r in rows:
@@ -264,6 +273,16 @@ def get_device_summary(
     extra_percent = get_extra_percent(session)
 
     if range:
+        if from_ts is not None or to_ts is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": 422,
+                        "message": "Cannot specify both 'range' and 'from'/'to' parameters",
+                    }
+                },
+            )
         if range == "today":
             start_wib = datetime.combine(now_wib.date(), time(0, 0, 0), tzinfo=TZ_WIB)
             start_time = int(start_wib.timestamp())
@@ -281,10 +300,10 @@ def get_device_summary(
             end_time = int(now_wib.timestamp())
         else:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
                     "error": {
-                        "code": 400,
+                        "code": 422,
                         "message": "Invalid range parameter. Use today, week, or month.",
                     }
                 },
@@ -293,6 +312,20 @@ def get_device_summary(
         now_utc = int(datetime.now(timezone.utc).timestamp())
         end_time = to_ts if to_ts is not None else now_utc
         start_time = from_ts if from_ts is not None else (end_time - 86400)
+
+    delta_sec = end_time - start_time
+    if delta_sec < 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {"code": 422, "message": "'from' timestamp must be <= 'to' timestamp"}
+            },
+        )
+    if delta_sec > 366 * 86400:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": {"code": 422, "message": "Time range cannot exceed 366 days"}},
+        )
 
     # Cek apakah rentang tepat mencakup hari-hari penuh yang lampau (tanpa jam parsial)
     dt_from = datetime.fromtimestamp(start_time, tz=TZ_WIB)
@@ -305,7 +338,42 @@ def get_device_summary(
     cost_estimated = True
     total_cost_rp = 0
 
-    if is_exact_midnight_start and is_exact_midnight_end and is_all_past_days:
+    if range == "today":
+        cost_estimated = True
+        stmt_today = select(func.sum(Reading.delta_kwh)).where(
+            Reading.device_id == device_id,
+            Reading.ts >= start_time,
+            Reading.ts <= end_time,
+        )
+        today_kwh = float(session.scalar(stmt_today) or 0.0)
+        total_cost_rp = calculate_cost_rp(today_kwh, active_tariff_sen, extra_percent)
+    elif range in ("week", "month"):
+        cost_estimated = True
+        start_day_str = dt_from.strftime("%Y-%m-%d")
+        yesterday_wib = now_wib.date() - timedelta(days=1)
+        yesterday_str = yesterday_wib.strftime("%Y-%m-%d")
+        past_cost = 0
+        if start_day_str <= yesterday_str:
+            stmt_past = select(func.sum(DailyStat.cost_rp)).where(
+                DailyStat.device_id == device_id,
+                DailyStat.day >= start_day_str,
+                DailyStat.day <= yesterday_str,
+            )
+            past_cost = int(session.scalar(stmt_past) or 0)
+
+        # Tambahkan hari berjalan (today)
+        start_today_ts = int(
+            datetime.combine(now_wib.date(), time(0, 0, 0), tzinfo=TZ_WIB).timestamp()
+        )
+        stmt_today = select(func.sum(Reading.delta_kwh)).where(
+            Reading.device_id == device_id,
+            Reading.ts >= start_today_ts,
+            Reading.ts <= end_time,
+        )
+        today_kwh = float(session.scalar(stmt_today) or 0.0)
+        today_cost = calculate_cost_rp(today_kwh, active_tariff_sen, extra_percent)
+        total_cost_rp = past_cost + today_cost
+    elif is_exact_midnight_start and is_exact_midnight_end and is_all_past_days:
         # Rentang pas batas hari lampau -> ambil akumulasi cost_rp harian (tarif beku)
         cost_estimated = False
         start_day_str = dt_from.strftime("%Y-%m-%d")
@@ -322,59 +390,45 @@ def get_device_summary(
         )
         total_cost_rp = int(session.scalar(stmt_cost) or 0)
     else:
-        # Rentang sub-hari atau hari berjalan -> kalkulasi per jam x tarif hari itu
+        # Rentang sub-hari atau rentang kustom campuran
         cost_estimated = True
-        stmt_hours = select(HourlyStat).where(
-            HourlyStat.device_id == device_id,
-            HourlyStat.hour_start >= start_time,
-            HourlyStat.hour_start <= end_time,
-        )
-        hours = session.scalars(stmt_hours).all()
-        day_tariffs: dict[str, int] = {}
-
-        covered_hour_starts = set()
+        cur_date = dt_from.date()
         accum_cost = 0
-        for h in hours:
-            covered_hour_starts.add(h.hour_start)
-            h_day = datetime.fromtimestamp(h.hour_start, tz=TZ_WIB).strftime("%Y-%m-%d")
-            if h_day not in day_tariffs:
+        while cur_date <= dt_to.date():
+            d_start_dt = datetime.combine(cur_date, time(0, 0, 0), tzinfo=TZ_WIB)
+            d_end_dt = datetime.combine(cur_date, time(23, 59, 59), tzinfo=TZ_WIB)
+            d_start = max(start_time, int(d_start_dt.timestamp()))
+            d_end = min(end_time, int(d_end_dt.timestamp()))
+            is_full = d_start == int(d_start_dt.timestamp()) and d_end == int(d_end_dt.timestamp())
+
+            if is_full and cur_date < now_wib.date():
                 d_stat = session.scalar(
                     select(DailyStat).where(
-                        DailyStat.device_id == device_id, DailyStat.day == h_day
+                        DailyStat.device_id == device_id,
+                        DailyStat.day == cur_date.strftime("%Y-%m-%d"),
                     )
                 )
-                day_tariffs[h_day] = d_stat.tariff_sen if d_stat else active_tariff_sen
-            t_sen = day_tariffs[h_day]
-            h_cost = calculate_cost_rp(h.kwh, t_sen, extra_percent)
-            accum_cost += h_cost
-
-        # Tambahkan delta_kwh dari readings untuk jam yang belum masuk ke hourly_stats
-        stmt_unaggregated = (
-            select(
-                ((Reading.ts / 3600) * 3600).label("h_start"),
-                func.sum(Reading.delta_kwh).label("kwh"),
-            )
-            .where(
-                Reading.device_id == device_id,
-                Reading.ts >= start_time,
-                Reading.ts <= end_time,
-            )
-            .group_by("h_start")
-        )
-        for h_start_raw, unagg_kwh in session.execute(stmt_unaggregated).all():
-            h_start = int(h_start_raw) if h_start_raw is not None else 0
-            if h_start not in covered_hour_starts and unagg_kwh:
-                h_day = datetime.fromtimestamp(h_start, tz=TZ_WIB).strftime("%Y-%m-%d")
-                if h_day not in day_tariffs:
+                accum_cost += int(d_stat.cost_rp) if d_stat else 0
+            else:
+                stmt_kwh = select(func.sum(Reading.delta_kwh)).where(
+                    Reading.device_id == device_id,
+                    Reading.ts >= d_start,
+                    Reading.ts <= d_end,
+                )
+                d_kwh = float(session.scalar(stmt_kwh) or 0.0)
+                if cur_date == now_wib.date():
+                    t_sen = active_tariff_sen
+                else:
                     d_stat = session.scalar(
                         select(DailyStat).where(
-                            DailyStat.device_id == device_id, DailyStat.day == h_day
+                            DailyStat.device_id == device_id,
+                            DailyStat.day == cur_date.strftime("%Y-%m-%d"),
                         )
                     )
-                    day_tariffs[h_day] = d_stat.tariff_sen if d_stat else active_tariff_sen
-                t_sen = day_tariffs[h_day]
-                accum_cost += calculate_cost_rp(float(unagg_kwh), t_sen, extra_percent)
+                    t_sen = d_stat.tariff_sen if d_stat else active_tariff_sen
+                accum_cost += calculate_cost_rp(d_kwh, t_sen, extra_percent)
 
+            cur_date += timedelta(days=1)
         total_cost_rp = accum_cost
 
     # Agregasi kwh, daya rata-rata, dan puncak dari readings

@@ -7,7 +7,6 @@ from app.models import Base, DailyStat, Device, HourlyStat, Reading
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
 from sqlalchemy.pool import StaticPool
 
 client = TestClient(app)
@@ -164,5 +163,60 @@ def test_series_truncation_flag():
     data = res.json()
     assert data["truncated"] is True
     assert len(data["points"]) == 2000  # Dipotong tepat di 2000 titik
+
+    app.dependency_overrides.clear()
+
+
+def test_series_validation_errors():
+    setup_series_db()
+
+    # 1. from > to -> 422
+    res1 = client.get(
+        "/api/devices/esp_series/series?from=1700002000&to=1700001000", headers=auth_headers
+    )
+    assert res1.status_code == 422
+
+    # 2. Rentang > 366 hari -> 422
+    res2 = client.get(
+        f"/api/devices/esp_series/series?from=1700000000&to={1700000000 + (367 * 86400)}",
+        headers=auth_headers,
+    )
+    assert res2.status_code == 422
+
+    app.dependency_overrides.clear()
+
+
+def test_series_explicit_resolution_caps_and_truncates():
+    session = setup_series_db()
+    t_start = 1736000000
+
+    # Buat 2500 readings untuk menguji resolusi eksplisit raw
+    readings = [
+        Reading(
+            device_id="esp_series",
+            ts=t_start + (i * 10),
+            v=220.0,
+            i=1.0,
+            p=220.0,
+            e_kwh=10.0 + (i * 0.001),
+            delta_kwh=0.001,
+            f=50.0,
+            pf=1.0,
+            rssi=-60,
+        )
+        for i in range(2500)
+    ]
+    session.add_all(readings)
+    session.commit()
+
+    # Minta explicit resolution=raw
+    res = client.get(
+        f"/api/devices/esp_series/series?from={t_start}&to={t_start + (2500 * 10)}&resolution=raw",
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["truncated"] is True
+    assert len(data["points"]) == 2000  # Dipotong di 2000 titik, tidak mengembalikan 2500
 
     app.dependency_overrides.clear()

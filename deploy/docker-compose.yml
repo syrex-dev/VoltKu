@@ -16,6 +16,7 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      target: runtime
     container_name: energy_backend
     restart: unless-stopped
     ports:
