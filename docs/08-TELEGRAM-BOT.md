@@ -13,7 +13,7 @@
 | `/today`, `/week`, `/month` | Ringkasan kWh dan biaya |
 | `/forecast` | Proyeksi tagihan bulan ini |
 | `/anomali` | Anomali 7 hari terakhir |
-| `/tarif <Rp/kWh>` | Ubah tarif |
+| `/tarif <Rp/kWh>` | Ubah tarif (menerima angka desimal dengan koma atau titik, misal `/tarif 1444.70`, dikonversi ke integer sen) |
 | `/batas <watt>` | Ubah batas daya |
 | `/laporan on\|off` | Aktifkan/matikan laporan otomatis |
 | `/perangkat` | Daftar perangkat |

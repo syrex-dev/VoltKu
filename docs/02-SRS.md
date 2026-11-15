@@ -26,7 +26,7 @@
 - BE-04 Agregasi per jam dan per hari (kWh, biaya, daya rata-rata, maks, min).
 - BE-05 Retensi data mentah 14 hari; agregat disimpan tanpa batas.
 - BE-06 Deteksi perangkat offline (tidak ada data lebih dari 120 detik atau status offline).
-- BE-07 Tarif disimpan pada agregat harian; perubahan tarif hanya berlaku ke depan.
+- BE-07 Tarif disimpan sebagai `tariff_sen` (integer sen) pada agregat harian `daily_stats` dan dibekukan untuk hari lampau. Perubahan tarif di `settings` hanya berlaku ke depan. Input tarif via API atau Telegram menerima format rupiah desimal (koma atau titik) dan dikonversi ke integer sen di batas input.
 - BE-08 REST API sesuai `05-DATA-CONTRACT.md`.
 
 ### Alert dan AI (AL)
