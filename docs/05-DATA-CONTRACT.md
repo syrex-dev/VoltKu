@@ -40,7 +40,9 @@ readings(id PK, device_id, ts, v, i, p, e_kwh, delta_kwh, f, pf, rssi, is_gap)
 hourly_stats(device_id, hour_start, kwh, p_avg, p_max, p_min, samples)   PK (device_id, hour_start)
 daily_stats(device_id, day, kwh, cost_rp, tariff_sen, p_max, p_base)      PK (device_id, day)
 anomalies(id PK, device_id, ts, type, severity, details_json, message, notified)
-settings(key PK, value)   -- tariff_sen_per_kwh, extra_percent, power_limit_w, alert_cooldown_min, report_hour
+alert_state(device_id, alert_type, state, since, last_notified_at, details_json)   PK (device_id, alert_type)
+scheduled_reports_log(report_type, report_date, sent_at)   PK (report_type, report_date)
+settings(key PK, value)   -- tariff_sen_per_kwh, extra_percent, power_limit_w, alert_cooldown_min, report_hour, report_enabled
 telegram_users(chat_id PK, name)
 chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
 ```
@@ -49,6 +51,19 @@ chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
 - `kwh`, `delta_kwh`, `e_kwh`: `REAL` (dibulatkan 3 desimal).
 - `is_gap`: `INTEGER` (1 jika selisih waktu $\Delta t > 3 \times \text{interval publish}$, default 0; replay buffer normal bukan gap).
 - `p_base`: `REAL`, bernilai `NULL` sebelum pukul 05.00 WIB.
+- `alert_state`:
+  - `device_id`: `VARCHAR(64)`
+  - `alert_type`: `VARCHAR(32)` (`power_limit`, `voltage_low`, `voltage_high`, `offline`)
+  - `state`: `VARCHAR(16)` (`active`, `cleared`)
+  - `since`, `last_notified_at`: `INTEGER` (epoch detik UTC)
+  - `details_json`: `TEXT` (metadata pemicu)
+  - Diperbarui hanya setelah pengiriman notifikasi berhasil.
+- `scheduled_reports_log`:
+  - `report_type`: `VARCHAR(16)` (`daily`, `weekly`)
+  - `report_date`: `VARCHAR(10)` (`YYYY-MM-DD` WIB)
+  - `sent_at`: `INTEGER` (epoch detik UTC)
+  - Ditulis HANYA setelah pengiriman laporan sukses untuk menjamin idempotensi jadwal.
+- Ambang batas tegangan ($200\text{ V}$ dan $240\text{ V}$, histeresis pemulihan $205\text{ V} - 235\text{ V}$) adalah konstanta konfigurasi aplikasi (`VOLTAGE_MIN_V`, `VOLTAGE_MAX_V`), bukan entri tabel `settings`.
 
 ## 4. Aturan perhitungan
 - **Delta kWh**:
