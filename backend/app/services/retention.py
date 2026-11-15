@@ -94,3 +94,4 @@ async def run_retention_job(cutoff_ts: Optional[int] = None) -> int:
             return clean_old_readings(session, cutoff_ts)
 
     return await asyncio.to_thread(_sync_clean)
+

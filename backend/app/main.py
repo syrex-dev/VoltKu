@@ -12,6 +12,7 @@ from app.db import init_db
 from app.mqtt_ingest import ingest_service
 from app.routers import anomalies, auth, devices
 from app.routers import settings as settings_router
+from app.services.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
 
@@ -39,15 +40,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Inisialisasi Database
     init_db()
 
-    # Jalankan background worker dan MQTT client hanya jika bukan mode test
+    # Jalankan background worker, MQTT client, dan scheduler hanya jika bukan mode test
     if settings.app_env != "test":
         ingest_service.start_worker()
         ingest_service.start_mqtt()
+        if settings.is_scheduler_active:
+            start_scheduler()
 
     yield
 
     # Shutdown
     if settings.app_env != "test":
+        if settings.is_scheduler_active:
+            stop_scheduler()
         ingest_service.stop_mqtt()
         ingest_service.stop_worker()
 

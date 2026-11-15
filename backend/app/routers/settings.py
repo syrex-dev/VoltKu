@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.db import get_db
 from app.models import Setting
+from app.services.scheduler import reschedule_daily_report
 
 router = APIRouter(
     prefix="/api/settings", tags=["Settings"], dependencies=[Depends(get_current_user)]
@@ -22,6 +23,7 @@ class SettingsResponse(BaseModel):
     alert_cooldown_min: int
     extra_percent: float
     report_hour: int
+    report_enabled: bool
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -30,6 +32,7 @@ class SettingsUpdateRequest(BaseModel):
     alert_cooldown_min: Optional[int] = None
     extra_percent: Optional[float] = None
     report_hour: Optional[int] = None
+    report_enabled: Optional[bool] = None
 
 
 def get_all_settings(session: Session) -> dict[str, str]:
@@ -48,6 +51,7 @@ def format_settings_response(settings_map: dict[str, str]) -> dict[str, Any]:
         "alert_cooldown_min": int(settings_map.get("alert_cooldown_min", "30")),
         "extra_percent": float(settings_map.get("extra_percent", "0.0")),
         "report_hour": int(settings_map.get("report_hour", "21")),
+        "report_enabled": settings_map.get("report_enabled", "true").lower() in ("true", "1"),
     }
 
 
@@ -155,6 +159,15 @@ def update_settings_endpoint(req: SettingsUpdateRequest, session: Session = Depe
             session.add(Setting(key="report_hour", value=str(req.report_hour)))
         else:
             setting_r.value = str(req.report_hour)
+        reschedule_daily_report(req.report_hour)
+
+    if req.report_enabled is not None:
+        val_str = "true" if req.report_enabled else "false"
+        setting_re = session.scalar(select(Setting).where(Setting.key == "report_enabled"))
+        if not setting_re:
+            session.add(Setting(key="report_enabled", value=val_str))
+        else:
+            setting_re.value = val_str
 
     session.commit()
     settings_map = get_all_settings(session)

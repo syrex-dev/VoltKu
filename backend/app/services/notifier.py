@@ -31,3 +31,4 @@ def send_alert_notification(message: str) -> bool:
     # Default fallback jika belum ada bot token atau handler: log pesan dan anggap sukses
     logger.info("[ALERT NOTIFICATION] %s", message)
     return True
+
