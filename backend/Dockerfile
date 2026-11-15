@@ -15,8 +15,9 @@ RUN useradd -m -u 1000 appuser && \
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Salin source code backend
+# Salin source code backend dan file dashboard
 COPY backend/app /app/app
+COPY dashboard /app/dashboard
 
 USER appuser
 

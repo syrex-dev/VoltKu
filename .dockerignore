@@ -15,7 +15,6 @@ deploy/passwd
 deploy/*.passwd
 firmware/
 simulator/
-dashboard/
 docs/
 README.md
 AGENTS.md
