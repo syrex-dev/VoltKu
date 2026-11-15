@@ -1,6 +1,6 @@
-from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -16,3 +16,4 @@ def test_settings_load_defaults() -> None:
     assert settings.app_name == "Monitor Listrik Pintar"
     assert settings.tz == "Asia/Jakarta"
     assert settings.database_url == "sqlite:///./data/energy.db"
+

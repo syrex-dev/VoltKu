@@ -46,3 +46,4 @@ docker compose -f deploy/docker-compose.yml up -d
 docker compose -f deploy/docker-compose.yml ps
 docker compose -f deploy/docker-compose.yml logs -f
 ```
+

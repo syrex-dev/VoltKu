@@ -15,3 +15,4 @@
 #define DEVICE_ID "esp32_device_1"
 
 #endif // CONFIG_H
+

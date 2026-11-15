@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+
 from app.config import get_settings
 
 settings = get_settings()
@@ -13,3 +14,4 @@ app = FastAPI(
 @app.get("/healthz")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
