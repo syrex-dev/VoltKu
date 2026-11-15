@@ -1,25 +1,55 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.config import get_settings
+from app.config import get_settings, validate_startup_credentials
 from app.db import init_db
 from app.mqtt_ingest import ingest_service
+from app.routers import anomalies, auth, devices
+from app.routers import settings as settings_router
 
 settings = get_settings()
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "connect-src 'self'; "
+            "img-src 'self' data:;"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        return response
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    # Startup
+    # Validasi ketat kredensial saat startup
+    validate_startup_credentials(settings)
+
+    # Inisialisasi Database
     init_db()
-    ingest_service.start_worker()
-    ingest_service.start_mqtt()
+
+    # Jalankan background worker dan MQTT client hanya jika bukan mode test
+    if settings.app_env != "test":
+        ingest_service.start_worker()
+        ingest_service.start_mqtt()
+
     yield
+
     # Shutdown
-    ingest_service.stop_mqtt()
-    ingest_service.stop_worker()
+    if settings.app_env != "test":
+        ingest_service.stop_mqtt()
+        ingest_service.stop_worker()
 
 
 app = FastAPI(
@@ -29,7 +59,48 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Pasang Security Headers
+app.add_middleware(SecurityHeadersMiddleware)
 
-@app.get("/healthz")
+
+# Standardize error format to {"error": {"code": ..., "message": ...}}
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    headers = exc.headers or {}
+    if isinstance(exc.detail, dict) and "error" in exc.detail:
+        return JSONResponse(status_code=exc.status_code, content=exc.detail, headers=headers)
+    message = str(exc.detail) if exc.detail else "An error occurred"
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": exc.status_code, "message": message}},
+        headers=headers,
+    )
+
+
+# Registrasi Endpoint API
+app.include_router(auth.router)
+app.include_router(devices.router)
+app.include_router(settings_router.router)
+app.include_router(anomalies.router)
+
+
+@app.get("/healthz", tags=["Health"])
 async def health_check() -> dict[str, str]:
+    """Health check endpoint publik."""
     return {"status": "ok"}
+
+
+# Mount Dashboard Web UI
+dashboard_path = None
+candidates = [
+    Path("/app/dashboard"),
+    Path(__file__).resolve().parent.parent.parent / "dashboard",
+    Path("dashboard").resolve(),
+]
+for p in candidates:
+    if p.exists() and p.is_dir():
+        dashboard_path = p
+        break
+
+if dashboard_path:
+    app.mount("/", StaticFiles(directory=str(dashboard_path), html=True), name="dashboard")

@@ -2,6 +2,9 @@
 testpaths = ["backend/tests"]
 pythonpath = ["backend", "."]
 addopts = "-v"
+markers = [
+    "perf: performance benchmark tests",
+]
 filterwarnings = [
     "ignore:The anyio.abc.BlockingPortal alias is deprecated.*:DeprecationWarning:starlette.testclient",
 ]
@@ -13,4 +16,7 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B"]
 ignore = []
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body", "fastapi.Security"]
 

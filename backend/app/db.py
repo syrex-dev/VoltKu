@@ -2,17 +2,21 @@ from collections.abc import Generator
 
 from sqlalchemy import Engine, create_engine, event, select
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.config import get_settings
 from app.models import Base, Setting
 
 settings = get_settings()
 
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {},
-    pool_pre_ping=True,
-)
+engine_kwargs = {
+    "connect_args": {"check_same_thread": False} if "sqlite" in settings.database_url else {},
+    "pool_pre_ping": True,
+}
+if settings.database_url == "sqlite:///:memory:":
+    engine_kwargs["poolclass"] = StaticPool
+
+engine = create_engine(settings.database_url, **engine_kwargs)
 
 
 @event.listens_for(Engine, "connect")

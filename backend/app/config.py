@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # App Settings
     app_name: str = "Monitor Listrik Pintar"
-    app_env: str = "development"
+    app_env: str = "production"
     host: str = "0.0.0.0"
     port: int = 8000
     tz: str = "Asia/Jakarta"
@@ -37,6 +37,34 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+
+def validate_startup_credentials(settings: Settings) -> None:
+    """Validasi ketat kredensial saat backend start."""
+    if settings.app_env == "test":
+        return
+
+    example_dash_pass = {"ganti_password_dashboard", "rahasia123", "password", ""}
+    example_jwt_sec = {
+        "ganti_jwt_secret_yang_panjang_dan_acak",
+        "ganti-dengan-secret-acak",
+        "",
+    }
+
+    dash_pass = settings.dashboard_password or ""
+    jwt_sec = settings.jwt_secret or ""
+
+    if not dash_pass or dash_pass in example_dash_pass or len(dash_pass) < 12:
+        raise RuntimeError(
+            "Invalid DASHBOARD_PASSWORD: must not be empty, must not match example values, "
+            "and must be at least 12 characters."
+        )
+
+    if not jwt_sec or jwt_sec in example_jwt_sec or len(jwt_sec) < 32:
+        raise RuntimeError(
+            "Invalid JWT_SECRET: must not be empty, must not match example values, "
+            "and must be at least 32 characters."
+        )
 
 
 @lru_cache
