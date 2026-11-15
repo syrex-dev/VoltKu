@@ -22,7 +22,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ../data:/app/data
+      - energy_data:/app/data
     env_file:
       - ../.env
     environment:
@@ -33,4 +33,5 @@ services:
 volumes:
   mosquitto_data:
   mosquitto_log:
+  energy_data:
 

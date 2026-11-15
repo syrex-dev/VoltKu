@@ -94,4 +94,32 @@ Docker Compose sudah memetakan port `0.0.0.0:8000`, sehingga tidak perlu menguba
    Hubungkan smartphone ke jaringan WiFi yang sama, lalu buka:
    `http://192.168.1.15:8000` (sesuaikan dengan IP LAN PC Anda).
 
+## 6. Penyimpanan Database SQLite (Named Volume `energy_data`)
+
+Database SQLite produksi disimpan di dalam named volume Docker `energy_data` (terpasang di `/app/data` di dalam container) dan **tidak menggunakan bind mount host** (`./data`).
+
+### Alasan Arsitektur:
+Penggunaan named volume Docker Linux murni mengeliminasi potensi konflik file locking dan korupsi mode SQLite WAL (*Write-Ahead Logging*) yang dapat terjadi saat file database diakses bersamaan melalui lapisan filesystem 9P/drvfs antara host Windows dan lingkungan Linux container.
+
+### Peringatan Penghapusan Volume:
+> [!WARNING]
+> Menjalankan perintah `docker compose down -v` akan **menghapus volume Docker `energy_data` beserta seluruh data pengukuran di dalamnya secara permanen**. Untuk menghentikan container tanpa menghapus data, gunakan `docker compose down` (tanpa flag `-v`) atau `docker compose stop`.
+
+### Rencana Cadangan Data (Backup SQLite untuk M7):
+Untuk menjamin ketahanan data terhadap risiko penghapusan volume dan bencana hardware, pada Milestone 7 (M7) akan diimplementasikan mekanisme backup terjadwal berkala menggunakan **SQLite Online Backup API** (`sqlite3.Connection.backup` atau `VACUUM INTO '/app/data/backups/energy_backup_YYYYMMDD.db'`). Mekanisme ini menjamin snapshot database konsisten dan aman meskipun transaksi MQTT sedang berlangsung.
+
+### Aturan Eksekusi Skrip Database:
+Semua skrip yang menyentuh, membaca, atau menulis ke database (`energy.db`) **wajib dijalankan di dalam container backend**, BUKAN dari lingkungan host Windows:
+
+```bash
+# Menjalankan seeding database:
+docker compose exec backend python scripts/seed_db.py
+
+# Menjalankan benchmark latensi kueri di dalam container:
+docker compose exec backend python scripts/benchmark_container.py
+
+# Memeriksa integritas database:
+docker compose exec backend python -c "import sqlite3; con = sqlite3.connect('/app/data/energy.db'); print(con.execute('PRAGMA integrity_check').fetchall())"
+```
+
 
