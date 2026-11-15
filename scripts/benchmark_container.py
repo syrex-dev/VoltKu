@@ -57,29 +57,72 @@ def run_benchmark(url, n_reps=35):
     return p50, p95, p_max, len(data.get("points", []))
 
 
-# Ambil rentang waktu sim-warung
-# 3 hari 5m:
-to_3d = 1794744000
+# Ambil timestamp dinamis
+req_w = urllib.request.Request(
+    "http://localhost:8000/api/devices/sim-warung/latest", headers=headers
+)
+with urllib.request.urlopen(req_w) as resp:
+    latest_data = json.loads(resp.read().decode("utf-8"))
+    to_3d = latest_data["ts"]
+
 from_3d = to_3d - (3 * 86400)
 url_5m = (
     f"http://localhost:8000/api/devices/sim-warung/series?from={from_3d}&to={to_3d}&resolution=5m"
 )
 
 p50_5m, p95_5m, max_5m, n_5m = run_benchmark(url_5m)
-print(
-    f"Benchmark (a) 3 hari 5m: points={n_5m}, "
-    f"p50={p50_5m:.2f} ms, p95={p95_5m:.2f} ms, max={max_5m:.2f} ms"
-)
 
-# 60 hari 1h (mengambil data hourly_stats):
-to_60d = 1794744000
+# 60 hari 1h menggunakan device terpisah sim-bench
+req_b = urllib.request.Request(
+    "http://localhost:8000/api/devices", headers=headers
+)
+with urllib.request.urlopen(req_b) as resp:
+    devs = json.loads(resp.read().decode("utf-8"))
+    b_dev = next((d for d in devs if d["id"] == "sim-bench"), None)
+    to_60d = b_dev["last_data_ts"] if b_dev and b_dev.get("last_data_ts") else to_3d
+
 from_60d = to_60d - (60 * 86400)
 url_1h = (
-    f"http://localhost:8000/api/devices/sim-warung/series?from={from_60d}&to={to_60d}&resolution=1h"
+    f"http://localhost:8000/api/devices/sim-bench/series?from={from_60d}&to={to_60d}&resolution=1h"
 )
 
 p50_1h, p95_1h, max_1h, n_1h = run_benchmark(url_1h)
-print(
-    f"Benchmark (b) 60 hari 1h: points={n_1h}, "
-    f"p50={p50_1h:.2f} ms, p95={p95_1h:.2f} ms, max={max_1h:.2f} ms"
-)
+
+status_5m = "LOLOS" if p95_5m < 200.0 else "GAGAL"
+status_1h = "LOLOS" if p95_1h < 200.0 else "GAGAL"
+
+hdr_cols = ["Skenario", "Device", "Titik", "p50 (ms)", "p95 (ms)", "Max (ms)", "Target", "Status"]
+col_fmts = ["{:<28}", "{:<10}", "{:>6}", "{:>9}", "{:>9}", "{:>9}", "{:>10}", "{:>8}"]
+
+def fmt_row(vals):
+    cells = [fmt.format(val) for fmt, val in zip(col_fmts, vals, strict=False)]
+    return "| " + " | ".join(cells) + " |"
+
+sep_parts = ["-" * 28, "-" * 10, "-" * 6, "-" * 9, "-" * 9, "-" * 9, "-" * 10, "-" * 8]
+sep = "|-" + "-+-".join(sep_parts) + "-|"
+
+print("\n=== HASIL BENCHMARK LATENSI CONTAINER (35 REPETISI) ===")
+print(fmt_row(hdr_cols))
+print(sep)
+row_5m = [
+    "(a) 3 Hari (5 Menit)",
+    "sim-warung",
+    n_5m,
+    f"{p50_5m:.2f}",
+    f"{p95_5m:.2f}",
+    f"{max_5m:.2f}",
+    "< 200 ms",
+    status_5m,
+]
+row_1h = [
+    "(b) 60 Hari (1 Jam)",
+    "sim-bench",
+    n_1h,
+    f"{p50_1h:.2f}",
+    f"{p95_1h:.2f}",
+    f"{max_1h:.2f}",
+    "< 200 ms",
+    status_1h,
+]
+print(fmt_row(row_5m))
+print(fmt_row(row_1h))
