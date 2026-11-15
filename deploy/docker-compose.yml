@@ -24,6 +24,8 @@ services:
       - ../data:/app/data
     env_file:
       - ../.env
+    environment:
+      - MQTT_HOST=mosquitto
     depends_on:
       - mosquitto
 

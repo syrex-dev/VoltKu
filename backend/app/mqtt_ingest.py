@@ -83,7 +83,7 @@ def process_telemetry_payload(
         logger.debug("Duplicate reading ignored for device %s at ts %s", device_id, ts)
         return existing
 
-    # 2. Registrasi otomatis device jika belum terdaftar
+    # 2. Registrasi otomatis device jika belum terdaftar, atau update last_seen & status
     device = session.scalar(select(Device).where(Device.id == device_id))
     if not device:
         device = Device(
@@ -91,8 +91,14 @@ def process_telemetry_payload(
             name=device_id,
             mcb_watt=default_mcb_watt,
             created_at=int(datetime.now(timezone.utc).timestamp()),
+            last_seen=ts,
+            status="online",
         )
         session.add(device)
+        session.flush()
+    else:
+        device.last_seen = ts
+        device.status = "online"
         session.flush()
 
     mcb_watt = device.mcb_watt
@@ -212,6 +218,27 @@ class IngestService:
                     default_mcb_watt=settings.default_mcb_watt,
                 )
         elif action == "status":
+            clean_status = payload_str.strip().lower()
+            if clean_status in ("online", "offline"):
+                settings = get_settings()
+                now_utc = int(datetime.now(timezone.utc).timestamp())
+                with SessionLocal() as session:
+                    device = session.scalar(select(Device).where(Device.id == device_id))
+                    if not device:
+                        device = Device(
+                            id=device_id,
+                            name=device_id,
+                            mcb_watt=settings.default_mcb_watt,
+                            created_at=now_utc,
+                            last_seen=now_utc if clean_status == "online" else None,
+                            status=clean_status,
+                        )
+                        session.add(device)
+                    else:
+                        device.status = clean_status
+                        if clean_status == "online":
+                            device.last_seen = now_utc
+                    session.commit()
             logger.info("Status message from device %s: %s", device_id, payload_str)
 
     def enqueue_message(self, topic: str, payload_str: str) -> bool:

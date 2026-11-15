@@ -1,13 +1,6 @@
-# ==========================================
-# Mosquitto ACL (Access Control List)
-# ==========================================
-
-# Backend: hak penuh untuk subscribe dan publish pada hierarchy energy/#
 user energy_backend
 topic readwrite energy/#
 
-# Perangkat IoT / ESP32:
-# Hanya diizinkan publish ke topic dengan prefix nama device/username-nya (%u)
-pattern write energy/%u/#
+pattern write energy/%u/telemetry
 pattern readwrite energy/%u/status
-
+pattern deny read energy/#

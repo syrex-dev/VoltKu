@@ -18,3 +18,4 @@ def test_parse_tariff_to_sen() -> None:
     assert parse_tariff_to_sen("1444,70") == 144470
     assert parse_tariff_to_sen("1500") == 150000
     assert parse_tariff_to_sen("  1352.00  ") == 135200
+

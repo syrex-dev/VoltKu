@@ -37,6 +37,8 @@ def test_ingest_auto_registers_unknown_device():
     device = session.scalar(select(Device).where(Device.id == "esp_new_device"))
     assert device is not None
     assert device.mcb_watt == 1300
+    assert device.status == "online"
+    assert device.last_seen == 1736000000
 
 
 def test_ingest_duplicate_ignored():

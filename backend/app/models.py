@@ -25,6 +25,8 @@ class Device(Base):
     created_at: Mapped[int] = mapped_column(
         Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
     )
+    last_seen: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="offline", nullable=False)
 
 
 class Reading(Base):
