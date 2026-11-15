@@ -1,7 +1,7 @@
 import time
 
 from app.models import Base, Device, HourlyStat, Reading
-from app.mqtt_ingest import IngestService, process_telemetry_payload
+from app.mqtt_ingest import IngestService, get_device_status, process_telemetry_payload
 from app.services.delta import reset_rejection_tracker
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -38,7 +38,49 @@ def test_ingest_auto_registers_unknown_device():
     assert device is not None
     assert device.mcb_watt == 1300
     assert device.status == "online"
-    assert device.last_seen == 1736000000
+    assert device.last_data_ts == 1736000000
+    assert device.last_seen_at is not None
+
+
+def test_replay_old_data_does_not_rewind_timestamps():
+    session = get_test_session()
+    reset_rejection_tracker()
+
+    p_latest = {
+        "ts": 1736000050,
+        "v": 220.0,
+        "i": 1.0,
+        "p": 220.0,
+        "e": 10.005,
+        "f": 50.0,
+        "pf": 0.98,
+        "rssi": -60,
+    }
+    process_telemetry_payload(session, "esp_replay_test", p_latest)
+    dev = session.scalar(select(Device).where(Device.id == "esp_replay_test"))
+    assert dev is not None
+    assert dev.last_data_ts == 1736000050
+    initial_last_seen = dev.last_seen_at
+    assert initial_last_seen is not None
+
+    # Replay data lampau (ts=1736000010 < 1736000050)
+    p_old = {
+        "ts": 1736000010,
+        "v": 220.0,
+        "i": 1.0,
+        "p": 220.0,
+        "e": 10.001,
+        "f": 50.0,
+        "pf": 0.98,
+        "rssi": -60,
+    }
+    process_telemetry_payload(session, "esp_replay_test", p_old)
+    session.refresh(dev)
+
+    # Verifikasi: last_data_ts TETAP 1736000050 (tidak mundur!)
+    assert dev.last_data_ts == 1736000050
+    # Verifikasi: last_seen_at tidak mundur
+    assert dev.last_seen_at >= initial_last_seen
 
 
 def test_ingest_duplicate_ignored():
@@ -113,3 +155,18 @@ def test_ingest_queue_worker():
         time.sleep(0.5)
     finally:
         service.stop_worker()
+
+
+def test_device_offline_detection():
+    now = 1736000500
+    # Device baru online (last_seen_at baru 10 detik lalu)
+    dev_online = Device(id="d1", name="d1", last_seen_at=now - 10, status="online")
+    assert get_device_status(dev_online, now_utc=now) == "online"
+
+    # Device tidak kirim data > 120 detik (150 detik lalu) -> offline
+    dev_timed_out = Device(id="d2", name="d2", last_seen_at=now - 150, status="online")
+    assert get_device_status(dev_timed_out, now_utc=now) == "offline"
+
+    # Device dengan status eksplisit 'offline' (LWT)
+    dev_lwt = Device(id="d3", name="d3", last_seen_at=now - 10, status="offline")
+    assert get_device_status(dev_lwt, now_utc=now) == "offline"

@@ -1,6 +1,9 @@
+import random
+
 from app.models import Base, Reading
+from app.mqtt_ingest import process_telemetry_payload
 from app.services.delta import calculate_delta_kwh, reset_rejection_tracker
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 
@@ -275,3 +278,60 @@ def test_delta_gap_detection():
     )
     assert is_gap_long == 1
     assert delta_gap == 0.100
+
+
+def test_property_random_arrival_delta_conservation():
+    """Tes Properti: Tanpa reset dan tanpa penolakan, sum(delta_kwh) == e_terakhir - e_pertama
+
+    untuk urutan kedatangan data yang diacak (random arrival order / out-of-order).
+    """
+    session = get_test_session()
+    reset_rejection_tracker()
+
+    device_id = "esp_prop_test"
+    start_ts = 1736000000
+    start_e = 50.000
+    p_watt = 360.0  # 360 W * 10s = 3600 Ws = 1 Wh = 0.001 kWh per step
+    interval = 10
+    n_points = 50
+
+    # Buat 50 data berurutan secara temporal
+    payloads = []
+    for step in range(n_points):
+        ts = start_ts + (step * interval)
+        e = start_e + (step * 0.001)
+        payloads.append(
+            {
+                "ts": ts,
+                "v": 220.0,
+                "i": 1.636,
+                "p": p_watt,
+                "e": round(e, 3),
+                "f": 50.0,
+                "pf": 0.98,
+                "rssi": -60,
+            }
+        )
+
+    e_first = payloads[0]["e"]
+    e_last = payloads[-1]["e"]
+    expected_total_delta = round(e_last - e_first, 3)
+
+    # Acak urutan kedatangan sampel (random shuffle)
+    shuffled_payloads = list(payloads)
+    random.seed(42)
+    random.shuffle(shuffled_payloads)
+
+    # Ingest seluruh payload dengan urutan acak
+    for p in shuffled_payloads:
+        process_telemetry_payload(session, device_id, p, default_mcb_watt=2200)
+
+    # Ambil seluruh baris readings dan jumlahkan delta_kwh
+    stmt = select(Reading).where(Reading.device_id == device_id).order_by(Reading.ts.asc())
+    saved_readings = list(session.scalars(stmt).all())
+    assert len(saved_readings) == n_points
+
+    actual_sum_delta = round(sum(r.delta_kwh for r in saved_readings), 3)
+
+    # Invariant: sum(delta_kwh) harus tepat sama dengan e_last - e_first
+    assert actual_sum_delta == expected_total_delta

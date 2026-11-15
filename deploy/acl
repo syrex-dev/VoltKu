@@ -1,6 +1,4 @@
 user energy_backend
 topic readwrite energy/#
 
-pattern write energy/%u/telemetry
-pattern readwrite energy/%u/status
-pattern deny read energy/#
+pattern write energy/%u/#

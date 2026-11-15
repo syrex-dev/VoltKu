@@ -23,6 +23,17 @@ MIN_VALID_TS = 1735689600
 FUTURE_TOLERANCE_SECONDS = 300
 
 
+def get_device_status(device: Device, now_utc: Optional[int] = None) -> str:
+    """Mengembalikan status online/offline berdasarkan LWT dan batas 120 detik last_seen_at."""
+    if now_utc is None:
+        now_utc = int(datetime.now(timezone.utc).timestamp())
+    if device.status == "offline":
+        return "offline"
+    if not device.last_seen_at or (now_utc - device.last_seen_at) > 120:
+        return "offline"
+    return "online"
+
+
 def validate_telemetry_payload(data: dict[str, Any]) -> tuple[bool, Optional[str]]:
     """Memvalidasi payload telemetry sesuai kontrak dan aturan BE-02."""
     required_keys = ("ts", "v", "i", "p", "e", "f", "pf")
@@ -66,6 +77,8 @@ def process_telemetry_payload(
     device_id: str,
     payload: dict[str, Any],
     default_mcb_watt: int = 2200,
+    commit: bool = True,
+    update_stats: bool = True,
 ) -> Optional[Reading]:
     """Memproses payload telemetry secara deterministik (dapat dipanggil langsung tanpa broker)."""
     is_valid, err_msg = validate_telemetry_payload(payload)
@@ -83,21 +96,25 @@ def process_telemetry_payload(
         logger.debug("Duplicate reading ignored for device %s at ts %s", device_id, ts)
         return existing
 
-    # 2. Registrasi otomatis device jika belum terdaftar, atau update last_seen & status
+    # 2. Registrasi otomatis device jika belum terdaftar, atau update last_seen_at & last_data_ts
+    now_server = int(datetime.now(timezone.utc).timestamp())
     device = session.scalar(select(Device).where(Device.id == device_id))
     if not device:
         device = Device(
             id=device_id,
             name=device_id,
             mcb_watt=default_mcb_watt,
-            created_at=int(datetime.now(timezone.utc).timestamp()),
-            last_seen=ts,
+            created_at=now_server,
+            last_seen_at=now_server,
+            last_data_ts=ts,
             status="online",
         )
         session.add(device)
         session.flush()
     else:
-        device.last_seen = ts
+        # Replay data lama tidak memundurkan last_seen_at maupun last_data_ts
+        device.last_seen_at = max(device.last_seen_at or 0, now_server)
+        device.last_data_ts = max(device.last_data_ts or 0, ts)
         device.status = "online"
         session.flush()
 
@@ -154,10 +171,12 @@ def process_telemetry_payload(
         update_daily_stat(session, device_id, next_reading.ts)
 
     # 5. Update agregat jam dan hari untuk reading saat ini
-    update_hourly_stat(session, device_id, ts)
-    update_daily_stat(session, device_id, ts)
+    if update_stats:
+        update_hourly_stat(session, device_id, ts)
+        update_daily_stat(session, device_id, ts)
 
-    session.commit()
+    if commit:
+        session.commit()
     return reading
 
 
@@ -230,14 +249,15 @@ class IngestService:
                             name=device_id,
                             mcb_watt=settings.default_mcb_watt,
                             created_at=now_utc,
-                            last_seen=now_utc if clean_status == "online" else None,
+                            last_seen_at=now_utc if clean_status == "online" else None,
+                            last_data_ts=None,
                             status=clean_status,
                         )
                         session.add(device)
                     else:
                         device.status = clean_status
                         if clean_status == "online":
-                            device.last_seen = now_utc
+                            device.last_seen_at = max(device.last_seen_at or 0, now_utc)
                     session.commit()
             logger.info("Status message from device %s: %s", device_id, payload_str)
 

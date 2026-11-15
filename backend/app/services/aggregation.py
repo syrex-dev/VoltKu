@@ -64,13 +64,10 @@ def calculate_p_base_for_day(session: Session, device_id: str, day_str: str) -> 
     start_ts = int(start_dt.timestamp())
     end_ts = int(end_dt.timestamp())
 
-    stmt = (
-        select(Reading.p)
-        .where(
-            Reading.device_id == device_id,
-            Reading.ts >= start_ts,
-            Reading.ts <= end_ts,
-        )
+    stmt = select(Reading.p).where(
+        Reading.device_id == device_id,
+        Reading.ts >= start_ts,
+        Reading.ts <= end_ts,
     )
     p_values = list(session.scalars(stmt).all())
     if not p_values:
@@ -84,19 +81,16 @@ def update_hourly_stat(session: Session, device_id: str, ts: int) -> HourlyStat:
     hour_start = (ts // 3600) * 3600
     hour_end = hour_start + 3600
 
-    stmt = (
-        select(
-            func.coalesce(func.sum(Reading.delta_kwh), 0.0).label("kwh"),
-            func.coalesce(func.avg(Reading.p), 0.0).label("p_avg"),
-            func.coalesce(func.max(Reading.p), 0.0).label("p_max"),
-            func.coalesce(func.min(Reading.p), 0.0).label("p_min"),
-            func.count(Reading.id).label("samples"),
-        )
-        .where(
-            Reading.device_id == device_id,
-            Reading.ts >= hour_start,
-            Reading.ts < hour_end,
-        )
+    stmt = select(
+        func.coalesce(func.sum(Reading.delta_kwh), 0.0).label("kwh"),
+        func.coalesce(func.avg(Reading.p), 0.0).label("p_avg"),
+        func.coalesce(func.max(Reading.p), 0.0).label("p_max"),
+        func.coalesce(func.min(Reading.p), 0.0).label("p_min"),
+        func.count(Reading.id).label("samples"),
+    ).where(
+        Reading.device_id == device_id,
+        Reading.ts >= hour_start,
+        Reading.ts < hour_end,
     )
     res = session.execute(stmt).one()
 
@@ -133,16 +127,13 @@ def update_daily_stat(session: Session, device_id: str, ts: int) -> DailyStat:
     end_ts = int(end_dt.timestamp())
 
     # Agregasi dari readings
-    stmt = (
-        select(
-            func.coalesce(func.sum(Reading.delta_kwh), 0.0).label("kwh"),
-            func.coalesce(func.max(Reading.p), 0.0).label("p_max"),
-        )
-        .where(
-            Reading.device_id == device_id,
-            Reading.ts >= start_ts,
-            Reading.ts <= end_ts,
-        )
+    stmt = select(
+        func.coalesce(func.sum(Reading.delta_kwh), 0.0).label("kwh"),
+        func.coalesce(func.max(Reading.p), 0.0).label("p_max"),
+    ).where(
+        Reading.device_id == device_id,
+        Reading.ts >= start_ts,
+        Reading.ts <= end_ts,
     )
     res = session.execute(stmt).one()
     total_kwh = round(float(res.kwh), 3)
