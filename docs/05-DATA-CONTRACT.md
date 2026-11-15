@@ -19,21 +19,22 @@ Payload telemetry:
 ## 2. REST API
 | Method dan path | Fungsi |
 |---|---|
-| `POST /api/login` | Login, mengembalikan token |
-| `GET /api/devices` | Daftar perangkat dan status |
-| `GET /api/devices/{id}/latest` | Pembacaan terakhir |
-| `GET /api/devices/{id}/series?from=&to=&interval=raw\|hour\|day` | Data deret waktu |
-| `GET /api/devices/{id}/summary?range=today\|week\|month` | kWh, biaya, rata-rata, puncak |
-| `GET /api/devices/{id}/forecast` | Proyeksi kWh dan biaya akhir bulan |
-| `GET /api/anomalies?device_id=&from=` | Daftar anomali |
-| `GET/PATCH /api/settings` | Tarif, batas daya, jam laporan (menerima tarif Rp desimal, misal 1444.70) |
-| `GET /healthz` | Health check |
+| `POST /api/login` | Login form `{"password": "..."}`, mengembalikan token JWT `{"token": "..."}`. Gagal berulang mengembalikan HTTP 429 (`Retry-After: N`). |
+| `GET /api/devices` | Daftar perangkat dan status dinamis (`online`/`offline` berdasarkan `last_seen_at` dan LWT) |
+| `GET /api/devices/{id}/latest` | Pembacaan terakhir (`ts`, `v`, `i`, `p`, `e`, `f`, `pf`, `rssi`) |
+| `GET /api/devices/{id}/series?from=&to=&resolution=auto\|raw\|5m\|1h\|1d` | Data deret waktu (`ts`, `p`, `p_max`, `p_min`, `v`). Resolusi otomatis: <= 5 jam (raw 10s), > 5 jam s.d. 3 hari (5 menit on-the-fly), > 3 hari s.d. 60 hari (`hourly_stats`, `v: null`), > 60 hari (`daily_stats`, `v: null`). Respons memuat `interval_seconds` dan `truncated: bool` (jika > 2000 titik). Resolusi eksplisit yang menghasilkan > 2000 titik dipotong tepat di 2000 titik dan `truncated: true` (tidak pernah mengembalikan ratusan ribu titik). Validasi: `from > to` atau rentang > 366 hari mengembalikan HTTP 422. |
+| `GET /api/devices/{id}/summary?range=today\|week\|month&from=&to=` | Rangkuman periode (`from`, `to`, `kwh`, `cost_rp`, `avg_power_w`, `peak_w`, `peak_ts`, `tariff_sen`, `cost_estimated: bool`). Mendukung parameter `range=today\|week\|month` (WIB, minggu mulai Senin) ATAU `from`/`to` (epoch UTC). Parameter `range` bersama `from`/`to` menghasilkan HTTP 422. Validasi `from > to` atau rentang > 366 hari menghasilkan HTTP 422. Biaya pas batas hari memakai akumulasi `daily_stats.cost_rp` (tarif beku, `cost_estimated: false`); sub-hari memakai kWh per jam x tarif hari itu (`cost_estimated: true`). |
+| `GET /api/devices/{id}/forecast` | Proyeksi kWh dan biaya akhir bulan berdasarkan rata-rata 7 hari penuh terakhir (`samples >= 90% x 8640`). Respons: `available: bool`, `basis_days`, `low_confidence: bool`, `avg_daily_kwh`, `month_so_far_kwh`, `month_so_far_cost_rp`, `projected_kwh`, `projected_cost_rp`. |
+| `GET /api/anomalies?device_id=&from=` | Daftar anomali (mengembalikan `[]` sebelum M3) |
+| `GET /api/settings` | Pengambilan pengaturan aktif |
+| `PATCH /api/settings` | Pembaruan pengaturan: `tariff_rp` string desimal (maks 2 desimal, tolak NaN/Inf, limit 0..100.000), `power_limit_w` (100..25000), `alert_cooldown_min` (5..1440), `extra_percent` (>=0), `report_hour` (0..23) |
+| `GET /healthz` | Health check (publik) |
 
-Format error: objek `error` berisi `code` dan `message`. Semua endpoint kecuali `/healthz` dan `/api/login` butuh token.
+Format error: objek `error` berisi `code` dan `message`. Semua endpoint kecuali `/healthz` dan `/api/login` butuh token Bearer JWT.
 
 ## 3. Model data
 ```
-devices(id PK, name, location, mcb_watt, created_at)
+devices(id PK, name, location, mcb_watt, created_at, last_seen_at, last_data_ts, status)
 readings(id PK, device_id, ts, v, i, p, e_kwh, delta_kwh, f, pf, rssi, is_gap)
    index dan unique (device_id, ts)
 hourly_stats(device_id, hour_start, kwh, p_avg, p_max, p_min, samples)   PK (device_id, hour_start)
@@ -67,5 +68,13 @@ chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
     $$\text{cost\_rp} = \left( \frac{\text{Decimal}(\text{str}(kwh)) \times \text{Decimal}(tariff\_sen) \times (\text{Decimal}(100) + \text{Decimal}(\text{str}(extra\_percent)))}{\text{Decimal}(10000)} \right).\operatorname{quantize}(\text{Decimal}("1"), \text{ROUND\_HALF\_UP})$$
     *(Uji verifikasi: 3.2 kWh, tariff_sen 144470, extra 0 -> Rp4.623).*
   - Hari berjalan memakai tarif aktif di `settings`; hari lampau membekukan `tariff_sen` di baris `daily_stats` masing-masing (rekalkulasi hari lampau tidak mengubah tarif lama).
-  - Input tarif via API / Telegram menerima angka desimal (titik atau koma) dan dikonversi ke integer sen di batas input.
-- **Proyeksi bulan**: kWh sampai hari ini + (rata-rata kWh harian 7 hari terakhir x sisa hari), lalu dikalikan tarif.
+  - Input tarif via API / Telegram menerima angka desimal (titik atau koma), maksimal 2 digit di belakang koma, dan dikonversi ke integer sen di batas input. Input lebih dari 2 desimal ditolak.
+- **Proyeksi bulan (Forecast)**:
+  - Definisi hari penuh: total sampel $\ge 90\% \times 8640 = 7.776$ sampel. Hari parsial (< 7.776 sampel) dikecualikan dari basis rata-rata harian.
+  - Basis: 7 hari penuh terakhir yang punya data sebelum hari ini (`day < today_wib`).
+  - Jika tidak ada data hari penuh ($N_{\text{basis}} == 0$), kembalikan `available: false` (bukan 0).
+  - Jika $N_{\text{basis}} < 3$, set `low_confidence: true`.
+  - Formula proyeksi kWh:
+    $$\text{projected\_kwh} = \text{month\_so\_far\_kwh} + \max(\text{avg\_daily\_kwh} - \text{today\_kwh}, 0) + (\text{sisa\_hari} \times \text{avg\_daily\_kwh})$$
+    dengan `month_so_far_kwh` adalah total konsumsi seluruh hari yang memiliki data di bulan kalender berjalan (termasuk hari ini), dan `sisa_hari` adalah hari kalender yang tersisa di bulan berjalan setelah hari ini.
+  - `projected_cost_rp` dihitung dari `projected_kwh` dengan formula biaya di atas menggunakan tarif aktif dan extra_percent.
