@@ -10,3 +10,4 @@ topic readwrite energy/#
 # Hanya diizinkan publish ke topic dengan prefix nama device/username-nya (%u)
 pattern write energy/%u/#
 pattern readwrite energy/%u/status
+
