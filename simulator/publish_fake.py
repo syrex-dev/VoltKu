@@ -86,7 +86,7 @@ def run_simulator() -> None:
         default="normal",
         help="Skenario simulasi telemetry",
     )
-    parser.add_argument("--device", default="esp32_device_1", help="Device ID")
+    parser.add_argument("--device", default="sim-warung", help="Device ID")
     parser.add_argument("--interval", type=int, default=10, help="Interval pengiriman (detik)")
     parser.add_argument("--count", type=int, default=10, help="Jumlah sampel")
     parser.add_argument(
@@ -157,21 +157,20 @@ def run_simulator() -> None:
                     update_stats=False,
                 )
                 inserted_count += 1
-
-                if inserted_count % 2000 == 0:
-                    session.commit()
+                if inserted_count % 20000 == 0:
                     elapsed = time.time() - t0
-                    print(f"  Inserted {inserted_count}/{total_samples} in {elapsed:.1f}s")
+                    print(f"  Processed {inserted_count}/{total_samples} in {elapsed:.1f}s")
 
+            # Commit seluruh pembacaan dalam satu transaksi tunggal
             session.commit()
-            print(f"Inserted all {inserted_count} readings. Computing hourly & daily stats...")
+            print(
+                f"Inserted all {inserted_count} readings in single transaction. Computing stats..."
+            )
 
             # Agregasi jam
             print(f"Calculating {len(touched_hours)} hourly stat buckets...")
-            for idx, h_start in enumerate(sorted(touched_hours)):
+            for h_start in sorted(touched_hours):
                 update_hourly_stat(session, args.device, h_start)
-                if (idx + 1) % 50 == 0:
-                    session.commit()
             session.commit()
 
             # Agregasi hari (berdasarkan WIB)

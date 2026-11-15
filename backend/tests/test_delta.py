@@ -283,55 +283,69 @@ def test_delta_gap_detection():
 def test_property_random_arrival_delta_conservation():
     """Tes Properti: Tanpa reset dan tanpa penolakan, sum(delta_kwh) == e_terakhir - e_pertama
 
-    untuk urutan kedatangan data yang diacak (random arrival order / out-of-order).
+    untuk 200 permutasi kedatangan data yang diacak, mencetak seed bila gagal.
     """
-    session = get_test_session()
-    reset_rejection_tracker()
-
-    device_id = "esp_prop_test"
-    start_ts = 1736000000
-    start_e = 50.000
-    p_watt = 360.0  # 360 W * 10s = 3600 Ws = 1 Wh = 0.001 kWh per step
+    p_watt = 360.0
     interval = 10
-    n_points = 50
+    n_points = 15
 
-    # Buat 50 data berurutan secara temporal
-    payloads = []
-    for step in range(n_points):
-        ts = start_ts + (step * interval)
-        e = start_e + (step * 0.001)
-        payloads.append(
-            {
-                "ts": ts,
-                "v": 220.0,
-                "i": 1.636,
-                "p": p_watt,
-                "e": round(e, 3),
-                "f": 50.0,
-                "pf": 0.98,
-                "rssi": -60,
-            }
-        )
+    session = get_test_session()
+    try:
+        for seed in range(200):
+            reset_rejection_tracker()
+            device_id = f"esp_prop_{seed}"
+            start_ts = 1736000000
+            start_e = 50.000
 
-    e_first = payloads[0]["e"]
-    e_last = payloads[-1]["e"]
-    expected_total_delta = round(e_last - e_first, 3)
+            payloads = []
+            for step in range(n_points):
+                ts = start_ts + (step * interval)
+                e = start_e + (step * 0.001)
+                payloads.append(
+                    {
+                        "ts": ts,
+                        "v": 220.0,
+                        "i": 1.636,
+                        "p": p_watt,
+                        "e": round(e, 3),
+                        "f": 50.0,
+                        "pf": 0.98,
+                        "rssi": -60,
+                    }
+                )
 
-    # Acak urutan kedatangan sampel (random shuffle)
-    shuffled_payloads = list(payloads)
-    random.seed(42)
-    random.shuffle(shuffled_payloads)
+            e_first = payloads[0]["e"]
+            e_last = payloads[-1]["e"]
+            expected_total_delta = round(e_last - e_first, 3)
 
-    # Ingest seluruh payload dengan urutan acak
-    for p in shuffled_payloads:
-        process_telemetry_payload(session, device_id, p, default_mcb_watt=2200)
+            rng = random.Random(seed)
+            shuffled = list(payloads)
+            rng.shuffle(shuffled)
 
-    # Ambil seluruh baris readings dan jumlahkan delta_kwh
-    stmt = select(Reading).where(Reading.device_id == device_id).order_by(Reading.ts.asc())
-    saved_readings = list(session.scalars(stmt).all())
-    assert len(saved_readings) == n_points
+            try:
+                for p in shuffled:
+                    process_telemetry_payload(
+                        session,
+                        device_id,
+                        p,
+                        default_mcb_watt=2200,
+                        commit=False,
+                        update_stats=False,
+                    )
+                session.commit()
 
-    actual_sum_delta = round(sum(r.delta_kwh for r in saved_readings), 3)
+                stmt = (
+                    select(Reading).where(Reading.device_id == device_id).order_by(Reading.ts.asc())
+                )
+                saved_readings = list(session.scalars(stmt).all())
+                assert len(saved_readings) == n_points, f"Seed {seed}: row count mismatch"
 
-    # Invariant: sum(delta_kwh) harus tepat sama dengan e_last - e_first
-    assert actual_sum_delta == expected_total_delta
+                actual_sum_delta = round(sum(r.delta_kwh for r in saved_readings), 3)
+                assert actual_sum_delta == expected_total_delta, (
+                    f"Seed {seed}: actual sum {actual_sum_delta} != expected {expected_total_delta}"
+                )
+            except Exception as err:
+                print(f"FAILED PROPERTY TEST ON SEED: {seed}")
+                raise err
+    finally:
+        session.close()

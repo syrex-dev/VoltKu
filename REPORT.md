@@ -183,3 +183,4 @@ Milestone M2 mencakup antarmuka REST API dan antarmuka web dashboard pengguna ak
 ---
 
 *Laporan ini disusun secara otomatis berdasarkan rekam jejak Git, log container Docker, dan kueri database aktual proyek Monitor Listrik Pintar.*
+

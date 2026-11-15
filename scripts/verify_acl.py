@@ -68,14 +68,16 @@ print(
     f"Backend received {len(backend_received)} message(s). Status: {'PASS' if test2_ok else 'FAIL'}"
 )
 
-# Test 3: backend publishes to energy/esp32_device_1/status and energy/other/status
+# Test 3: backend publishes to status and telemetry
 print("--- TEST 3: Device subscribed to energy/# receiving messages ---")
 device_received.clear()
+backend_client.publish("energy/esp32_device_1/telemetry", '{"backend_broadcast": 1}', qos=1)
 backend_client.publish("energy/esp32_device_1/status", '{"status": "online"}', qos=1)
 backend_client.publish("energy/device_lain/telemetry", '{"test": 3}', qos=1)
 time.sleep(1)
 test3_ok = len(device_received) == 0
 print(
+    f"Backend published 3 messages (including energy/esp32_device_1/telemetry and status).\n"
     f"Device received {len(device_received)} message(s). Status: {'PASS' if test3_ok else 'FAIL'}"
 )
 
