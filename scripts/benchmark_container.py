@@ -3,13 +3,15 @@ import os
 import time
 import urllib.request
 
-# Baca password dari .env
-env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-password = ""
-with open(env_path, "r", encoding="utf-8") as f:
-    for line in f:
-        if line.startswith("DASHBOARD_PASSWORD="):
-            password = line.strip().split("=", 1)[1].strip('"').strip("'")
+# Baca password dari environment variable atau .env
+password = os.environ.get("DASHBOARD_PASSWORD", "")
+if not password:
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("DASHBOARD_PASSWORD="):
+                    password = line.strip().split("=", 1)[1].strip('"').strip("'")
 
 # 1. Login
 login_req = urllib.request.Request(
@@ -56,10 +58,9 @@ def run_benchmark(url, n_reps=35):
 
 
 # Ambil rentang waktu sim-warung
-# Dari 14 hari yang tersedia:
 # 3 hari 5m:
-from_3d = 1794400000
-to_3d = from_3d + (3 * 86400)
+to_3d = 1794744000
+from_3d = to_3d - (3 * 86400)
 url_5m = (
     f"http://localhost:8000/api/devices/sim-warung/series?from={from_3d}&to={to_3d}&resolution=5m"
 )
@@ -71,8 +72,8 @@ print(
 )
 
 # 60 hari 1h (mengambil data hourly_stats):
-from_60d = 1794400000 - (60 * 86400)
-to_60d = 1794400000
+to_60d = 1794744000
+from_60d = to_60d - (60 * 86400)
 url_1h = (
     f"http://localhost:8000/api/devices/sim-warung/series?from={from_60d}&to={to_60d}&resolution=1h"
 )

@@ -102,7 +102,8 @@ body {
     border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 600;
-    text-transform: uppercase;
+    text-transform: none;
+    white-space: nowrap;
 }
 
 .badge-online {

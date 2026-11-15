@@ -114,6 +114,15 @@
         }).format(new Date(epochSec * 1000));
     };
 
+    const formatDateWIB = (epochSec) => {
+        if (!epochSec) return "-";
+        return new Intl.DateTimeFormat("id-ID", {
+            timeZone: "Asia/Jakarta",
+            day: "numeric",
+            month: "short",
+        }).format(new Date(epochSec * 1000));
+    };
+
     // API Client Helper
     async function apiRequest(endpoint, options = {}) {
         const headers = options.headers || {};
@@ -259,14 +268,23 @@
         updateWarningBanner();
     }
 
-    function updateDeviceStatusBadge() {
+    function updateDeviceStatusBadge(lastDataTs) {
         const curDev = devicesList.find((d) => d.id === activeDeviceId);
         if (!curDev) return;
 
-        deviceStatusBadge.textContent = curDev.status === "online" ? "Online" : "Offline";
-        if (curDev.status === "online") {
+        const ts = lastDataTs || curDev.last_data_ts;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const isStale = ts ? (nowSec - ts) > 30 : true;
+
+        if (curDev.status === "online" && !isStale) {
+            deviceStatusBadge.textContent = "Online";
             deviceStatusBadge.className = "badge badge-online";
         } else {
+            if (ts) {
+                deviceStatusBadge.textContent = `Offline, data terakhir ${formatDateTimeWIB(ts)} WIB`;
+            } else {
+                deviceStatusBadge.textContent = "Offline (belum ada data)";
+            }
             deviceStatusBadge.className = "badge badge-offline";
         }
     }
@@ -282,13 +300,14 @@
         await loadDailyChart();
     });
 
-    // Polling Real-time (every 5 seconds)
+    // Polling Real-time (every 5 seconds) - kartu real-time & summary hari ini saja
     async function pollLatest() {
         if (!activeDeviceId) return;
         try {
             const latest = await apiRequest(`/api/devices/${activeDeviceId}/latest`);
             if (latest) {
                 renderRealtimeData(latest);
+                updateDeviceStatusBadge(latest.ts);
             }
         } catch (err) {
             console.error("Gagal mengambil data terbaru:", err);
@@ -565,17 +584,37 @@
         });
     });
 
+    let chartTimer = null;
+
+    async function refreshPeriodicChartsAndSummaries() {
+        if (!activeDeviceId) return;
+        try {
+            await loadDevices();
+            await loadSummaryCards();
+            await loadForecast();
+            await loadPowerChart(currentPowerRange);
+            await loadDailyChart();
+        } catch (err) {
+            console.error("Gagal refresh grafik periodik (60s):", err);
+        }
+    }
+
     // Polling Lifecycle & Visibility API (Pause when tab is hidden)
     function startPolling() {
         stopPolling();
         pollLatest();
         pollTimer = setInterval(pollLatest, 5000);
+        chartTimer = setInterval(refreshPeriodicChartsAndSummaries, 60000);
     }
 
     function stopPolling() {
         if (pollTimer) {
             clearInterval(pollTimer);
             pollTimer = null;
+        }
+        if (chartTimer) {
+            clearInterval(chartTimer);
+            chartTimer = null;
         }
     }
 
