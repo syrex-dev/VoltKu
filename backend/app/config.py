@@ -31,6 +31,29 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-1.5-flash"
     llm_api_key: Optional[str] = None
 
+    # M3 Flags & Konfigurasi
+    scheduler_enabled: bool = True
+    bot_enabled: bool = True
+    alert_exclude_device_prefixes: str = "sim-"
+
+    # Konstanta Tegangan (Bukan di DB settings)
+    voltage_min_v: float = 200.0
+    voltage_max_v: float = 240.0
+    voltage_recovery_min_v: float = 205.0
+    voltage_recovery_max_v: float = 235.0
+
+    @property
+    def is_scheduler_active(self) -> bool:
+        if self.app_env == "test":
+            return False
+        return self.scheduler_enabled
+
+    @property
+    def is_bot_active(self) -> bool:
+        if self.app_env == "test":
+            return False
+        return self.bot_enabled
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

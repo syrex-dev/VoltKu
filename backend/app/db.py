@@ -41,6 +41,7 @@ def init_db() -> None:
         "power_limit_w": "2200",
         "alert_cooldown_min": "30",
         "report_hour": "21",
+        "report_enabled": "true",
     }
     with SessionLocal() as session:
         for k, v in defaults.items():

@@ -96,6 +96,25 @@ class Anomaly(Base):
     notified: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
+class AlertState(Base):
+    __tablename__ = "alert_state"
+
+    device_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    alert_type: Mapped[str] = mapped_column(String(32), primary_key=True)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)  # active, cleared
+    since: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_notified_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    details_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
+class ScheduledReportsLog(Base):
+    __tablename__ = "scheduled_reports_log"
+
+    report_type: Mapped[str] = mapped_column(String(16), primary_key=True)  # daily, weekly
+    report_date: Mapped[str] = mapped_column(String(10), primary_key=True)  # YYYY-MM-DD (WIB)
+    sent_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class TelegramUser(Base):
     __tablename__ = "telegram_users"
 
