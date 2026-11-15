@@ -14,6 +14,7 @@ from app.db import SessionLocal
 from app.models import Device, Reading
 from app.services.aggregation import update_daily_stat, update_hourly_stat
 from app.services.delta import calculate_delta_kwh
+from app.services.retention import get_retention_cutoff_ts
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,11 @@ def get_device_status(device: Device, now_utc: Optional[int] = None) -> str:
     return "online"
 
 
-def validate_telemetry_payload(data: dict[str, Any]) -> tuple[bool, Optional[str]]:
+def validate_telemetry_payload(
+    data: dict[str, Any],
+    check_retention: bool = False,
+    now_utc: Optional[int] = None,
+) -> tuple[bool, Optional[str]]:
     """Memvalidasi payload telemetry sesuai kontrak dan aturan BE-02."""
     required_keys = ("ts", "v", "i", "p", "e", "f", "pf")
     for k in required_keys:
@@ -63,11 +68,18 @@ def validate_telemetry_payload(data: dict[str, Any]) -> tuple[bool, Optional[str
         return False, f"Energy {e} kWh cannot be negative"
 
     # Validasi timestamp
-    now_utc = int(datetime.now(timezone.utc).timestamp())
+    if now_utc is None:
+        now_utc = int(datetime.now(timezone.utc).timestamp())
     if ts < MIN_VALID_TS:
         return False, f"Timestamp {ts} before 2025-01-01"
     if ts > (now_utc + FUTURE_TOLERANCE_SECONDS):
         return False, f"Timestamp {ts} more than 5 minutes in future (now={now_utc})"
+
+    # Validasi retensi: tolak data yang lebih tua dari batas retensi (hari penuh > 14 hari)
+    if check_retention:
+        cutoff_ts = get_retention_cutoff_ts(now_utc)
+        if ts < cutoff_ts:
+            return False, f"Timestamp {ts} older than 14-day retention cutoff ({cutoff_ts})"
 
     return True, None
 
@@ -79,9 +91,10 @@ def process_telemetry_payload(
     default_mcb_watt: int = 2200,
     commit: bool = True,
     update_stats: bool = True,
+    check_retention: bool = False,
 ) -> Optional[Reading]:
     """Memproses payload telemetry secara deterministik (dapat dipanggil langsung tanpa broker)."""
-    is_valid, err_msg = validate_telemetry_payload(payload)
+    is_valid, err_msg = validate_telemetry_payload(payload, check_retention=check_retention)
     if not is_valid:
         logger.warning("Rejected telemetry from %s: %s", device_id, err_msg)
         return None
@@ -235,6 +248,7 @@ class IngestService:
                     device_id=device_id,
                     payload=data,
                     default_mcb_watt=settings.default_mcb_watt,
+                    check_retention=True,
                 )
         elif action == "status":
             clean_status = payload_str.strip().lower()
