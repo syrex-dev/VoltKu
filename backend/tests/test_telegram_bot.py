@@ -80,11 +80,11 @@ async def test_allowlist_ignores_unknown_chat_id(caplog):
 
         await cmd_start(update, context)
 
-        # Bot sama sekali tidak memanggil send_message
+        # Bot sama sekali tidak memanggil send_message (silent drop)
         context.bot.send_message.assert_not_called()
 
-        # Log peringatan tercatat tanpa isi pesan
-        assert "Pesan diabaikan dari chat_id asing: 999999999" in caplog.text
+        # Chat ID asing dan token TIDAK boleh tercatat di log sama sekali
+        assert "999999999" not in caplog.text
         assert "SECRET_BOT_TOKEN_12345" not in caplog.text
 
 
@@ -378,3 +378,39 @@ def test_send_telegram_broadcast_sync():
             success = send_telegram_broadcast_sync("Halo semua")
             assert success is True
             assert mock_app.bot.send_message.call_count == 2
+
+
+def test_send_telegram_broadcast_partial_failure_returns_false():
+    """Jika salah satu chat gagal, broadcast dianggap gagal (False) agar state tidak maju."""
+    mock_app = AsyncMock()
+    mock_bot = AsyncMock()
+
+    async def _send_side_effect(*args, **kwargs):
+        if kwargs.get("chat_id") == 456:
+            raise RuntimeError("Network failure to chat 456")
+        return None
+
+    mock_bot.send_message.side_effect = _send_side_effect
+    mock_app.bot = mock_bot
+
+    with patch("app.services.bot._bot_app", mock_app):
+        with patch("app.services.bot.get_settings") as mock_settings:
+            mock_settings.return_value.allowed_chat_id_list = [123, 456]
+            success = send_telegram_broadcast_sync("Pesan broadcast penting")
+            assert success is False, "Harus mengembalikan False jika ada chat yang gagal"
+
+
+@pytest.mark.anyio
+async def test_empty_allowlist_drops_all_commands():
+    """Allowlist kosong menolak seluruh perintah tanpa merespons."""
+    update = AsyncMock()
+    update.effective_chat.id = 12345
+    context = AsyncMock()
+    context.args = []
+
+    with patch("app.services.bot.get_settings") as mock_settings:
+        mock_settings.return_value.allowed_chat_id_list = []
+        mock_settings.return_value.telegram_allowed_chat_ids = ""
+
+        await cmd_start(update, context)
+        context.bot.send_message.assert_not_called()

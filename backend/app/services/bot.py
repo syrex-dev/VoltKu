@@ -84,14 +84,14 @@ def send_telegram_broadcast_sync(message: str) -> bool:
     bot = bot_app.bot
 
     async def _send_all() -> bool:
-        sent_any = False
+        all_success = True
         for cid in chat_ids:
             try:
                 await send_message_rate_limited(bot, cid, message)
-                sent_any = True
             except Exception as err:
                 logger.error("Gagal mengirim telegram ke chat %s: %s", cid, err)
-        return sent_any
+                all_success = False
+        return all_success
 
     try:
         loop = asyncio.get_running_loop()
@@ -112,15 +112,16 @@ def send_telegram_broadcast_sync(message: str) -> bool:
 
 
 def allowlist_only(func):
-    """Decorator otorisasi: abaikan chat_id asing tanpa respons, log peringatan tanpa isi pesan."""
+    """Decorator otorisasi: abaikan chat asing (silent drop) tanpa log chat_id, token, atau isi."""
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.effective_chat:
             return
         chat_id = update.effective_chat.id
         settings = get_settings()
-        if chat_id not in settings.allowed_chat_id_list:
-            logger.warning("Pesan diabaikan dari chat_id asing: %s", chat_id)
+        allowed = settings.allowed_chat_id_list
+        if not allowed or chat_id not in allowed:
+            # Silent drop tanpa mencatat chat_id atau isi pesan
             return
         return await func(update, context)
 
