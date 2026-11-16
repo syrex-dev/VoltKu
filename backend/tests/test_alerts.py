@@ -93,8 +93,8 @@ def test_alert_power_limit_lifecycle_cooldown_and_recovery():
         Device(id="demo-1", name="Demo 1", mcb_watt=2200, last_seen_at=now_ts, status="online")
     )
 
-    # 1. Tiga sampel daya tinggi dalam jendela 60 detik (> 2200 W)
-    for i in range(3):
+    # 1. Tujuh sampel daya tinggi dalam jendela 60 detik (> 2200 W)
+    for i in range(7):
         session.add(
             Reading(
                 device_id="demo-1",
@@ -136,7 +136,7 @@ def test_alert_power_limit_lifecycle_cooldown_and_recovery():
     now_ts_5m = now_ts + 300
     dev = session.scalar(select(Device).where(Device.id == "demo-1"))
     dev.last_seen_at = now_ts_5m
-    for i in range(3):
+    for i in range(7):
         session.add(
             Reading(
                 device_id="demo-1",
@@ -159,7 +159,7 @@ def test_alert_power_limit_lifecycle_cooldown_and_recovery():
     # 3. Cek Pengingat: 16 menit kemudian (> 15 menit cooldown) -> Kirim pengingat berkala
     now_ts_16m = now_ts + 960
     dev.last_seen_at = now_ts_16m
-    for i in range(3):
+    for i in range(7):
         session.add(
             Reading(
                 device_id="demo-1",
@@ -183,7 +183,7 @@ def test_alert_power_limit_lifecycle_cooldown_and_recovery():
     # 4. Histeresis & Pemulihan: Daya turun di bawah 0.95 * 2200 W = 2090 W (misal 1500 W)
     now_ts_recover = now_ts_16m + 70
     dev.last_seen_at = now_ts_recover
-    for i in range(3):
+    for i in range(7):
         session.add(
             Reading(
                 device_id="demo-1",
@@ -208,6 +208,126 @@ def test_alert_power_limit_lifecycle_cooldown_and_recovery():
     assert state.state == "cleared"
 
 
+def test_alert_power_window_coverage_gap_rejection():
+    """Tiga sampel setelah restart/gap (cakupan hanya 20 detik) TIDAK boleh memicu alert daya."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    now_ts = 1736001000
+    startup_ts = now_ts - 300
+    session.add(
+        Device(id="demo-1", name="Demo 1", mcb_watt=2200, last_seen_at=now_ts, status="online")
+    )
+
+    # 3 sampel berjarak 10s: now, now-10, now-20 (cakupan 20s, jendela butuh 60s)
+    for i in range(3):
+        session.add(
+            Reading(
+                device_id="demo-1",
+                ts=now_ts - 10 * i,
+                v=220.0,
+                i=15.0,
+                p=3300.0,
+                e_kwh=10.0,
+                delta_kwh=0.1,
+                f=50.0,
+                pf=1.0,
+                rssi=-60,
+            )
+        )
+    session.commit()
+
+    msgs = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(msgs) == 0
+    assert len(sent_msgs) == 0
+
+
+def test_alert_power_window_coverage_exact_boundary():
+    """Uji kasus tepat di batas jendela 60s untuk alert daya."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    now_ts = 1736001000
+    startup_ts = now_ts - 300
+    session.add(
+        Device(id="demo-1", name="Demo 1", mcb_watt=2200, last_seen_at=now_ts, status="online")
+    )
+
+    # Kasus A: Sampel tertua tepat di batas (now_ts - 45s <= window_start + 15s)
+    # readings di now, now-10, now-20, now-30, now-45 -> lolos coverage!
+    for offset in [0, 10, 20, 30, 45]:
+        session.add(
+            Reading(
+                device_id="demo-1",
+                ts=now_ts - offset,
+                v=220.0,
+                i=12.0,
+                p=2640.0,
+                e_kwh=10.0,
+                delta_kwh=0.1,
+                f=50.0,
+                pf=1.0,
+                rssi=-60,
+            )
+        )
+    session.commit()
+
+    msgs_a = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(msgs_a) == 1
+    assert "Daya melebihi batas" in msgs_a[0]
+
+    # Bersihkan state untuk kasus B
+    session.query(AlertState).delete()
+    session.query(Anomaly).delete()
+    session.query(Reading).delete()
+    session.commit()
+
+    # Kasus B: Sampel tertua di now_ts - 44s (> now_ts - 45s) tanpa sampel awal -> Ditolak!
+    for offset in [0, 10, 20, 30, 44]:
+        session.add(
+            Reading(
+                device_id="demo-1",
+                ts=now_ts - offset,
+                v=220.0,
+                i=12.0,
+                p=2640.0,
+                e_kwh=10.0,
+                delta_kwh=0.1,
+                f=50.0,
+                pf=1.0,
+                rssi=-60,
+            )
+        )
+    session.commit()
+
+    msgs_b = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(msgs_b) == 0  # Belum cukup mencakup 60s!
+
+    # Kasus C: Sampel di now_ts - 44s TETAPI ada sampel sebelum jendela di now_ts - 65s
+    # (dalam toleransi <= 15s dari window_start) yang juga overload -> Diterima!
+    session.add(
+        Reading(
+            device_id="demo-1",
+            ts=now_ts - 65,
+            v=220.0,
+            i=12.0,
+            p=2640.0,
+            e_kwh=9.9,
+            delta_kwh=0.1,
+            f=50.0,
+            pf=1.0,
+            rssi=-60,
+        )
+    )
+    session.commit()
+
+    msgs_c = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(msgs_c) == 1
+    assert "Daya melebihi batas" in msgs_c[0]
+
+
 def test_alert_voltage_low_high_and_recovery():
     _, session = get_test_session()
     sent_msgs = []
@@ -219,8 +339,8 @@ def test_alert_voltage_low_high_and_recovery():
         Device(id="demo-1", name="Demo 1", mcb_watt=2200, last_seen_at=now_ts, status="online")
     )
 
-    # Tegangan rendah (< 200 V) dalam jendela 30 detik
-    for i in range(2):
+    # Empat sampel tegangan rendah (< 200 V) dalam jendela 30 detik (now, now-10, now-20, now-30)
+    for i in range(4):
         session.add(
             Reading(
                 device_id="demo-1",
@@ -244,7 +364,7 @@ def test_alert_voltage_low_high_and_recovery():
     now_ts_recover = now_ts + 45
     dev = session.scalar(select(Device).where(Device.id == "demo-1"))
     dev.last_seen_at = now_ts_recover
-    for i in range(2):
+    for i in range(4):
         session.add(
             Reading(
                 device_id="demo-1",
@@ -263,6 +383,122 @@ def test_alert_voltage_low_high_and_recovery():
 
     msgs_rec = evaluate_all_alerts(session, now_ts=now_ts_recover, startup_ts=startup_ts)
     assert any("Tegangan normal kembali" in m for m in msgs_rec)
+
+
+def test_alert_voltage_window_coverage_gap_rejection():
+    """Dua sampel setelah gap (cakupan 10 detik) TIDAK boleh memicu alert tegangan (jendela 30s)."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    now_ts = 1736001000
+    startup_ts = now_ts - 300
+    session.add(
+        Device(id="demo-1", name="Demo 1", mcb_watt=2200, last_seen_at=now_ts, status="online")
+    )
+
+    for i in range(2):
+        session.add(
+            Reading(
+                device_id="demo-1",
+                ts=now_ts - 10 * i,
+                v=190.0,
+                i=2.0,
+                p=380.0,
+                e_kwh=5.0,
+                delta_kwh=0.05,
+                f=50.0,
+                pf=0.98,
+                rssi=-60,
+            )
+        )
+    session.commit()
+
+    msgs = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(msgs) == 0
+
+
+def test_alert_voltage_window_coverage_exact_boundary():
+    """Uji kasus tepat di batas jendela 30s untuk alert tegangan."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    now_ts = 1736001000
+    startup_ts = now_ts - 300
+    session.add(
+        Device(id="demo-1", name="Demo 1", mcb_watt=2200, last_seen_at=now_ts, status="online")
+    )
+
+    # Batas 30s: window_start = now - 30. window_start + 15 = now - 15.
+    # Kasus A: Tertua di now_ts - 15s -> Lolos coverage!
+    for offset in [0, 10, 15]:
+        session.add(
+            Reading(
+                device_id="demo-1",
+                ts=now_ts - offset,
+                v=192.0,
+                i=2.0,
+                p=380.0,
+                e_kwh=5.0,
+                delta_kwh=0.05,
+                f=50.0,
+                pf=0.98,
+                rssi=-60,
+            )
+        )
+    session.commit()
+
+    msgs_a = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert any("Tegangan rendah" in m for m in msgs_a)
+
+    # Bersihkan state untuk kasus B
+    session.query(AlertState).delete()
+    session.query(Anomaly).delete()
+    session.query(Reading).delete()
+    session.commit()
+
+    # Kasus B: Tertua di now_ts - 14s (> now_ts - 15s) tanpa sampel sebelum jendela -> Ditolak!
+    for offset in [0, 10, 14]:
+        session.add(
+            Reading(
+                device_id="demo-1",
+                ts=now_ts - offset,
+                v=192.0,
+                i=2.0,
+                p=380.0,
+                e_kwh=5.0,
+                delta_kwh=0.05,
+                f=50.0,
+                pf=0.98,
+                rssi=-60,
+            )
+        )
+    session.commit()
+
+    msgs_b = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(msgs_b) == 0
+
+    # Kasus C: Tertua di now_ts - 14s TETAPI ada sampel sebelum jendela di now_ts - 35s
+    # (<= 15s sebelum now_ts - 30) yang juga < 200 V -> Diterima!
+    session.add(
+        Reading(
+            device_id="demo-1",
+            ts=now_ts - 35,
+            v=190.0,
+            i=2.0,
+            p=380.0,
+            e_kwh=4.9,
+            delta_kwh=0.05,
+            f=50.0,
+            pf=0.98,
+            rssi=-60,
+        )
+    )
+    session.commit()
+
+    msgs_c = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert any("Tegangan rendah" in m for m in msgs_c)
 
 
 def test_alert_offline_and_recovery():
@@ -298,10 +534,19 @@ def test_alert_offline_and_recovery():
     assert any("Perangkat online kembali" in m for m in msgs_online)
 
 
-def test_alert_state_only_updates_on_successful_dispatch():
+def test_null_notifier_returns_false():
+    """NullNotifier mengembalikan False dan tidak melaporkan terkirim jika belum ada bot."""
+    from app.services.notifier import send_alert_notification
+
+    # Reset ke sender None (NullNotifier)
+    set_notification_sender(None)
+    res = send_alert_notification("Pesan uji coba tanpa bot")
+    assert res is False
+
+
+def test_alert_state_retry_on_next_tick_until_success():
+    """Notifier gagal -> state tidak maju dan diulang di tick berikutnya; sukses -> tepat sekali."""
     _, session = get_test_session()
-    # Simulasikan kegagalan jaringan / pengiriman
-    set_notification_sender(lambda m: False)
 
     now_ts = 1736001000
     startup_ts = now_ts - 300
@@ -316,11 +561,38 @@ def test_alert_state_only_updates_on_successful_dispatch():
     )
     session.commit()
 
-    # Ketika pengiriman gagal: alert_state TIDAK boleh diperbarui ke active
-    evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
-    state = session.scalar(
+    # Tick 1: Notifier gagal (misal NullNotifier / bot belum aktif)
+    set_notification_sender(lambda m: False)
+    msgs_1 = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(msgs_1) == 0
+
+    state_1 = session.scalar(
         select(AlertState).where(
             AlertState.device_id == "demo-1", AlertState.alert_type == "offline"
         )
     )
-    assert state is None
+    assert state_1 is None  # Tidak ditulis ke DB
+
+    # Tick 2: Notifier berhasil terhubung (misal Telegram bot aktif)
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+    now_ts_2 = now_ts + 10
+    msgs_2 = evaluate_all_alerts(session, now_ts=now_ts_2, startup_ts=startup_ts)
+    assert len(msgs_2) == 1
+    assert len(sent_msgs) == 1
+    assert "Perangkat offline" in msgs_2[0]
+
+    state_2 = session.scalar(
+        select(AlertState).where(
+            AlertState.device_id == "demo-1", AlertState.alert_type == "offline"
+        )
+    )
+    assert state_2 is not None
+    assert state_2.state == "active"
+    assert state_2.last_notified_at == now_ts_2
+
+    # Tick 3: Masih offline, tapi dalam batas cooldown -> tidak dikirim ulang (tepat sekali)
+    now_ts_3 = now_ts_2 + 10
+    msgs_3 = evaluate_all_alerts(session, now_ts=now_ts_3, startup_ts=startup_ts)
+    assert len(msgs_3) == 0
+    assert len(sent_msgs) == 1  # Tetap 1, tidak duplikat

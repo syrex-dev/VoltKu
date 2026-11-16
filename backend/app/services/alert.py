@@ -21,8 +21,56 @@ TZ_WIB = ZoneInfo("Asia/Jakarta")
 STARTUP_GRACE_PERIOD_SECONDS = 120
 MIN_SAMPLES_POWER = 3  # Minimal 3 sampel dalam jendela 60 detik
 MIN_SAMPLES_VOLTAGE = 2  # Minimal 2 sampel dalam jendela 30 detik
+PUBLISH_INTERVAL_SECONDS = 10
+WINDOW_TOLERANCE_SECONDS = 15  # 1.5 * PUBLISH_INTERVAL_SECONDS
 
 _module_startup_time = int(time.time())
+
+
+def check_window_coverage(
+    readings: list[Reading],
+    window_duration: int,
+    now_ts: int,
+    session: Session,
+    device_id: str,
+    threshold_fn,
+) -> bool:
+    """Memeriksa apakah sampel dalam jendela benar-benar mencakup durasi >= window_duration.
+
+    Syarat:
+    1. Sampel tidak boleh kosong.
+    2. Sampel tertua <= awal_jendela + 1.5 * interval_publish (15s).
+       ATAU jika sampel tertua > awal_jendela + 15s, harus ada sampel sebelum jendela
+       (ts < awal_jendela) yang jaraknya <= 15s dan juga melewati ambang (threshold_fn).
+    3. Sampel terbaru >= now_ts - 15s (kondisi masih aktif hingga akhir jendela).
+    """
+    if not readings:
+        return False
+
+    window_start = now_ts - window_duration
+    oldest_ts = readings[0].ts
+    newest_ts = readings[-1].ts
+
+    if newest_ts < (now_ts - WINDOW_TOLERANCE_SECONDS):
+        return False
+
+    if oldest_ts <= (window_start + WINDOW_TOLERANCE_SECONDS):
+        return True
+
+    prev_reading = session.scalar(
+        select(Reading)
+        .where(Reading.device_id == device_id, Reading.ts < window_start)
+        .order_by(Reading.ts.desc())
+        .limit(1)
+    )
+    if (
+        prev_reading
+        and (window_start - prev_reading.ts) <= WINDOW_TOLERANCE_SECONDS
+        and threshold_fn(prev_reading)
+    ):
+        return True
+
+    return False
 
 
 def get_startup_time() -> int:
@@ -178,8 +226,16 @@ def evaluate_device_alerts(
     if len(readings_60s) >= MIN_SAMPLES_POWER:
         all_above_limit = all(r.p > power_limit_w for r in readings_60s)
         all_recovered = all(r.p < (0.95 * power_limit_w) for r in readings_60s)
+        power_covered = check_window_coverage(
+            readings=readings_60s,
+            window_duration=60,
+            now_ts=now_ts,
+            session=session,
+            device_id=device.id,
+            threshold_fn=lambda r: r.p > power_limit_w,
+        )
 
-        if all_above_limit:
+        if all_above_limit and power_covered:
             avg_p = round(sum(r.p for r in readings_60s) / len(readings_60s), 1)
             if not power_state or power_state.state != "active":
                 msg = (
@@ -276,8 +332,25 @@ def evaluate_device_alerts(
 
         avg_v = round(sum(r.v for r in readings_30s) / len(readings_30s), 1)
 
+        v_low_covered = check_window_coverage(
+            readings=readings_30s,
+            window_duration=30,
+            now_ts=now_ts,
+            session=session,
+            device_id=device.id,
+            threshold_fn=lambda r: r.v < settings.voltage_min_v,
+        )
+        v_high_covered = check_window_coverage(
+            readings=readings_30s,
+            window_duration=30,
+            now_ts=now_ts,
+            session=session,
+            device_id=device.id,
+            threshold_fn=lambda r: r.v > settings.voltage_max_v,
+        )
+
         # 1. Voltage Low
-        if all_low:
+        if all_low and v_low_covered:
             if not v_low_state or v_low_state.state != "active":
                 limit_v = settings.voltage_min_v
                 msg = f"[PERINGATAN] {device.name} - Tegangan rendah: {avg_v} V < {limit_v} V"
@@ -353,7 +426,7 @@ def evaluate_device_alerts(
                 session.commit()
 
         # 2. Voltage High
-        if all_high:
+        if all_high and v_high_covered:
             if not v_high_state or v_high_state.state != "active":
                 limit_v = settings.voltage_max_v
                 msg = f"[PERINGATAN] {device.name} - Tegangan tinggi: {avg_v} V > {limit_v} V"

@@ -28,7 +28,7 @@ def send_alert_notification(message: str) -> bool:
             logger.error("Failed to send notification via custom sender: %s", err)
             return False
 
-    # Default fallback jika belum ada bot token atau handler: log pesan dan anggap sukses
-    logger.info("[ALERT NOTIFICATION] %s", message)
-    return True
+    # NullNotifier: sebelum bot ada / jika belum ada sender aktif, kembalikan False
+    logger.debug("[ALERT NOTIFICATION SUPPRESSED - NO ACTIVE SENDER] %s", message)
+    return False
 
