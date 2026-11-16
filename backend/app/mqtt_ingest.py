@@ -97,9 +97,12 @@ def process_telemetry_payload(
     commit: bool = True,
     update_stats: bool = True,
     check_retention: bool = False,
+    now_utc: Optional[int] = None,
 ) -> Optional[Reading]:
     """Memproses payload telemetry secara deterministik (dapat dipanggil langsung tanpa broker)."""
-    is_valid, err_msg = validate_telemetry_payload(payload, check_retention=check_retention)
+    is_valid, err_msg = validate_telemetry_payload(
+        payload, check_retention=check_retention, now_utc=now_utc
+    )
     if not is_valid:
         logger.warning("Rejected telemetry from %s: %s", device_id, err_msg)
         return None

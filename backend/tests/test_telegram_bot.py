@@ -90,7 +90,9 @@ async def test_allowlist_ignores_unknown_chat_id(caplog):
 
 @pytest.mark.anyio
 async def test_no_token_leaks_in_logging(caplog):
-    """Memastikan token bot tidak pernah bocor ke caplog saat operasi berjalan."""
+    """Memastikan token bot tidak pernah bocor ke caplog saat operasi berjalan
+    (termasuk log httpx & telegram).
+    """
     caplog.set_level(logging.DEBUG)
     test_token = "BOT_SUPER_SECRET_TOKEN_XYZ_987"
     with patch("app.services.bot.get_settings") as mock_settings:
@@ -103,6 +105,11 @@ async def test_no_token_leaks_in_logging(caplog):
         context.args = []
 
         await cmd_start(update, context)
+
+        # Simulasikan aktivitas logging httpx dan telegram
+        logging.getLogger("httpx").debug("HTTP Request POST https://api.telegram.org/bot/sendMessage")
+        logging.getLogger("telegram").info("Telegram polling tick processed")
+
         assert test_token not in caplog.text
 
 
@@ -287,15 +294,15 @@ async def test_cmd_tarif_validation():
     with patch("app.services.bot.get_settings") as mock_settings:
         mock_settings.return_value.allowed_chat_id_list = [12345]
 
-        # 1. Sukses: 1444.70 -> tariff_sen 144470
-        context.args = ["1444.70"]
+        # 1. Sukses: input format koma 1444,70 -> tariff_sen 144470
+        context.args = ["1444,70"]
         await cmd_tarif(update, context)
         with TestSessionLocal() as session:
             val = session.scalar(select(Setting.value).where(Setting.key == "tariff_sen_per_kwh"))
             assert val == "144470"
 
-        # 2. Tolak desimal > 2 (konsisten dengan API)
-        context.args = ["1444.705"]
+        # 2. Tolak desimal > 2: 1444.755 ditolak (konsisten dengan API)
+        context.args = ["1444.755"]
         await cmd_tarif(update, context)
         sent_text = context.bot.send_message.call_args.kwargs["text"]
         assert "tidak valid" in sent_text
@@ -414,3 +421,39 @@ async def test_empty_allowlist_drops_all_commands():
 
         await cmd_start(update, context)
         context.bot.send_message.assert_not_called()
+
+
+def test_telegram_failure_does_not_disrupt_ingest_or_scheduler():
+    """Kegagalan pengiriman telegram tidak mengganggu proses ingest dan scheduler."""
+    from app.mqtt_ingest import process_telemetry_payload
+    from app.services.notifier import set_notification_sender
+    from app.services.report_generator import check_and_send_catchup_reports
+
+    def failing_sender(msg: str) -> bool:
+        raise ConnectionResetError("Simulated Telegram API network reset")
+
+    set_notification_sender(failing_sender)
+    try:
+        with TestSessionLocal() as session:
+            # 1. Ingest telemetri tetap berjalan mulus tanpa terganggu kegagalan telegram
+            now_ts = int(time.time())
+            payload = {
+                "ts": now_ts,
+                "v": 220.0,
+                "i": 2.0,
+                "p": 440.0,
+                "e": 1.0,
+                "f": 50.0,
+                "pf": 1.0,
+            }
+            reading = process_telemetry_payload(
+                session, "demo-1", payload, default_mcb_watt=2200, commit=True
+            )
+            assert reading is not None
+            assert reading.p == 440.0
+
+            # 2. Scheduler catch-up job tidak crash bila notifikasi gagal
+            actions = check_and_send_catchup_reports(session)
+            assert isinstance(actions, list)
+    finally:
+        set_notification_sender(None)

@@ -28,8 +28,8 @@ def test_alert_skips_sim_devices():
     # Device simulasi
     session.add(Device(id="sim-warung", name="Sim Warung", mcb_watt=2200, last_seen_at=now_ts))
 
-    # Masukkan 3 reading daya tinggi
-    for i in range(3):
+    # Masukkan 7 reading daya tinggi (memenuhi jendela 60 detik)
+    for i in range(7):
         session.add(
             Reading(
                 device_id="sim-warung",
@@ -209,8 +209,100 @@ def test_alert_power_limit_lifecycle_cooldown_and_recovery():
     session.refresh(state)
     assert state.state == "cleared"
 
+
+def test_alert_state_persists_across_restart_and_no_duplicate_notification():
+    """State alert tahan restart (instance evaluator baru, tidak ada notifikasi dobel)."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    now_ts = 1736001000
+    startup_ts = now_ts - 300
+    session.add(
+        Device(id="demo-1", name="Demo 1", mcb_watt=2200, last_seen_at=now_ts, status="online")
+    )
+
+    # 1. Masukkan sampel overload dan picu alert pertama
+    for i in range(7):
+        session.add(
+            Reading(
+                device_id="demo-1",
+                ts=now_ts - 10 * i,
+                v=220.0,
+                i=12.0,
+                p=2640.0,
+                e_kwh=10.0,
+                delta_kwh=0.1,
+                f=50.0,
+                pf=1.0,
+                rssi=-60,
+            )
+        )
+    session.commit()
+
+    msgs_1 = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(msgs_1) == 1
+    assert "Daya melebihi batas" in msgs_1[0]
+    assert len(sent_msgs) == 1
+
+    # 2. Simulasi RESTART BACKEND:
+    # Instance evaluator baru (startup_ts baru, misal 130 detik setelah startup baru)
+    restart_ts = now_ts + 20
+    new_startup_ts = restart_ts
+    # > 120s (lewat grace period), tapi < 15 menit cooldown
+    eval_ts_after_restart = restart_ts + 130
+
+    # Tambah sampel pembacaan saat restart berjalan
+    dev = session.scalar(select(Device).where(Device.id == "demo-1"))
+    dev.last_seen_at = eval_ts_after_restart
+    for i in range(7):
+        session.add(
+            Reading(
+                device_id="demo-1",
+                ts=eval_ts_after_restart - 10 * i,
+                v=220.0,
+                i=12.0,
+                p=2640.0,
+                e_kwh=10.2,
+                delta_kwh=0.1,
+                f=50.0,
+                pf=1.0,
+                rssi=-60,
+            )
+        )
+    session.commit()
+
+    # Evaluasi dengan instance evaluator baru
+    msgs_2 = evaluate_all_alerts(session, now_ts=eval_ts_after_restart, startup_ts=new_startup_ts)
+    # TIDAK BOLEH ada notifikasi dobel (karena alert_state di DB masih aktif dan dalam cooldown)
+    assert len(msgs_2) == 0, "Evaluator baru pasca-restart tidak boleh mengirim notifikasi dobel"
+    assert len(sent_msgs) == 1, "Total notifikasi terkirim harus tetap 1"
+
+    # 3. Sekarang kirim daya normal (pemulihan)
+    eval_ts_recovery = eval_ts_after_restart + 70
+    dev.last_seen_at = eval_ts_recovery
+    for i in range(7):
+        session.add(
+            Reading(
+                device_id="demo-1",
+                ts=eval_ts_recovery - 10 * i,
+                v=220.0,
+                i=2.0,
+                p=440.0,
+                e_kwh=10.3,
+                delta_kwh=0.01,
+                f=50.0,
+                pf=1.0,
+                rssi=-60,
+            )
+        )
+    session.commit()
+    msgs_3 = evaluate_all_alerts(session, now_ts=eval_ts_recovery, startup_ts=new_startup_ts)
+    assert len(msgs_3) == 1
+    assert "PULIH" in msgs_3[0]
+
     # Verifikasi tabel anomalies: hanya ada 1 baris episode power_limit,
-    # dan resolved_at tercatat di details_json (bukan jenis baru)
+    # dan resolved_at tercatat di details_json setelah pemulihan
     anomalies = session.scalars(
         select(Anomaly).where(Anomaly.device_id == "demo-1")
     ).all()
@@ -218,7 +310,7 @@ def test_alert_power_limit_lifecycle_cooldown_and_recovery():
     assert anomalies[0].type == "power_limit"
     anom_details = json.loads(anomalies[0].details_json)
     assert "resolved_at" in anom_details
-    assert anom_details["resolved_at"] == now_ts_recover
+    assert anom_details["resolved_at"] == eval_ts_recovery
 
 
 def test_alert_power_window_coverage_gap_rejection():

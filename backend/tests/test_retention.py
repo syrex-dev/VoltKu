@@ -201,3 +201,35 @@ def test_retention_clean_preserves_last_sample_per_device_and_stats():
     )
     assert hourly is not None
     assert hourly.kwh == 0.5
+
+
+def test_process_telemetry_payload_rejects_older_than_cutoff():
+    """Ingest pipeline menolak data yang lebih tua dari cutoff retensi."""
+    from app.mqtt_ingest import process_telemetry_payload
+
+    _, session = get_test_session()
+    now_ts = int(datetime(2026, 11, 20, 12, 0, 0, tzinfo=TZ_WIB).timestamp())
+    cutoff_ts = get_retention_cutoff_ts(now_ts)
+
+    session.add(Device(id="demo-1", name="Demo 1", mcb_watt=2200))
+    session.commit()
+
+    payload_old = {
+        "ts": cutoff_ts - 100,  # Lebih tua dari cutoff 14 hari
+        "v": 220.0,
+        "i": 1.0,
+        "p": 220.0,
+        "e": 10.0,
+        "f": 50.0,
+        "pf": 1.0,
+    }
+
+    # Ingest dengan check_retention=True harus mengembalikan None
+    res = process_telemetry_payload(
+        session, "demo-1", payload_old, check_retention=True, now_utc=now_ts
+    )
+    assert res is None, "Data lebih tua dari cutoff retensi harus ditolak"
+
+    # Verifikasi tidak ada reading tersimpan
+    readings = session.scalars(select(Reading).where(Reading.device_id == "demo-1")).all()
+    assert len(readings) == 0
