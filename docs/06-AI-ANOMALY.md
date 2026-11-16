@@ -1,7 +1,7 @@
 # 06. Modul AI #1: Deteksi Anomali
 
 ## Pipeline
-Job tiap 5 menit mengambil rata-rata daya 5 menit terakhir per perangkat, membandingkannya dengan baseline, lalu memutuskan alert.
+Job evaluasi alert L1 berjalan tiap 15 detik memeriksa jendela telemetri terbaru, sedangkan job analitik L2-L4 berjalan berkala (5 menit / harian) membandingkan data terhadap baseline.
 
 | Lapisan | Cara kerja | Status |
 |---|---|---|
@@ -9,6 +9,14 @@ Job tiap 5 menit mengambil rata-rata daya 5 menit terakhir per perangkat, memban
 | L2 Baseline statistik | Robust z-score terhadap kebiasaan per (hari kerja/akhir pekan, jam) | MVP |
 | L3 Beban dasar malam | Median daya 00.00-05.00 hari ini vs median 7 hari sebelumnya | MVP |
 | L4 Isolation Forest | Fitur [p_mean, p_std, p_max, sin/cos jam, is_weekend] per jendela 15 menit, latih ulang tiap malam, contamination 0,01 | Should (hanya dicatat, belum memicu alert) |
+
+## Detail L1 (Aturan Keras Real-Time)
+- **Cakupan Jendela & Toleransi**: Pemicuan alert L1 memerlukan jendela telemetri yang terisi penuh secara berkelanjutan:
+  - Daya lebih batas (`power_limit`): jendela >= 60 detik (minimal 3 sampel @ 10s).
+  - Tegangan di luar batas 200-240 V (`voltage`): jendela >= 30 detik (minimal 2 sampel @ 10s).
+  - Toleransi cakupan: sampel tertua dalam jendela wajib `<= awal_jendela + 15 detik` (1,5 x interval publish 10s) atau memiliki sampel pendahulu yang juga melewati batas. Sampel yang baru muncul setelah gap data atau restart (cakupan sempit ~20 detik) tidak boleh memicu alert palsu.
+- **Histeresis & Pemulihan (Recovery)**: Daya dianggap pulih setelah ~1 menit (60 detik) data telemetri konsisten normal di bawah ambang histeresis (P < 0,95 x limit daya). Pemulihan tegangan memerlukan 30 detik data normal (205-235 V). Pemulihan tidak membuat baris baru, melainkan mencatat `resolved_at` pada `details_json` di episode anomali yang sama.
+- **Perangkat Offline**: Terpicu jika selisih waktu `now - last_seen_at > 120 detik` (konstanta bersama 120s). Episode offline juga dicatat ke tabel `anomalies`.
 
 ## Detail L2
 - Kelompokkan `p_avg` per jam dari 14 hari terakhir ke bucket (jenis_hari, jam 0-23). Hitung median dan MAD per bucket.
