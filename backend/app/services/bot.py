@@ -339,13 +339,13 @@ async def cmd_anomali(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             select(Anomaly)
             .where(Anomaly.device_id.in_(dev_ids), Anomaly.ts >= from_ts)
             .order_by(Anomaly.ts.desc())
-            .limit(10)
+            .limit(20)
         ).all()
 
         if not anomalies:
-            text = "✅ Tidak ada anomali terdeteksi dalam 7 hari terakhir."
+            text = "Tidak ada anomali dalam 7 hari terakhir."
         else:
-            lines = ["🚨 Riwayat Peringatan & Anomali (7 Hari Terakhir):"]
+            lines = ["🚨 Riwayat Peringatan & Anomali (7 Hari Terakhir, Terbaru Dulu):"]
             for a in anomalies:
                 t_str = _format_datetime_wib(a.ts)
                 lines.append(f"• [{a.severity.upper()}] {t_str} WIB:\n  {a.message}")

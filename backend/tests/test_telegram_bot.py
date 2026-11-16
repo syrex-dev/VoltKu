@@ -221,17 +221,19 @@ async def test_cmd_today_week_month_forecast():
 async def test_cmd_anomali():
     now_ts = int(time.time())
     with TestSessionLocal() as session:
-        session.add(
-            Anomaly(
-                device_id="demo-1",
-                ts=now_ts - 100,
-                type="power_limit",
-                severity="warning",
-                details_json="{}",
-                message="Daya melebihi 2200 W",
-                notified=1,
+        # Tambah 25 baris anomali untuk menguji pemotongan maks 20 baris
+        for i in range(25):
+            session.add(
+                Anomaly(
+                    device_id="demo-1",
+                    ts=now_ts - (1000 - i * 10),
+                    type="power_limit",
+                    severity="warning",
+                    details_json="{}",
+                    message=f"Daya melebihi 2200 W #{i}",
+                    notified=1,
+                )
             )
-        )
         session.commit()
 
     update = AsyncMock()
@@ -245,8 +247,35 @@ async def test_cmd_anomali():
 
         await cmd_anomali(update, context)
         sent_text = context.bot.send_message.call_args.kwargs["text"]
-        assert "Daya melebihi 2200 W" in sent_text
+        # Harus memuat anomali terbaru (#24)
+        assert "Daya melebihi 2200 W #24" in sent_text
         assert "[WARNING]" in sent_text
+        # Baris anomali yang ditampilkan harus tepat 20 (maks 20)
+        item_lines = [line for line in sent_text.splitlines() if line.startswith("• [WARNING]")]
+        assert len(item_lines) == 20
+
+
+@pytest.mark.anyio
+async def test_cmd_anomali_empty():
+    update = AsyncMock()
+    update.effective_chat.id = 12345
+    context = AsyncMock()
+    context.args = ["dev_non_existent"]
+
+    with patch("app.services.bot.get_settings") as mock_settings:
+        mock_settings.return_value.allowed_chat_id_list = [12345]
+        mock_settings.return_value.alert_exclude_device_prefixes = "sim-"
+
+        # Buat device baru tanpa anomali
+        with TestSessionLocal() as session:
+            if not session.get(Device, "dev_clean"):
+                session.add(Device(id="dev_clean", name="Dev Clean", mcb_watt=2200))
+                session.commit()
+
+        context.args = ["dev_clean"]
+        await cmd_anomali(update, context)
+        sent_text = context.bot.send_message.call_args.kwargs["text"]
+        assert "tidak ada" in sent_text.lower()
 
 
 @pytest.mark.anyio
