@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import SessionLocal
 from app.models import Device, Reading
 from app.services.aggregation import update_daily_stat, update_hourly_stat
@@ -24,13 +25,17 @@ MIN_VALID_TS = 1735689600
 FUTURE_TOLERANCE_SECONDS = 300
 
 
-def get_device_status(device: Device, now_utc: Optional[int] = None) -> str:
-    """Mengembalikan status online/offline berdasarkan LWT dan batas 120 detik last_seen_at."""
+def get_device_status(
+    device: Device,
+    now_utc: Optional[int] = None,
+    threshold_seconds: int = OFFLINE_THRESHOLD_SECONDS,
+) -> str:
+    """Mengembalikan status online/offline berdasarkan LWT dan batas threshold last_seen_at."""
     if now_utc is None:
         now_utc = int(datetime.now(timezone.utc).timestamp())
     if device.status == "offline":
         return "offline"
-    if not device.last_seen_at or (now_utc - device.last_seen_at) > 120:
+    if not device.last_seen_at or (now_utc - device.last_seen_at) > threshold_seconds:
         return "offline"
     return "online"
 

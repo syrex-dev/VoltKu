@@ -17,8 +17,10 @@ from telegram.ext import (
 )
 
 from app.config import get_settings
+from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import SessionLocal
 from app.models import Anomaly, Device, Reading, Setting
+from app.mqtt_ingest import get_device_status
 from app.services.notifier import set_notification_sender
 from app.services.reports import calculate_device_forecast, calculate_device_summary
 
@@ -179,9 +181,10 @@ async def cmd_perangkat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             lines = ["📋 Daftar Perangkat Terdaftar:"]
             for d in devices:
                 seen_str = _format_datetime_wib(d.last_seen_at) if d.last_seen_at else "Belum ada"
+                st = get_device_status(d, threshold_seconds=OFFLINE_THRESHOLD_SECONDS)
                 lines.append(
                     f"• {d.name or d.id} (ID: {d.id})\n"
-                    f"  Status: {d.status.upper()} | MCB: {d.mcb_watt} W\n"
+                    f"  Status: {st.upper()} | MCB: {d.mcb_watt} W\n"
                     f"  Terakhir aktif: {seen_str} WIB"
                 )
             text = "\n".join(lines)

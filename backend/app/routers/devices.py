@@ -7,6 +7,7 @@ from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import get_db
 from app.models import DailyStat, Device, HourlyStat, Reading
 from app.mqtt_ingest import get_device_status
@@ -33,7 +34,9 @@ def list_devices(session: Session = Depends(get_db)):
             "created_at": d.created_at,
             "last_seen_at": d.last_seen_at,
             "last_data_ts": d.last_data_ts,
-            "status": get_device_status(d, now_utc=now_utc),
+            "status": get_device_status(
+                d, now_utc=now_utc, threshold_seconds=OFFLINE_THRESHOLD_SECONDS
+            ),
         }
         for d in devices
     ]

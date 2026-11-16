@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import SessionLocal
 from app.models import AlertState, Anomaly, Device, Reading, Setting
 from app.mqtt_ingest import get_device_status
@@ -132,7 +133,10 @@ def evaluate_device_alerts(
     if is_offline:
         if not offline_state or offline_state.state != "active":
             # Alert baru
-            msg = f"[PERINGATAN] {device.name} - Perangkat offline (tidak ada data > 120 detik)"
+            msg = (
+                f"[PERINGATAN] {device.name} - Perangkat offline "
+                f"(tidak ada data > {OFFLINE_THRESHOLD_SECONDS} detik)"
+            )
             if send_alert_notification(msg):
                 sent_messages.append(msg)
                 if not offline_state:

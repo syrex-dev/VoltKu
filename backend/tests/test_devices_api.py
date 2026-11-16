@@ -60,6 +60,42 @@ def test_get_devices_status_dynamic():
     app.dependency_overrides.clear()
 
 
+def test_device_offline_boundary_119_and_121():
+    """Uji batas persis: 119 detik tidak offline (online), 121 detik offline."""
+    session = setup_test_db()
+    now = int(time.time())
+
+    # dev_119s: last seen 119 detik lalu -> TIDAK offline (online)
+    dev_119 = Device(
+        id="dev_119",
+        name="Dev 119s",
+        mcb_watt=2200,
+        last_seen_at=now - 119,
+        status="online",
+    )
+    # dev_121s: last seen 121 detik lalu -> offline
+    dev_121 = Device(
+        id="dev_121",
+        name="Dev 121s",
+        mcb_watt=2200,
+        last_seen_at=now - 121,
+        status="online",
+    )
+
+    session.add_all([dev_119, dev_121])
+    session.commit()
+
+    res = client.get("/api/devices", headers=auth_headers)
+    assert res.status_code == 200
+    devices = res.json()
+    dev_map = {d["id"]: d["status"] for d in devices}
+
+    assert dev_map["dev_119"] == "online", "119 detik tidak boleh offline"
+    assert dev_map["dev_121"] == "offline", "121 detik harus offline"
+
+    app.dependency_overrides.clear()
+
+
 def test_get_device_latest_reading():
     session = setup_test_db()
     now = int(time.time())
