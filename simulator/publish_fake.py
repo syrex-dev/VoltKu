@@ -106,6 +106,18 @@ def run_simulator() -> None:
         action="store_true",
         help="Seed langsung ke database lokal menggunakan fungsi ingest backend",
     )
+    parser.add_argument(
+        "--overload-seconds",
+        type=int,
+        default=120,
+        help="Durasi fase overload dalam detik (default 120)",
+    )
+    parser.add_argument(
+        "--lowvolt-seconds",
+        type=int,
+        default=60,
+        help="Durasi fase tegangan rendah dalam detik (default 60)",
+    )
     args = parser.parse_args()
 
     # Mode Backfill: Isi data historis N hari ke belakang
@@ -331,12 +343,12 @@ def run_simulator() -> None:
         publish_message(client, topic, create_payload(ts=ts2, e=50.002))
 
     elif args.mode == "overload":
+        overload_samples = max(1, (args.overload_seconds // args.interval) + 1)
         print(
             f"Starting OVERLOAD scenario for {args.device} "
-            f"(P > 2200 W for 70s, then recovery)..."
+            f"(P > 2200 W for {args.overload_seconds}s, {overload_samples} samples, then recovery)..."
         )
-        # Fase 1: Overload selama 70 detik (8 sampel @ 10s = rentang 70 detik)
-        overload_samples = 8
+        # Fase 1: Overload selama overload_seconds
         for i in range(overload_samples):
             p = 2640.0 + random.uniform(-20, 20)
             v = 220.0 + random.uniform(-1, 1)
@@ -363,12 +375,12 @@ def run_simulator() -> None:
             time.sleep(args.interval)
 
     elif args.mode == "lowvolt":
+        low_samples = max(1, (args.lowvolt_seconds // args.interval) + 1)
         print(
             f"Starting LOW VOLTAGE scenario for {args.device} "
-            f"(V < 200 V for 35s, then recovery)..."
+            f"(V < 200 V for {args.lowvolt_seconds}s, {low_samples} samples, then recovery)..."
         )
-        # Fase 1: Tegangan rendah (4 sampel @ 10s = rentang 30-40 detik)
-        low_samples = 4
+        # Fase 1: Tegangan rendah
         for i in range(low_samples):
             v = 192.0 + random.uniform(-2, 2)
             p = 380.0

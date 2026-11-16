@@ -149,7 +149,7 @@ docker compose logs backend | grep -i "telegram"
 ### C. Daftar Skenario Uji Manual
 1. **Uji Keamanan Allowlist**:
    - Kirim pesan `/start` dari akun Telegram yang **tidak terdaftar** di `TELEGRAM_ALLOWED_CHAT_IDS`.
-   - **Hasil yang diharapkan:** Bot sama sekali tidak merespons (senyap), dan log backend mencatat: `Pesan diabaikan dari chat_id asing: <chat_id>` tanpa membocorkan konten pesan.
+   - **Hasil yang diharapkan:** Bot sama sekali tidak merespons (silent drop), tanpa mencatat `chat_id` asing atau konten pesan ke dalam log (anti-leak).
 
 2. **Uji Perintah Informasi (Akun Terdaftar)**:
    - `/start` : Menampilkan pesan panduan dan daftar perintah.
@@ -159,26 +159,47 @@ docker compose logs backend | grep -i "telegram"
    - `/week` : Ringkasan energi dan biaya minggu ini (dihitung sejak Senin WIB).
    - `/month` : Ringkasan energi dan biaya bulan kalender berjalan.
    - `/forecast` : Proyeksi konsumsi dan tagihan PLN akhir bulan beserta basis hari.
-   - `/anomali` : Riwayat peringatan dan anomali 7 hari terakhir.
+   - `/anomali` : Riwayat peringatan dan anomali 7 hari terakhir (maks 20 baris, terbaru dulu).
 
 3. **Uji Perintah Pengaturan**:
-   - `/tarif 1444.70` : Mengubah tarif listrik PLN (coba masukkan 3 desimal seperti `/tarif 1444.705` untuk menguji penolakan).
+   - `/tarif 1444,70` : Mengubah tarif listrik PLN (menerima koma atau titik; tolak bila > 2 desimal seperti `/tarif 1444.755`).
    - `/batas 2500` : Mengubah batas daya peringatan menjadi 2500 Watt.
    - `/laporan off` lalu `/laporan on` : Mengaktifkan / menonaktifkan pengiriman laporan berkala otomatis.
 
 4. **Uji Notifikasi Alert Real-Time & Pembersihan**:
-   - Jalankan simulator skenario overload dari container:
+   - Jalankan simulator skenario overload:
      ```bash
-     docker compose exec backend python simulator/publish_fake.py --device demo-1 --mode overload
+     python simulator/publish_fake.py --device demo-1 --mode overload --overload-seconds 120
      ```
    - Bot akan menerima notifikasi:
-     - `[PERINGATAN] Demo 1 - Daya melebihi batas wajar: ... W > ... W` (setelah overload 70s).
-     - `[PULIH] Demo 1 - Daya normal kembali: ... W` (setelah daya turun kembali di bawah ambang).
-     - `[PERINGATAN] Demo 1 - Perangkat offline ...` (sekitar 120 detik setelah simulator dimatikan).
+     - `[PERINGATAN] demo-1 - Daya melebihi batas wajar: ... W > ... W` (setelah overload bertahan >= 60s).
+     - `[PULIH] demo-1 - Daya normal kembali: ... W` (setelah fase pemulihan).
+     - `[PERINGATAN] demo-1 - Perangkat offline ...` (sekitar 120 detik setelah simulator dihentikan).
    - Setelah pengujian selesai, bersihkan seluruh data pengujian `demo-1`:
      ```bash
-     docker compose exec backend python scripts/clean_device.py --device demo-1
+     docker compose exec backend python scripts/clean_device.py demo-1
      ```
+
+## 8. Konfigurasi Akun MQTT & Hak Akses ACL Broker (Mosquitto)
+
+Aturan otorisasi topik MQTT diatur di `deploy/acl`:
+
+```text
+user energy_backend
+topic readwrite energy/#
+
+pattern write energy/%u/#
+```
+
+### Penjelasan Hak Akses:
+1. **Akun Simulator / Backend (`energy_backend`)**:
+   - Menggunakan kredensial `MQTT_USER=energy_backend` dan `MQTT_PASS` dari `.env`.
+   - Memiliki izin `topic readwrite energy/#` (akses penuh ke seluruh hierarki topik `energy/`).
+   - Alasan lolos ACL: Simulator telemetri (`simulator/publish_fake.py`) secara default menggunakan akun `energy_backend`, sehingga simulator bebas mempublikasikan data ke topik perangkat apa pun (seperti `energy/demo-1/telemetry` atau `energy/sim-warung/telemetry`).
+2. **Akun Perangkat Fisik / ESP32**:
+   - Setiap perangkat fisik login dengan username yang persis sama dengan `device_id` miliknya.
+   - Directive `pattern write energy/%u/#` mencocokkan `%u` dengan username MQTT yang terotentikasi.
+   - Perangkat dengan username `esp32_device_1` hanya diizinkan mempublikasikan ke `energy/esp32_device_1/#` dan ditolak oleh broker jika mencoba mempublikasikan ke topik perangkat lain atau subscribe ke `energy/#`.
 
 
 
