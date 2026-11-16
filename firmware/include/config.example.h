@@ -1,18 +1,17 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+#pragma once
 
-// Template Kredensial Firmware ESP32
-// Salin file ini menjadi config.h dan isi dengan konfigurasi Anda.
-// PERINGATAN: Jangan commit config.h ke git!
+// Salin file ini menjadi include/config.h dan sesuaikan kredensial.
+// File config.h asli MASUK KE .gitignore dan JANGAN PERNAH di-commit.
 
-#define WIFI_SSID "NAMA_WIFI"
-#define WIFI_PASSWORD "PASSWORD_WIFI"
+#define WIFI_SSID "NAMA_WIFI_ANDA"
+#define WIFI_PASS "PASSWORD_WIFI_ANDA"
 
-#define MQTT_SERVER "192.168.1.100"
+#define MQTT_HOST "192.168.1.100"
 #define MQTT_PORT 1883
-#define MQTT_USER "esp32_device_1"
-#define MQTT_PASSWORD "password_mqtt_device"
-#define DEVICE_ID "esp32_device_1"
+#define MQTT_USER "device-01"
+#define MQTT_PASS "PASSWORD_MQTT_ANDA"
 
-#endif // CONFIG_H
-
+#define DEVICE_ID "device-01"
+#define NTP_SERVER "pool.ntp.org"
+#define PUBLISH_INTERVAL_S 10
+#define FIRMWARE_VERSION "1.0.0"
