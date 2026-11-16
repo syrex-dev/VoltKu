@@ -139,6 +139,19 @@ def evaluate_device_alerts(
             )
             if send_alert_notification(msg):
                 sent_messages.append(msg)
+                anom = Anomaly(
+                    device_id=device.id,
+                    ts=now_ts,
+                    type="offline",
+                    severity="warning",
+                    details_json=json.dumps({"last_seen_at": device.last_seen_at}),
+                    message=msg,
+                    notified=1,
+                )
+                session.add(anom)
+                session.flush()
+
+                details = {"last_seen_at": device.last_seen_at, "anomaly_id": anom.id}
                 if not offline_state:
                     offline_state = AlertState(
                         device_id=device.id,
@@ -146,28 +159,15 @@ def evaluate_device_alerts(
                         state="active",
                         since=now_ts,
                         last_notified_at=now_ts,
-                        details_json=json.dumps({"last_seen_at": device.last_seen_at}),
+                        details_json=json.dumps(details),
                     )
                     session.add(offline_state)
                 else:
                     offline_state.state = "active"
                     offline_state.since = now_ts
                     offline_state.last_notified_at = now_ts
-                    offline_state.details_json = json.dumps(
-                        {"last_seen_at": device.last_seen_at}
-                    )
+                    offline_state.details_json = json.dumps(details)
 
-                session.add(
-                    Anomaly(
-                        device_id=device.id,
-                        ts=now_ts,
-                        type="offline",
-                        severity="warning",
-                        details_json=json.dumps({"last_seen_at": device.last_seen_at}),
-                        message=msg,
-                        notified=1,
-                    )
-                )
                 session.commit()
         elif (now_ts - offline_state.last_notified_at) >= cooldown_seconds:
             # Pengingat setelah cooldown
@@ -178,17 +178,6 @@ def evaluate_device_alerts(
             if send_alert_notification(msg):
                 sent_messages.append(msg)
                 offline_state.last_notified_at = now_ts
-                session.add(
-                    Anomaly(
-                        device_id=device.id,
-                        ts=now_ts,
-                        type="offline_reminder",
-                        severity="warning",
-                        details_json=json.dumps({"since": offline_state.since}),
-                        message=msg,
-                        notified=1,
-                    )
-                )
                 session.commit()
     else:
         # Perangkat online: kirim pesan pulih HANYA jika alert offline pernah terkirim
@@ -198,18 +187,35 @@ def evaluate_device_alerts(
                 sent_messages.append(msg)
                 offline_state.state = "cleared"
                 offline_state.last_notified_at = now_ts
-                offline_state.details_json = None
-                session.add(
-                    Anomaly(
-                        device_id=device.id,
-                        ts=now_ts,
-                        type="offline_resolved",
-                        severity="info",
-                        details_json=json.dumps({"online_at": now_ts}),
-                        message=msg,
-                        notified=1,
+
+                # Catat pemulihan di details_json pada episode anomali yang sama
+                anomaly_id = None
+                if offline_state.details_json:
+                    try:
+                        st_data = json.loads(offline_state.details_json)
+                        anomaly_id = st_data.get("anomaly_id")
+                    except Exception:
+                        pass
+                active_anom = None
+                if anomaly_id:
+                    active_anom = session.get(Anomaly, anomaly_id)
+                if not active_anom:
+                    active_anom = session.scalar(
+                        select(Anomaly)
+                        .where(Anomaly.device_id == device.id, Anomaly.type == "offline")
+                        .order_by(Anomaly.ts.desc())
+                        .limit(1)
                     )
-                )
+                if active_anom:
+                    try:
+                        d = json.loads(active_anom.details_json or "{}")
+                    except Exception:
+                        d = {}
+                    d["resolved_at"] = now_ts
+                    d["online_at"] = now_ts
+                    active_anom.details_json = json.dumps(d)
+
+                offline_state.details_json = None
                 session.commit()
 
     # ---------------------------------------------------------
@@ -253,6 +259,19 @@ def evaluate_device_alerts(
                         "limit_w": power_limit_w,
                         "samples": len(readings_60s),
                     }
+                    anom = Anomaly(
+                        device_id=device.id,
+                        ts=now_ts,
+                        type="power_limit",
+                        severity="warning",
+                        details_json=json.dumps(details),
+                        message=msg,
+                        notified=1,
+                    )
+                    session.add(anom)
+                    session.flush()
+
+                    details["anomaly_id"] = anom.id
                     if not power_state:
                         power_state = AlertState(
                             device_id=device.id,
@@ -269,17 +288,6 @@ def evaluate_device_alerts(
                         power_state.last_notified_at = now_ts
                         power_state.details_json = json.dumps(details)
 
-                    session.add(
-                        Anomaly(
-                            device_id=device.id,
-                            ts=now_ts,
-                            type="power_limit",
-                            severity="warning",
-                            details_json=json.dumps(details),
-                            message=msg,
-                            notified=1,
-                        )
-                    )
                     session.commit()
             elif (now_ts - power_state.last_notified_at) >= cooldown_seconds:
                 msg = (
@@ -289,17 +297,6 @@ def evaluate_device_alerts(
                 if send_alert_notification(msg):
                     sent_messages.append(msg)
                     power_state.last_notified_at = now_ts
-                    session.add(
-                        Anomaly(
-                            device_id=device.id,
-                            ts=now_ts,
-                            type="power_limit_reminder",
-                            severity="warning",
-                            details_json=json.dumps({"avg_p": avg_p}),
-                            message=msg,
-                            notified=1,
-                        )
-                    )
                     session.commit()
         elif all_recovered and power_state and power_state.state == "active":
             curr_p = round(readings_60s[-1].p, 1)
@@ -308,18 +305,35 @@ def evaluate_device_alerts(
                 sent_messages.append(msg)
                 power_state.state = "cleared"
                 power_state.last_notified_at = now_ts
-                power_state.details_json = None
-                session.add(
-                    Anomaly(
-                        device_id=device.id,
-                        ts=now_ts,
-                        type="power_limit_resolved",
-                        severity="info",
-                        details_json=json.dumps({"curr_p": curr_p}),
-                        message=msg,
-                        notified=1,
+
+                # Catat pemulihan di details_json pada episode anomali yang sama
+                anomaly_id = None
+                if power_state.details_json:
+                    try:
+                        st_data = json.loads(power_state.details_json)
+                        anomaly_id = st_data.get("anomaly_id")
+                    except Exception:
+                        pass
+                active_anom = None
+                if anomaly_id:
+                    active_anom = session.get(Anomaly, anomaly_id)
+                if not active_anom:
+                    active_anom = session.scalar(
+                        select(Anomaly)
+                        .where(Anomaly.device_id == device.id, Anomaly.type == "power_limit")
+                        .order_by(Anomaly.ts.desc())
+                        .limit(1)
                     )
-                )
+                if active_anom:
+                    try:
+                        d = json.loads(active_anom.details_json or "{}")
+                    except Exception:
+                        d = {}
+                    d["resolved_at"] = now_ts
+                    d["resolved_p_w"] = curr_p
+                    active_anom.details_json = json.dumps(d)
+
+                power_state.details_json = None
                 session.commit()
 
     # --- B. TEGANGAN (VOLTAGE LOW / HIGH) ---
@@ -360,7 +374,24 @@ def evaluate_device_alerts(
                 msg = f"[PERINGATAN] {device.name} - Tegangan rendah: {avg_v} V < {limit_v} V"
                 if send_alert_notification(msg):
                     sent_messages.append(msg)
-                    details = {"avg_v": avg_v, "limit_v": settings.voltage_min_v}
+                    details = {
+                        "sub_type": "low",
+                        "avg_v": avg_v,
+                        "limit_v": settings.voltage_min_v,
+                    }
+                    anom = Anomaly(
+                        device_id=device.id,
+                        ts=now_ts,
+                        type="voltage",
+                        severity="warning",
+                        details_json=json.dumps(details),
+                        message=msg,
+                        notified=1,
+                    )
+                    session.add(anom)
+                    session.flush()
+
+                    details["anomaly_id"] = anom.id
                     if not v_low_state:
                         v_low_state = AlertState(
                             device_id=device.id,
@@ -377,17 +408,6 @@ def evaluate_device_alerts(
                         v_low_state.last_notified_at = now_ts
                         v_low_state.details_json = json.dumps(details)
 
-                    session.add(
-                        Anomaly(
-                            device_id=device.id,
-                            ts=now_ts,
-                            type="voltage_low",
-                            severity="warning",
-                            details_json=json.dumps(details),
-                            message=msg,
-                            notified=1,
-                        )
-                    )
                     session.commit()
             elif (now_ts - v_low_state.last_notified_at) >= cooldown_seconds:
                 msg = (
@@ -397,17 +417,6 @@ def evaluate_device_alerts(
                 if send_alert_notification(msg):
                     sent_messages.append(msg)
                     v_low_state.last_notified_at = now_ts
-                    session.add(
-                        Anomaly(
-                            device_id=device.id,
-                            ts=now_ts,
-                            type="voltage_low_reminder",
-                            severity="warning",
-                            details_json=json.dumps({"avg_v": avg_v}),
-                            message=msg,
-                            notified=1,
-                        )
-                    )
                     session.commit()
         elif all_v_normal and v_low_state and v_low_state.state == "active":
             msg = f"[PULIH] {device.name} - Tegangan normal kembali: {avg_v} V"
@@ -415,18 +424,35 @@ def evaluate_device_alerts(
                 sent_messages.append(msg)
                 v_low_state.state = "cleared"
                 v_low_state.last_notified_at = now_ts
-                v_low_state.details_json = None
-                session.add(
-                    Anomaly(
-                        device_id=device.id,
-                        ts=now_ts,
-                        type="voltage_low_resolved",
-                        severity="info",
-                        details_json=json.dumps({"avg_v": avg_v}),
-                        message=msg,
-                        notified=1,
+
+                # Catat pemulihan di details_json pada episode anomali yang sama
+                anomaly_id = None
+                if v_low_state.details_json:
+                    try:
+                        st_data = json.loads(v_low_state.details_json)
+                        anomaly_id = st_data.get("anomaly_id")
+                    except Exception:
+                        pass
+                active_anom = None
+                if anomaly_id:
+                    active_anom = session.get(Anomaly, anomaly_id)
+                if not active_anom:
+                    active_anom = session.scalar(
+                        select(Anomaly)
+                        .where(Anomaly.device_id == device.id, Anomaly.type == "voltage")
+                        .order_by(Anomaly.ts.desc())
+                        .limit(1)
                     )
-                )
+                if active_anom:
+                    try:
+                        d = json.loads(active_anom.details_json or "{}")
+                    except Exception:
+                        d = {}
+                    d["resolved_at"] = now_ts
+                    d["resolved_v"] = avg_v
+                    active_anom.details_json = json.dumps(d)
+
+                v_low_state.details_json = None
                 session.commit()
 
         # 2. Voltage High
@@ -436,7 +462,24 @@ def evaluate_device_alerts(
                 msg = f"[PERINGATAN] {device.name} - Tegangan tinggi: {avg_v} V > {limit_v} V"
                 if send_alert_notification(msg):
                     sent_messages.append(msg)
-                    details = {"avg_v": avg_v, "limit_v": settings.voltage_max_v}
+                    details = {
+                        "sub_type": "high",
+                        "avg_v": avg_v,
+                        "limit_v": settings.voltage_max_v,
+                    }
+                    anom = Anomaly(
+                        device_id=device.id,
+                        ts=now_ts,
+                        type="voltage",
+                        severity="warning",
+                        details_json=json.dumps(details),
+                        message=msg,
+                        notified=1,
+                    )
+                    session.add(anom)
+                    session.flush()
+
+                    details["anomaly_id"] = anom.id
                     if not v_high_state:
                         v_high_state = AlertState(
                             device_id=device.id,
@@ -453,17 +496,6 @@ def evaluate_device_alerts(
                         v_high_state.last_notified_at = now_ts
                         v_high_state.details_json = json.dumps(details)
 
-                    session.add(
-                        Anomaly(
-                            device_id=device.id,
-                            ts=now_ts,
-                            type="voltage_high",
-                            severity="warning",
-                            details_json=json.dumps(details),
-                            message=msg,
-                            notified=1,
-                        )
-                    )
                     session.commit()
             elif (now_ts - v_high_state.last_notified_at) >= cooldown_seconds:
                 msg = (
@@ -473,17 +505,6 @@ def evaluate_device_alerts(
                 if send_alert_notification(msg):
                     sent_messages.append(msg)
                     v_high_state.last_notified_at = now_ts
-                    session.add(
-                        Anomaly(
-                            device_id=device.id,
-                            ts=now_ts,
-                            type="voltage_high_reminder",
-                            severity="warning",
-                            details_json=json.dumps({"avg_v": avg_v}),
-                            message=msg,
-                            notified=1,
-                        )
-                    )
                     session.commit()
         elif all_v_normal and v_high_state and v_high_state.state == "active":
             msg = f"[PULIH] {device.name} - Tegangan normal kembali: {avg_v} V"
@@ -491,18 +512,35 @@ def evaluate_device_alerts(
                 sent_messages.append(msg)
                 v_high_state.state = "cleared"
                 v_high_state.last_notified_at = now_ts
-                v_high_state.details_json = None
-                session.add(
-                    Anomaly(
-                        device_id=device.id,
-                        ts=now_ts,
-                        type="voltage_high_resolved",
-                        severity="info",
-                        details_json=json.dumps({"avg_v": avg_v}),
-                        message=msg,
-                        notified=1,
+
+                # Catat pemulihan di details_json pada episode anomali yang sama
+                anomaly_id = None
+                if v_high_state.details_json:
+                    try:
+                        st_data = json.loads(v_high_state.details_json)
+                        anomaly_id = st_data.get("anomaly_id")
+                    except Exception:
+                        pass
+                active_anom = None
+                if anomaly_id:
+                    active_anom = session.get(Anomaly, anomaly_id)
+                if not active_anom:
+                    active_anom = session.scalar(
+                        select(Anomaly)
+                        .where(Anomaly.device_id == device.id, Anomaly.type == "voltage")
+                        .order_by(Anomaly.ts.desc())
+                        .limit(1)
                     )
-                )
+                if active_anom:
+                    try:
+                        d = json.loads(active_anom.details_json or "{}")
+                    except Exception:
+                        d = {}
+                    d["resolved_at"] = now_ts
+                    d["resolved_v"] = avg_v
+                    active_anom.details_json = json.dumps(d)
+
+                v_high_state.details_json = None
                 session.commit()
 
     return sent_messages

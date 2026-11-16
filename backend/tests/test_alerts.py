@@ -1,3 +1,5 @@
+import json
+
 from app.models import AlertState, Anomaly, Base, Device, Reading, Setting
 from app.services.alert import evaluate_all_alerts
 from app.services.notifier import set_notification_sender
@@ -207,6 +209,17 @@ def test_alert_power_limit_lifecycle_cooldown_and_recovery():
     session.refresh(state)
     assert state.state == "cleared"
 
+    # Verifikasi tabel anomalies: hanya ada 1 baris episode power_limit,
+    # dan resolved_at tercatat di details_json (bukan jenis baru)
+    anomalies = session.scalars(
+        select(Anomaly).where(Anomaly.device_id == "demo-1")
+    ).all()
+    assert len(anomalies) == 1
+    assert anomalies[0].type == "power_limit"
+    anom_details = json.loads(anomalies[0].details_json)
+    assert "resolved_at" in anom_details
+    assert anom_details["resolved_at"] == now_ts_recover
+
 
 def test_alert_power_window_coverage_gap_rejection():
     """Tiga sampel setelah restart/gap (cakupan hanya 20 detik) TIDAK boleh memicu alert daya."""
@@ -384,6 +397,16 @@ def test_alert_voltage_low_high_and_recovery():
     msgs_rec = evaluate_all_alerts(session, now_ts=now_ts_recover, startup_ts=startup_ts)
     assert any("Tegangan normal kembali" in m for m in msgs_rec)
 
+    # Verifikasi tabel anomalies: hanya ada 1 baris episode voltage,
+    # dan resolved_at tercatat di details_json
+    anomalies = session.scalars(
+        select(Anomaly).where(Anomaly.device_id == "demo-1")
+    ).all()
+    assert len(anomalies) == 1
+    assert anomalies[0].type == "voltage"
+    anom_details = json.loads(anomalies[0].details_json)
+    assert "resolved_at" in anom_details
+
 
 def test_alert_voltage_window_coverage_gap_rejection():
     """Dua sampel setelah gap (cakupan 10 detik) TIDAK boleh memicu alert tegangan (jendela 30s)."""
@@ -532,6 +555,17 @@ def test_alert_offline_and_recovery():
 
     msgs_online = evaluate_all_alerts(session, now_ts=now_ts_online, startup_ts=startup_ts)
     assert any("Perangkat online kembali" in m for m in msgs_online)
+
+    # Verifikasi tabel anomalies: hanya ada 1 baris episode offline,
+    # dan resolved_at tercatat di details_json
+    anomalies = session.scalars(
+        select(Anomaly).where(Anomaly.device_id == "demo-1")
+    ).all()
+    assert len(anomalies) == 1
+    assert anomalies[0].type == "offline"
+    anom_details = json.loads(anomalies[0].details_json)
+    assert "resolved_at" in anom_details
+    assert anom_details["resolved_at"] == now_ts_online
 
 
 def test_null_notifier_returns_false():
