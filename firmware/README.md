@@ -25,62 +25,81 @@ Firmware ini berjalan pada mikrokontroler **ESP32 DevKit** yang terhubung ke sen
 
 Sesuai aturan keamanan Mosquitto (`deploy/acl` dan `deploy/passwd`), setiap perangkat memiliki topik isolasi `energy/%u/#`:
 
-1. Buat username & password perangkat di Mosquitto broker:
+1. Buat username & password perangkat di Mosquitto broker menggunakan perintah interaktif (tanpa opsi `-b` agar kata sandi tidak terekspos di riwayat shell):
    ```bash
-   mosquitto_passwd deploy/passwd device-01
+   # Di dalam kontainer mosquitto atau melalui host:
+   docker exec -it energy_mosquitto mosquitto_passwd /mosquitto/config/passwd device-01
    ```
-2. Pastikan `DEVICE_ID` pada firmware sama dengan username MQTT (`device-01`).
+   *(Ketikkan kata sandi secara interaktif saat diminta prompt).*
+
+2. Restart kontainer Mosquitto agar memuat ulang berkas kredensial:
+   ```bash
+   docker compose -f deploy/docker-compose.yml restart mosquitto
+   ```
+
+3. ⚠️ **ATURAN PENAMAAN DEVICE_ID**:
+   - `DEVICE_ID` pada firmware **TIDAK BOLEH** berawalan `sim-` (karena prefiks `sim-` otomatis dikecualikan dari evaluasi alert dan pengiriman laporan berkala).
+   - `DEVICE_ID` pada firmware **TIDAK BOLEH** berawalan `demo-` (karena prefiks `demo-` dicadangkan untuk testing dan dapat dihapus sewaktu-waktu oleh skrip pembersih `scripts/clean_device.py`).
+   - Gunakan nama perangkat riil seperti `device-01`, `esp32-utama`, dsb.
 
 ---
 
-## 3. Konfigurasi Firmware
+## 3. Konfigurasi Firmware (`include/config.h`)
 
-Salin file template konfigurasi:
-```bash
-cp firmware/include/config.example.h firmware/include/config.h
+Salin berkas template konfigurasi:
+```powershell
+Copy-Item firmware\include\config.example.h firmware\include\config.h
 ```
 
 Sesuaikan parameter di `firmware/include/config.h`:
 ```cpp
-#define WIFI_SSID "NAMA_WIFI"
-#define WIFI_PASS "PASSWORD_WIFI"
+#pragma once
+
+#define WIFI_SSID "NAMA_WIFI_ANDA"
+#define WIFI_PASS "PASSWORD_WIFI_ANDA"
 
 #define MQTT_HOST "192.168.1.100"  // IP host broker MQTT
 #define MQTT_PORT 1883
 #define MQTT_USER "device-01"
-#define MQTT_PASS "PASSWORD_MQTT"
+#define MQTT_PASS "PASSWORD_MQTT_ANDA"
 
 #define DEVICE_ID "device-01"
 #define NTP_SERVER "pool.ntp.org"
 #define PUBLISH_INTERVAL_S 10
 #define FIRMWARE_VERSION "1.0.0"
 ```
-*(File `config.h` otomatis diabaikan oleh `.gitignore` sehingga tidak akan bocor ke repositori).*
+*(Berkas `config.h` otomatis diabaikan oleh `.gitignore` sehingga tidak akan bocor ke repositori).*
 
 ---
 
 ## 4. Instruksi Kompilasi & Pengujian di Windows
 
 ### A. Pengujian Unit Native (C++ murni)
-Menguji logika format payload dan antrean ring buffer QoS 1 tanpa hardware:
+Menguji logika format payload, sinkronisasi NTP, proteksi PUBACK tak dikenal/ganda, batas drain 5/detik, dan antrean ring buffer QoS 1 tanpa hardware:
 ```powershell
-.venv\Scripts\pio test -e native
+.venv\Scripts\pio test -d firmware -e native
 ```
-Hasil uji otomatis mengekspor berkas `firmware/test/golden_payload.json` yang divalidasi oleh test suite backend.
+Hasil uji otomatis mengekspor berkas `firmware/test/golden_payload.json` yang divalidasi oleh test suite backend:
+```powershell
+.venv\Scripts\python -m pytest backend/tests/test_firmware_payload.py -v
+```
 
 ### B. Kompilasi Firmware ESP32
 ```powershell
-.venv\Scripts\pio run -e esp32dev
+.venv\Scripts\pio run -d firmware -e esp32dev
 ```
 
-### C. Flash Firmware ke Perangkat Keras (Belum dijalankan / Menunggu Persetujuan)
+### C. Flash Firmware ke Perangkat Keras (Menunggu Izin/Persetujuan)
+> ⚠️ **PERHATIAN**: Jangan melakukan flash atau menyalakan beban AC sebelum mendapatkan persetujuan eksplisit.
+
 Setelah diizinkan dan perangkat ESP32 terhubung melalui port USB:
 ```powershell
-# Identifikasi port COM ESP32 (misal COM3)
-.venv\Scripts\pio run -e esp32dev -t upload --upload-port COM3
+# 1. Identifikasi port COM ESP32 di Windows Device Manager (misal COM3)
+# 2. Flash firmware ke ESP32 melalui port COM yang terdeteksi:
+.venv\Scripts\pio run -d firmware -e esp32dev -t upload --upload-port COM3
 
-# Membuka Serial Monitor (115200 baud)
-.venv\Scripts\pio device monitor -b 115200
+# 3. Membaca Serial Monitor (115200 baud)
+.venv\Scripts\pio device monitor -d firmware -b 115200 --port COM3
 ```
 
 ---
@@ -97,17 +116,12 @@ Lakukan verifikasi bertahap di meja kerja dengan beban uji lampu pijar/solder se
   - [ ] Kredensial WiFi dan password MQTT **TIDAK tercetak** di serial monitor.
 - [ ] **3. Konektivitas & NTP**:
   - [ ] WiFi terhubung dan mendapat alamat IP.
-  - [ ] Sinkronisasi NTP berhasil (`ts >= 1735689600`). Sebelum waktu valid tercapai, telemetri tidak dipublikasikan.
-- [ ] **4. Pembacaan Sensor PZEM-004T**:
-  - [ ] Nilai tegangan terbaca wajar (~220-230 V).
-  - [ ] Beban uji (misal lampu 60W) menghasilkan pembacaan arus (~0,27 A), daya (~60 W), dan power factor (~1,00).
-- [ ] **5. Pengujian MQTT & QoS 1**:
-  - [ ] Pesan status `online` (retained, QoS 1) diterima di topic `energy/device-01/status`.
-  - [ ] Telemetri terkirim tiap 10 detik ke `energy/device-01/telemetry` dengan format JSON persis kontrak.
-  - [ ] Broker mengirim PUBACK dan slot ring buffer dibersihkan.
-- [ ] **6. Pengujian Last Will and Testament (LWT)**:
-  - [ ] Cabut daya ESP32 secara tiba-tiba: broker harus mempublikasikan `offline` (retained) pada `energy/device-01/status`.
-- [ ] **7. Pengujian Offline Buffering & Replay**:
-  - [ ] Putuskan koneksi WiFi selama 2 menit (beban tetap menyala).
-  - [ ] Sambungkan kembali WiFi: periksa bahwa ~12 sampel yang tersimpan di ring buffer terkirim bertahap secara FIFO tanpa ada data yang hilang.
-
+  - [ ] Sinkronisasi NTP berhasil (`ts >= 1735689600`). Sebelum waktu valid tercapai, telemetri tidak dipublikasikan ke broker.
+- [ ] **4. Telemetri Normal (Lampu Pijar ~60W)**:
+  - [ ] PZEM terbaca valid tiap detik (V ~220V, I ~0.27A, P ~60W).
+  - [ ] Payload JSON terkirim tiap 10 detik via MQTT QoS 1.
+  - [ ] Ring buffer kosong / ter-drain cepat saat online.
+- [ ] **5. Simulasi Offline & Recovery Buffer**:
+  - [ ] Matikan broker MQTT / putus router WiFi selama 3 menit (18 sampel tertampung di buffer).
+  - [ ] Nyalakan kembali router / broker: buffer terkuras teratur (maks 5 sampel/s) hingga kosong.
+  - [ ] Tidak ada sampel duplikat atau data corrupt di backend SQLite.

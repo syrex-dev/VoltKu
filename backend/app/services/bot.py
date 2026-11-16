@@ -185,11 +185,16 @@ def process_chat_retry_queue_sync(bot: Optional[Bot] = None) -> int:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             try:
-                pool.submit(lambda: asyncio.run(_run_retries())).result(timeout=10.0)
+                pool.submit(
+                    lambda: asyncio.run(asyncio.wait_for(_run_retries(), timeout=10.0))
+                ).result(timeout=10.5)
             except Exception as e:
                 logger.error("Error processing retry queue: %s", e)
     else:
-        asyncio.run(_run_retries())
+        try:
+            asyncio.run(asyncio.wait_for(_run_retries(), timeout=10.0))
+        except Exception as e:
+            logger.error("Error processing retry queue: %s", e)
 
     return success_count
 
@@ -273,12 +278,21 @@ def send_telegram_broadcast_sync(message: str, event_key: Optional[str] = None) 
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             try:
-                return pool.submit(lambda: asyncio.run(_send_all())).result(timeout=10.0)
+                return pool.submit(
+                    lambda: asyncio.run(asyncio.wait_for(_send_all(), timeout=10.0))
+                ).result(timeout=10.5)
             except Exception as err:
                 logger.error("Gagal broadcast notifikasi telegram: %s", err)
                 return False
     else:
-        return asyncio.run(_send_all())
+        try:
+            return asyncio.run(asyncio.wait_for(_send_all(), timeout=10.0))
+        except (asyncio.TimeoutError, TimeoutError) as err:
+            logger.warning("Timeout mengirim notifikasi telegram (<= 10 detik): %s", err)
+            return False
+        except Exception as err:
+            logger.error("Gagal broadcast notifikasi telegram: %s", err)
+            return False
 
 
 def allowlist_only(func):

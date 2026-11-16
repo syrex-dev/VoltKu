@@ -31,6 +31,7 @@ PZEM004Tv30 pzem(PZEMSerial, 16, 17);
 
 espMqttClient mqttClient;
 energy_core::TelemetryRingBuffer ringBuffer;
+energy_core::DrainRateLimiter drainLimiter;
 
 // Buffer penampung payload JSON
 char payloadBuffer[256];
@@ -136,9 +137,9 @@ void drainRingBuffer() {
         return;
     }
 
-    // Rate limiter pengurasan ring buffer: maks 5 sampel / detik (1 sampel tiap 200ms)
+    // Rate limiter pengurasan ring buffer: maks 5 sampel / detik via energy_core::DrainRateLimiter
     unsigned long nowMs = millis();
-    if (nowMs - lastDrainMs < 200) {
+    if (!drainLimiter.can_drain(nowMs)) {
         return;
     }
 
@@ -150,6 +151,7 @@ void drainRingBuffer() {
             uint16_t packetId = mqttClient.publish(topicTelemetry, 1, false, payloadBuffer);
             if (packetId > 0) {
                 ringBuffer.mark_in_flight(slotIdx, packetId);
+                drainLimiter.record_drain(nowMs);
                 lastDrainMs = nowMs;
             }
         }

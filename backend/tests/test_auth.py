@@ -121,7 +121,7 @@ def test_jwt_token_validation_and_tampering():
 
 def test_route_audit_security_lockdown():
     """Audit keamanan: /healthz, /api/login, statis publik; /api/* lain harus 401 tanpa token."""
-    public_paths = {"/healthz", "/health", "/api/login"}
+    public_paths = {"/healthz", "/api/login"}
 
     for route in app.routes:
         path = getattr(route, "path", None)

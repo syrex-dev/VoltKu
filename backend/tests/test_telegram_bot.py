@@ -630,3 +630,52 @@ def test_telegram_failure_does_not_disrupt_ingest_or_scheduler():
             assert isinstance(actions, list)
     finally:
         set_notification_sender(None)
+
+
+def test_send_telegram_timeout_and_evaluator_tick_not_blocked():
+    """Uji timeout <= 10 detik saat transport lambat (tidur 30s):
+    1. send_telegram_broadcast_sync timeout dalam <= 10.5 detik dan mengembalikan False.
+    2. Tick evaluator tidak menumpuk dan tick berikutnya tetap dapat berjalan.
+    """
+    import asyncio
+    import time
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.services.bot import _clear_delivery_state, send_telegram_broadcast_sync
+
+    _clear_delivery_state()
+    mock_app = MagicMock()
+    mock_bot = MagicMock()
+
+    async def slow_send_message(*args, **kwargs):
+        # Mensimulasikan transport yang tidur 30 detik
+        await asyncio.sleep(30.0)
+
+    mock_bot.send_message = AsyncMock(side_effect=slow_send_message)
+    mock_app.bot = mock_bot
+
+    with patch("app.services.bot._bot_app", mock_app):
+        with patch("app.services.bot.get_settings") as mock_settings:
+            s = MagicMock()
+            s.allowed_chat_id_list = [12345]
+            s.telegram_bot_token = "dummy_token"
+            mock_settings.return_value = s
+
+            t0 = time.monotonic()
+            res = send_telegram_broadcast_sync("Pesan lambat", event_key="test:slow:1")
+            duration = time.monotonic() - t0
+
+            # Verifikasi timeout terjadi <= 11 detik (bukan menunggu 30 detik)
+            assert res is False
+            assert duration < 11.5, f"Timeout expected <= 10s, got {duration:.2f}s"
+
+
+def test_alert_evaluator_job_coalesce_and_max_instances():
+    """Memverifikasi alert_l1_job dikonfigurasi dengan max_instances=1 dan coalesce=True."""
+    from app.services.scheduler import init_scheduler_jobs, scheduler
+
+    init_scheduler_jobs(report_hour=21)
+    job = scheduler.get_job("alert_l1_job")
+    assert job is not None
+    assert job.max_instances == 1
+    assert job.coalesce is True

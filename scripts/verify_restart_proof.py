@@ -1,7 +1,7 @@
-import os
 import subprocess
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 TZ_WIB = ZoneInfo("Asia/Jakarta")
@@ -51,17 +51,22 @@ def wait_for_container_ready():
         time.sleep(1)
 
 
-def set_env_notifier(value: str | None):
-    env_path = ".env"
-    if not os.path.exists(env_path):
-        return
-    with open(env_path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    filtered = [line for line in lines if not line.startswith("NOTIFIER=")]
-    if value is not None:
-        filtered.append(f"NOTIFIER={value}\n")
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(filtered)
+def set_override_notifier(enabled: bool):
+    """Mengaktifkan NOTIFIER=log lewat temporary docker-compose override file
+    tanpa menyentuh .env atau docker-compose.yml.
+    """
+    override_path = Path("deploy/docker-compose.test-override.yml")
+    if enabled:
+        override_content = (
+            "services:\n"
+            "  backend:\n"
+            "    environment:\n"
+            "      - NOTIFIER=log\n"
+        )
+        override_path.write_text(override_content, encoding="utf-8")
+    else:
+        if override_path.exists():
+            override_path.unlink()
 
 
 def main():
@@ -74,8 +79,8 @@ def main():
     try:
         ensure_docker_running()
 
-        # Pasang NOTIFIER=log sementara untuk menangkap alert ke docker logs
-        set_env_notifier("log")
+        # Pasang NOTIFIER=log lewat compose override sementara tanpa menyentuh .env
+        set_override_notifier(True)
 
         # 1. Bersihkan demo-1 lebih dulu
         wait_for_container_ready()
@@ -128,8 +133,10 @@ def main():
         log(f"Waktu restart UTC: {restart_iso}")
         log("Menjalankan: docker compose up -d --force-recreate backend...")
         subprocess.run([
-            "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
-            "up", "-d", "--force-recreate", "backend"
+            "wsl", "docker", "compose",
+            "-f", "deploy/docker-compose.yml",
+            "-f", "deploy/docker-compose.test-override.yml",
+            "up", "-d", "--force-recreate", "backend",
         ], check=True)
         log("Container backend berhasil dijalankan ulang.")
 
@@ -234,9 +241,9 @@ def main():
         ], check=True)
         log("Pembersihan selesai.")
     finally:
-        # Bersihkan konfigurasi NOTIFIER dari .env dan kembalikan ke default container
-        log("\nMembersihkan NOTIFIER dari .env dan restart container ke kondisi default...")
-        set_env_notifier(None)
+        # Hapus temporary override file dan restart container ke kondisi default murni
+        log("\nMenghapus temporary override dan restart container ke kondisi default...")
+        set_override_notifier(False)
         subprocess.run([
             "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
             "up", "-d", "--force-recreate", "backend"

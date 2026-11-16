@@ -66,6 +66,8 @@ def init_scheduler_jobs(report_hour: Optional[int] = None) -> None:
             trigger=IntervalTrigger(seconds=15, timezone=TZ_WIB),
             id="alert_l1_job",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
 
     # 2. Job Retensi Database: dijalankan tiap hari jam 03.00 WIB
@@ -75,6 +77,8 @@ def init_scheduler_jobs(report_hour: Optional[int] = None) -> None:
             trigger=CronTrigger(hour=3, minute=0, timezone=TZ_WIB),
             id="retention_job",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
 
     # 3. Job Laporan Harian: mengikuti settings.report_hour (misal 21.00 WIB)
@@ -84,6 +88,8 @@ def init_scheduler_jobs(report_hour: Optional[int] = None) -> None:
             trigger=CronTrigger(hour=report_hour, minute=0, timezone=TZ_WIB),
             id="daily_report_job",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
 
     # 4. Job Laporan Mingguan: dijalankan tiap Minggu jam 20.00 WIB
@@ -93,6 +99,8 @@ def init_scheduler_jobs(report_hour: Optional[int] = None) -> None:
             trigger=CronTrigger(day_of_week="sun", hour=20, minute=0, timezone=TZ_WIB),
             id="weekly_report_job",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
 
     # 5. Job Catch-up Laporan Terlewat: diperiksa tiap 60 detik (dan saat startup)
@@ -102,6 +110,8 @@ def init_scheduler_jobs(report_hour: Optional[int] = None) -> None:
             trigger=IntervalTrigger(seconds=60, timezone=TZ_WIB),
             id="catchup_reports_job",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
 
 

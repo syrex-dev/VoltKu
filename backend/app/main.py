@@ -103,7 +103,6 @@ app.include_router(settings_router.router)
 app.include_router(anomalies.router)
 
 
-@app.get("/health", include_in_schema=False)
 @app.get("/healthz", tags=["Health"])
 async def health_check() -> dict[str, str]:
     """Health check endpoint publik."""
