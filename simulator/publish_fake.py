@@ -82,7 +82,16 @@ def run_simulator() -> None:
     parser = argparse.ArgumentParser(description="Simulator Telemetry PZEM-004T / ESP32")
     parser.add_argument(
         "--mode",
-        choices=["normal", "buffer", "reset", "invalid", "duplicate", "out-of-order"],
+        choices=[
+            "normal",
+            "buffer",
+            "reset",
+            "invalid",
+            "duplicate",
+            "out-of-order",
+            "overload",
+            "lowvolt",
+        ],
         default="normal",
         help="Skenario simulasi telemetry",
     )
@@ -320,6 +329,69 @@ def run_simulator() -> None:
         time.sleep(1)
         print("Sending middle ts out of order...")
         publish_message(client, topic, create_payload(ts=ts2, e=50.002))
+
+    elif args.mode == "overload":
+        print(
+            f"Starting OVERLOAD scenario for {args.device} "
+            f"(P > 2200 W for 70s, then recovery)..."
+        )
+        # Fase 1: Overload selama 70 detik (8 sampel @ 10s = rentang 70 detik)
+        overload_samples = 8
+        for i in range(overload_samples):
+            p = 2640.0 + random.uniform(-20, 20)
+            v = 220.0 + random.uniform(-1, 1)
+            i_val = p / v
+            curr_e += (p * args.interval) / (3600.0 * 1000.0)
+            payload = create_payload(ts=curr_ts, v=v, i=i_val, p=p, e=curr_e)
+            print(f"  [Overload {i+1}/{overload_samples}] P = {p:.1f} W")
+            publish_message(client, topic, payload)
+            curr_ts += args.interval
+            time.sleep(args.interval)
+
+        # Fase 2: Normal / Recovery selama 70 detik (8 sampel @ 10s)
+        print(f"Starting RECOVERY phase for {args.device} (P < 2090 W)...")
+        recovery_samples = 8
+        for i in range(recovery_samples):
+            p = 350.0 + random.uniform(-10, 10)
+            v = 220.0 + random.uniform(-1, 1)
+            i_val = p / v
+            curr_e += (p * args.interval) / (3600.0 * 1000.0)
+            payload = create_payload(ts=curr_ts, v=v, i=i_val, p=p, e=curr_e)
+            print(f"  [Recovery {i+1}/{recovery_samples}] P = {p:.1f} W")
+            publish_message(client, topic, payload)
+            curr_ts += args.interval
+            time.sleep(args.interval)
+
+    elif args.mode == "lowvolt":
+        print(
+            f"Starting LOW VOLTAGE scenario for {args.device} "
+            f"(V < 200 V for 35s, then recovery)..."
+        )
+        # Fase 1: Tegangan rendah (4 sampel @ 10s = rentang 30-40 detik)
+        low_samples = 4
+        for i in range(low_samples):
+            v = 192.0 + random.uniform(-2, 2)
+            p = 380.0
+            i_val = p / v
+            curr_e += (p * args.interval) / (3600.0 * 1000.0)
+            payload = create_payload(ts=curr_ts, v=v, i=i_val, p=p, e=curr_e)
+            print(f"  [Low Volt {i+1}/{low_samples}] V = {v:.1f} V")
+            publish_message(client, topic, payload)
+            curr_ts += args.interval
+            time.sleep(args.interval)
+
+        # Fase 2: Tegangan normal (4 sampel @ 10s)
+        print(f"Starting NORMAL VOLTAGE recovery for {args.device} (V in 205-235 V)...")
+        for i in range(low_samples):
+            v = 220.0 + random.uniform(-2, 2)
+            p = 380.0
+            i_val = p / v
+            curr_e += (p * args.interval) / (3600.0 * 1000.0)
+            payload = create_payload(ts=curr_ts, v=v, i=i_val, p=p, e=curr_e)
+            print(f"  [Volt Recovery {i+1}/{low_samples}] V = {v:.1f} V")
+            publish_message(client, topic, payload)
+            curr_ts += args.interval
+            time.sleep(args.interval)
 
     client.loop_stop()
     client.disconnect()
