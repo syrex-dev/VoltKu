@@ -3,6 +3,7 @@ import functools
 import hashlib
 import logging
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
@@ -32,15 +33,27 @@ logger = logging.getLogger(__name__)
 
 TZ_WIB = ZoneInfo("Asia/Jakarta")
 
+@dataclass
+class ChatRetryItem:
+    event_key: str
+    chat_id: int
+    message: str
+    attempts: int
+    next_retry: float
+    created_at: float
+
+
 _bot_app: Optional[Application] = None
 _last_send_times: dict[int, float] = {}
 _send_lock = asyncio.Lock()
-_message_delivery_state: dict[str, dict] = {}
+_retry_queue: list[ChatRetryItem] = []
+_delivered_events: dict[str, dict] = {}
 
 
 def _clear_delivery_state() -> None:
     """Helper untuk membersihkan riwayat pengiriman per chat (digunakan pada pengujian)."""
-    _message_delivery_state.clear()
+    _delivered_events.clear()
+    _retry_queue.clear()
 
 
 def _format_id_number(val: float, decimals: int = 3) -> str:
@@ -76,17 +89,120 @@ async def send_message_rate_limited(bot: Bot, chat_id: int, text: str) -> None:
         _last_send_times[chat_id] = time.monotonic()
 
 
-def send_telegram_broadcast_sync(message: str) -> bool:
-    """Mengirim notifikasi plain text ke seluruh chat di TELEGRAM_ALLOWED_CHAT_IDS.
-
-    Aturan:
-    - Sukses = terkirim ke >= 1 chat.
-    - Chat yang sudah menerima pesan ini tidak akan dikirimi lagi untuk pesan yang sama.
-    - Chat yang gagal akan dicoba ulang dengan backoff eksponensial.
-    - Kegagalan per chat dicatat di log tanpa membocorkan token.
-    - Jika seluruh chat gagal (0 terkirim), mengembalikan False agar state caller tidak maju.
+def process_chat_retry_queue_sync(bot: Optional[Bot] = None) -> int:
+    """Memproses antrean retry per chat secara otomatis pada background tick:
+    - Backoff eksponensial (15s, 30s, 60s, 120s, maks 300s).
+    - Maksimal 5 percobaan.
+    - Kedaluwarsa 1 jam (3600 detik).
+    - Log tanpa membocorkan token bot.
+    - Mengembalikan jumlah pesan yang berhasil terkirim pada tick ini.
     """
-    global _bot_app, _message_delivery_state
+    global _bot_app, _retry_queue, _delivered_events
+    if not _retry_queue:
+        return 0
+
+    if bot is None:
+        if _bot_app is None or not _bot_app.bot:
+            return 0
+        bot = _bot_app.bot
+
+    settings = get_settings()
+    now_wall = time.time()
+    now_mono = time.monotonic()
+
+    remaining_queue: list[ChatRetryItem] = []
+    items_to_attempt: list[ChatRetryItem] = []
+
+    for item in _retry_queue:
+        if (now_wall - item.created_at) > 3600.0:
+            logger.warning(
+                "Retry chat %s untuk event %s dibatalkan (kedaluwarsa 1 jam)",
+                item.chat_id,
+                item.event_key,
+            )
+            continue
+        if item.attempts > 5:
+            logger.warning(
+                "Retry chat %s untuk event %s dibatalkan (mencapai batas 5 percobaan)",
+                item.chat_id,
+                item.event_key,
+            )
+            continue
+
+        evt_delivered = _delivered_events.get(item.event_key, {}).get("chats", set())
+        if item.chat_id in evt_delivered:
+            continue
+
+        if now_mono >= item.next_retry:
+            items_to_attempt.append(item)
+        else:
+            remaining_queue.append(item)
+
+    _retry_queue[:] = remaining_queue
+    if not items_to_attempt:
+        return 0
+
+    success_count = 0
+
+    async def _run_retries():
+        nonlocal success_count
+        for it in items_to_attempt:
+            try:
+                await send_message_rate_limited(bot, it.chat_id, it.message)
+                evt_info = _delivered_events.setdefault(
+                    it.event_key, {"chats": set(), "created_at": now_wall}
+                )
+                evt_info["chats"].add(it.chat_id)
+                success_count += 1
+                logger.info(
+                    "Retry telegram berhasil terkirim ke chat %s untuk event %s",
+                    it.chat_id,
+                    it.event_key,
+                )
+            except Exception as err:
+                safe_err = str(err)
+                if settings.telegram_bot_token and settings.telegram_bot_token in safe_err:
+                    safe_err = safe_err.replace(settings.telegram_bot_token, "[REDACTED]")
+                it.attempts += 1
+                delay = min(300.0, 15.0 * (2 ** min(it.attempts - 1, 5)))
+                it.next_retry = time.monotonic() + delay
+                logger.warning(
+                    "Retry telegram ke chat %s gagal: %s (percobaan %d/5, backoff %.1fs)",
+                    it.chat_id,
+                    safe_err,
+                    it.attempts,
+                    delay,
+                )
+                _retry_queue.append(it)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            try:
+                pool.submit(lambda: asyncio.run(_run_retries())).result(timeout=10.0)
+            except Exception as e:
+                logger.error("Error processing retry queue: %s", e)
+    else:
+        asyncio.run(_run_retries())
+
+    return success_count
+
+
+def send_telegram_broadcast_sync(message: str, event_key: Optional[str] = None) -> bool:
+    """Mengirim pesan notifikasi plain text ke seluruh chat di TELEGRAM_ALLOWED_CHAT_IDS.
+
+    - Menggunakan dedup berbasis event_key (alert/report + context + seq).
+    - Chat yang sudah menerima pesan ini tidak akan dikirimi lagi.
+    - Chat yang gagal akan didaftarkan ke antrean retry otomatis per-chat.
+    - Mengembalikan True jika terkirim ke >= 1 chat. Jika seluruhnya gagal, mengembalikan False.
+    """
+    global _bot_app, _delivered_events, _retry_queue
     bot_app = _bot_app
     if bot_app is None or not bot_app.bot:
         return False
@@ -97,58 +213,54 @@ def send_telegram_broadcast_sync(message: str) -> bool:
         return False
 
     bot = bot_app.bot
-    msg_hash = hashlib.sha256(message.encode("utf-8")).hexdigest()
+
+    if not event_key:
+        event_key = f"msg:{hashlib.sha256(message.encode('utf-8')).hexdigest()}"
 
     now_wall = time.time()
-    if len(_message_delivery_state) > 500:
+    # TTL 24 jam & batasi ukuran cache dedup maks 1000 item
+    if len(_delivered_events) > 1000:
         cutoff = now_wall - 86400.0
-        _message_delivery_state = {
-            k: v for k, v in _message_delivery_state.items() if v.get("created_at", 0) >= cutoff
+        _delivered_events = {
+            k: v for k, v in _delivered_events.items() if v.get("created_at", 0) >= cutoff
         }
 
-    delivery_info = _message_delivery_state.setdefault(
-        msg_hash,
-        {"delivered_chats": set(), "chat_failures": {}, "created_at": now_wall},
+    evt_info = _delivered_events.setdefault(
+        event_key, {"chats": set(), "created_at": now_wall}
     )
-    delivered_chats: set[int] = delivery_info["delivered_chats"]
-    chat_failures: dict[int, dict] = delivery_info["chat_failures"]
+    delivered_chats: set[int] = evt_info["chats"]
 
     async def _send_all() -> bool:
         now_mono = time.monotonic()
         for cid in chat_ids:
-            # Lewati jika chat ini sudah menerima pesan ini sebelumnya
             if cid in delivered_chats:
-                continue
-
-            # Lewati jika chat masih dalam masa cooldown backoff kegagalan
-            fail_info = chat_failures.get(cid)
-            if fail_info and now_mono < fail_info.get("next_retry", 0.0):
                 continue
 
             try:
                 await send_message_rate_limited(bot, cid, message)
                 delivered_chats.add(cid)
-                chat_failures.pop(cid, None)
             except Exception as err:
-                attempts = (fail_info.get("attempts", 0) if fail_info else 0) + 1
-                backoff_delay = min(300.0, 15.0 * (2 ** min(attempts - 1, 5)))
-                chat_failures[cid] = {
-                    "attempts": attempts,
-                    "next_retry": now_mono + backoff_delay,
-                }
                 safe_err = str(err)
                 if settings.telegram_bot_token and settings.telegram_bot_token in safe_err:
                     safe_err = safe_err.replace(settings.telegram_bot_token, "[REDACTED]")
                 logger.warning(
-                    "Gagal mengirim notifikasi telegram ke chat %s: %s "
-                    "(percobaan %d, retry backoff %.1fs)",
+                    "Gagal mengirim notifikasi telegram ke chat %s untuk event %s: %s "
+                    "(masuk antrean retry)",
                     cid,
+                    event_key,
                     safe_err,
-                    attempts,
-                    backoff_delay,
+                )
+                _retry_queue.append(
+                    ChatRetryItem(
+                        event_key=event_key,
+                        chat_id=cid,
+                        message=message,
+                        attempts=1,
+                        next_retry=now_mono + 15.0,
+                        created_at=now_wall,
+                    )
                 )
 
-        # Berhasil jika minimal 1 chat di allowlist telah menerima pesan ini
         return len(delivered_chats) >= 1
 
     try:
@@ -535,18 +647,27 @@ async def init_and_start_bot() -> None:
         logger.info("Telegram Bot tidak aktif (token kosong atau bot_enabled=False).")
         return
 
-    app_builder = ApplicationBuilder().token(settings.telegram_bot_token)
-    _bot_app = app_builder.build()
+    try:
+        app_builder = ApplicationBuilder().token(settings.telegram_bot_token)
+        _bot_app = app_builder.build()
 
-    register_handlers(_bot_app)
+        register_handlers(_bot_app)
 
-    await _bot_app.initialize()
-    await _bot_app.start()
-    if _bot_app.updater:
-        await _bot_app.updater.start_polling()
+        await _bot_app.initialize()
+        await _bot_app.start()
+        if _bot_app.updater:
+            await _bot_app.updater.start_polling()
 
-    set_notification_sender(send_telegram_broadcast_sync)
-    logger.info("Telegram Bot berhasil dimulai.")
+        set_notification_sender(send_telegram_broadcast_sync)
+        logger.info("Telegram Bot berhasil dimulai.")
+    except Exception as err:
+        safe_err = str(err)
+        if settings.telegram_bot_token:
+            safe_err = safe_err.replace(settings.telegram_bot_token, "[REDACTED]")
+        logger.error(
+            "Gagal menginisialisasi Telegram Bot: %s. Fallback ke default notifier.", safe_err
+        )
+        _bot_app = None
 
 
 async def stop_bot() -> None:

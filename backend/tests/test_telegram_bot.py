@@ -429,6 +429,102 @@ def test_send_telegram_broadcast_partial_success_and_healthy_chat_not_respammed(
             assert len(healthy_calls) == 1, "Chat sehat tidak boleh diserang berulang kali!"
 
 
+def test_telegram_per_chat_retry_queue_recovers_failed_chat():
+    """Dua chat: satu gagal, lalu dipulihkan -> chat yang gagal menerima tepat 1 pesan."""
+    from app.services.bot import (
+        _clear_delivery_state,
+        _retry_queue,
+        process_chat_retry_queue_sync,
+        send_telegram_broadcast_sync,
+    )
+
+    _clear_delivery_state()
+    mock_app = AsyncMock()
+    mock_bot = AsyncMock()
+
+    delivered_chats_log = []
+    fail_chat_456 = True
+
+    async def _conditional_send(*args, **kwargs):
+        cid = kwargs.get("chat_id")
+        if cid == 456 and fail_chat_456:
+            # Gagal saat network chat 456 bermasalah
+            raise ConnectionError("Temporary timeout on chat 456")
+        delivered_chats_log.append(cid)
+        return None
+
+    mock_bot.send_message.side_effect = _conditional_send
+    mock_app.bot = mock_bot
+
+    with patch("app.services.bot._bot_app", mock_app):
+        with patch("app.services.bot.get_settings") as mock_settings:
+            mock_settings.return_value.allowed_chat_id_list = [123, 456]
+            mock_settings.return_value.telegram_bot_token = "mock_secret_token"
+
+            # 1. Broadcast awal: chat 123 sukses, chat 456 gagal dan masuk antrean retry
+            evt_key = "alert:demo-1:power_limit:1736001000:0"
+            success = send_telegram_broadcast_sync("Daya 2500 W melebihi limit", event_key=evt_key)
+            assert success is True, "Harus True karena chat 123 berhasil menerima"
+            assert delivered_chats_log == [123]
+            assert len(_retry_queue) == 1
+            assert _retry_queue[0].chat_id == 456
+
+            # 2. Pulihkan koneksi ke chat 456 dan percepat timer backoff
+            fail_chat_456 = False
+            _retry_queue[0].next_retry = 0.0
+
+            # 3. Jalankan retry pemulihan
+            recovered = process_chat_retry_queue_sync(mock_bot)
+            assert recovered == 1
+            assert len(_retry_queue) == 0
+            # Total pengiriman: chat 123 tepat 1 kali, chat 456 tepat 1 kali
+            assert delivered_chats_log.count(123) == 1
+            assert delivered_chats_log.count(456) == 1
+
+
+def test_event_key_dedup_allows_cooldown_reminders():
+    """Dedup berbasis event_key: pengingat berteks sama setelah cooldown tetap terkirim."""
+    from app.services.bot import _clear_delivery_state, send_telegram_broadcast_sync
+
+    _clear_delivery_state()
+    mock_app = AsyncMock()
+    mock_bot = AsyncMock()
+    sent_list = []
+
+    async def _send(*args, **kwargs):
+        sent_list.append(kwargs)
+        return None
+
+    mock_bot.send_message.side_effect = _send
+    mock_app.bot = mock_bot
+
+    with patch("app.services.bot._bot_app", mock_app):
+        with patch("app.services.bot.get_settings") as mock_settings:
+            mock_settings.return_value.allowed_chat_id_list = [123]
+            mock_settings.return_value.telegram_bot_token = "mock_secret_token"
+
+            msg_text = "[PERINGATAN] Demo - Daya melebihi batas 2500 W"
+
+            # 1. Alert awal dikirim dengan event_key seq 0
+            key_alert = "alert:demo-1:power_limit:1736001000:0"
+            ok1 = send_telegram_broadcast_sync(msg_text, event_key=key_alert)
+            assert ok1 is True
+            assert len(sent_list) == 1
+
+            # 2. Pengiriman ulang dengan event_key yang sama -> diblokir oleh dedup
+            ok2 = send_telegram_broadcast_sync(msg_text, event_key=key_alert)
+            assert ok2 is True  # Sudah terkirim sebelumnya
+            assert len(sent_list) == 1  # Tidak ada pengiriman baru
+
+            # 3. Pengingat cooldown (teks persis sama, tapi event_key seq 1) -> harus lolos terkirim
+            key_reminder = "alert:demo-1:power_limit:1736001000:1"
+            ok3 = send_telegram_broadcast_sync(msg_text, event_key=key_reminder)
+            assert ok3 is True
+            assert len(sent_list) == 2, (
+                "Pengingat dengan teks identik harus terkirim karena sequence berbeda"
+            )
+
+
 def test_send_telegram_broadcast_all_failed_returns_false():
     """Jika seluruh chat gagal, broadcast mengembalikan False agar state tidak maju."""
     from app.services.bot import _clear_delivery_state

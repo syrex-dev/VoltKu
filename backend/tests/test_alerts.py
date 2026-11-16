@@ -722,3 +722,53 @@ def test_alert_state_retry_on_next_tick_until_success():
     msgs_3 = evaluate_all_alerts(session, now_ts=now_ts_3, startup_ts=startup_ts)
     assert len(msgs_3) == 0
     assert len(sent_msgs) == 1  # Tetap 1, tidak duplikat
+
+
+def test_offline_alert_only_after_120s_gap_not_immediate_lwt():
+    """Alert notifikasi offline HANYA terpicu jika now - last_seen_at > 120s.
+
+    Status tampilan (dashboard/get_device_status) langsung 'offline' jika LWT diterima,
+    tetapi alert notifikasi TIDAK boleh langsung memicu alert sampai jeda telemetri > 120s.
+    """
+    from app.mqtt_ingest import get_device_status
+
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m, **kw: sent_msgs.append(m) or True)
+
+    now_ts = 1736001000
+    startup_ts = now_ts - 500
+
+    # Device menerima pesan LWT sehingga status='offline', tapi telemetri terakhir baru 30s lalu
+    dev = Device(
+        id="demo-lwt",
+        name="Demo LWT",
+        mcb_watt=2200,
+        last_seen_at=now_ts - 30,
+        status="offline",
+    )
+    session.add(dev)
+    session.commit()
+
+    # 1. Status tampilan untuk UI/API langsung offline karena LWT
+    disp_status = get_device_status(dev, now_utc=now_ts)
+    assert disp_status == "offline"
+
+    # 2. Evaluator alert: jeda 30s <= 120s -> TIDAK memicu alert notifikasi
+    msgs_1 = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(msgs_1) == 0
+    assert len(sent_msgs) == 0
+
+    # 3. Batas 119s: belum lewat ambang 120s -> TIDAK memicu alert
+    now_119 = dev.last_seen_at + 119
+    msgs_119 = evaluate_all_alerts(session, now_ts=now_119, startup_ts=startup_ts)
+    assert len(msgs_119) == 0
+    assert len(sent_msgs) == 0
+
+    # 4. Batas 121s: lewat ambang 120s -> MEMICU alert notifikasi tepat sekali
+    now_121 = dev.last_seen_at + 121
+    msgs_121 = evaluate_all_alerts(session, now_ts=now_121, startup_ts=startup_ts)
+    assert len(msgs_121) == 1
+    assert len(sent_msgs) == 1
+    assert "Perangkat offline" in msgs_121[0]
+

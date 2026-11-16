@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -14,6 +15,11 @@ from app.routers import anomalies, auth, devices
 from app.routers import settings as settings_router
 from app.services.bot import init_and_start_bot, stop_bot
 from app.services.scheduler import start_scheduler, stop_scheduler
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 settings = get_settings()
 
@@ -49,10 +55,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             start_scheduler()
         from app.services.notifier import setup_notifier
 
-        if settings.is_bot_active:
+        setup_notifier(settings)
+        if settings.is_bot_active and settings.telegram_bot_token:
             await init_and_start_bot()
-        else:
-            setup_notifier(settings)
 
     yield
 
@@ -98,6 +103,7 @@ app.include_router(settings_router.router)
 app.include_router(anomalies.router)
 
 
+@app.get("/health", include_in_schema=False)
 @app.get("/healthz", tags=["Health"])
 async def health_check() -> dict[str, str]:
     """Health check endpoint publik."""

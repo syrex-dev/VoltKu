@@ -133,8 +133,9 @@ def generate_and_send_daily_report(
         ]
         message = "\n".join(msg_lines)
 
-        # Kirim notifikasi
-        if send_alert_notification(message):
+        # Kirim notifikasi dengan event_key dedup
+        evt_key = f"report:{dev.id}:daily:{target_date_str}"
+        if send_alert_notification(message, event_key=evt_key):
             reports_sent += 1
 
     # Catat idempotensi HANYA jika minimal satu laporan terkirim sukses
@@ -225,7 +226,8 @@ def generate_and_send_weekly_report(
         ]
         message = "\n".join(msg_lines)
 
-        if send_alert_notification(message):
+        evt_key = f"report:{dev.id}:weekly:{target_date_str}"
+        if send_alert_notification(message, event_key=evt_key):
             reports_sent += 1
 
     if reports_sent > 0:

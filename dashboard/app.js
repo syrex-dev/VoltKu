@@ -129,6 +129,9 @@
 
     // API Client Helper
     async function apiRequest(endpoint, options = {}) {
+        if (window.location.protocol === "file:") {
+            throw new Error("Dashboard harus dibuka melalui http://localhost:8000 (bukan file://).");
+        }
         const headers = options.headers || {};
         if (authToken) {
             headers["Authorization"] = `Bearer ${authToken}`;
@@ -159,6 +162,9 @@
             }
             return await resp.json();
         } catch (err) {
+            if (err.name === "TypeError" && err.message.includes("fetch")) {
+                throw new Error("Gagal terhubung ke server backend. Pastikan server aktif di http://localhost:8000");
+            }
             throw err;
         }
     }
@@ -751,8 +757,11 @@
         }
     });
 
-    // Auto-login check on page load
-    if (authToken) {
+    // Protocol check on page load
+    if (window.location.protocol === "file:") {
+        loginError.innerHTML = "⚠️ Anda membuka file secara lokal (<code>file://</code>). Silakan buka melalui URL server backend di browser:<br><br><a href='http://localhost:8000/' style='color:#38bdf8;font-weight:600;text-decoration:underline;'>http://localhost:8000</a>";
+        loginError.classList.remove("hidden");
+    } else if (authToken) {
         loginModal.classList.add("hidden");
         appContainer.classList.remove("hidden");
         initApp();

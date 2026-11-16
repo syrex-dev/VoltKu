@@ -16,7 +16,7 @@ Job evaluasi alert L1 berjalan tiap 15 detik memeriksa jendela telemetri terbaru
   - Tegangan di luar batas 200-240 V (`voltage`): jendela >= 30 detik (minimal 2 sampel @ 10s).
   - Toleransi cakupan: sampel tertua dalam jendela wajib `<= awal_jendela + 15 detik` (1,5 x interval publish 10s) atau memiliki sampel pendahulu yang juga melewati batas. Sampel yang baru muncul setelah gap data atau restart (cakupan sempit ~20 detik) tidak boleh memicu alert palsu.
 - **Histeresis & Pemulihan (Recovery)**: Daya dianggap pulih setelah ~1 menit (60 detik) data telemetri konsisten normal di bawah ambang histeresis (P < 0,95 x limit daya). Pemulihan tegangan memerlukan 30 detik data normal (205-235 V). Pemulihan tidak membuat baris baru, melainkan mencatat `resolved_at` pada `details_json` di episode anomali yang sama.
-- **Perangkat Offline**: Terpicu jika selisih waktu `now - last_seen_at > 120 detik` (konstanta bersama 120s). Episode offline juga dicatat ke tabel `anomalies`.
+- **Perangkat Offline**: Status tampilan (dashboard, /perangkat) dapat langsung menampilkan status offline dari pesan LWT MQTT. Namun, **alert notifikasi offline HANYA terpicu** jika selisih waktu telemetri `now - last_seen_at > 120 detik`. LWT offline tanpa jeda waktu 120 detik tidak memicu alert notifikasi. Episode alert offline dicatat ke tabel `anomalies`.
 
 ## Detail L2
 - Kelompokkan `p_avg` per jam dari 14 hari terakhir ke bucket (jenis_hari, jam 0-23). Hitung median dan MAD per bucket.

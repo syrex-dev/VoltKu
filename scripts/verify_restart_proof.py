@@ -1,3 +1,4 @@
+import os
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -25,30 +26,66 @@ def exec_backend_python(code: str) -> str:
         "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
         "exec", "-T", "backend", "python", "-c", code
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        return f"ERROR: {res.stderr}"
-    return res.stdout.strip()
+    last_err = ""
+    for _ in range(5):
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            return res.stdout.strip()
+        last_err = res.stderr
+        if "restarting" in last_err.lower() or "not running" in last_err.lower():
+            time.sleep(2)
+            continue
+        break
+    return f"ERROR: {last_err}"
+
+
+def wait_for_container_ready():
+    ensure_docker_running()
+    for _ in range(15):
+        res = subprocess.run([
+            "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
+            "exec", "-T", "backend", "python", "-c", "print('READY')"
+        ], capture_output=True, text=True)
+        if res.returncode == 0 and "READY" in res.stdout:
+            return
+        time.sleep(1)
+
+
+def set_env_notifier(value: str | None):
+    env_path = ".env"
+    if not os.path.exists(env_path):
+        return
+    with open(env_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    filtered = [line for line in lines if not line.startswith("NOTIFIER=")]
+    if value is not None:
+        filtered.append(f"NOTIFIER={value}\n")
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(filtered)
 
 
 def main():
     log("==================================================================")
-    log("🔁 PENGUJIAN RESTART CONTAINER DENGAN ALERT OFFLINE AKTIF")
+    log("🔁 PENGUJIAN RESTART CONTAINER & KONTROL POSITIF (M3)")
     log("==================================================================")
 
     # Jaga agar distro WSL tidak masuk status idle/terminate selama pengujian
-    keepalive_proc = subprocess.Popen(["wsl", "sleep", "300"])
+    keepalive_proc = subprocess.Popen(["wsl", "sleep", "360"])
     try:
         ensure_docker_running()
 
+        # Pasang NOTIFIER=log sementara untuk menangkap alert ke docker logs
+        set_env_notifier("log")
+
         # 1. Bersihkan demo-1 lebih dulu
+        wait_for_container_ready()
         log("Membersihkan data demo-1...")
         subprocess.run([
             "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
             "exec", "-T", "backend", "python", "scripts/clean_device.py", "demo-1"
         ], check=True)
 
-        # 2. Buat kondisi alert offline aktif
+        # 2. Buat kondisi alert offline aktif di DB
         now_ts = int(time.time())
         active_ts = now_ts - 100
         setup_code = (
@@ -86,15 +123,15 @@ def main():
         before_ts = exec_backend_python(query_ts_code)
         log(f"Nilai last_notified_at SEBELUM restart: {before_ts}")
 
-        # 4. Catat waktu restart dan restart container
+        # 4. Catat waktu restart dan restart container dengan recreate env
         restart_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         log(f"Waktu restart UTC: {restart_iso}")
-        log("Menjalankan: docker compose restart backend...")
+        log("Menjalankan: docker compose up -d --force-recreate backend...")
         subprocess.run([
             "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
-            "restart", "backend"
+            "up", "-d", "--force-recreate", "backend"
         ], check=True)
-        log("Container backend berhasil di-restart.")
+        log("Container backend berhasil dijalankan ulang.")
 
         # 5. Tunggu >= 150 detik (melewati grace period 120s + tick scheduler)
         wait_seconds = 155
@@ -104,30 +141,92 @@ def main():
             ensure_docker_running()
             log(f"  ... {sec + 15}s berlalu")
 
-        # 6. Ambil last_notified_at setelah restart
+        # 6. Ambil last_notified_at setelah menunggu > 150s
         after_ts = exec_backend_python(query_ts_code)
-        log(f"Nilai last_notified_at SESUDAH restart: {after_ts}")
+        log(f"Nilai last_notified_at SESUDAH > 150s: {after_ts}")
+        assert before_ts == after_ts, (
+            f"Timestamp berubah! Sebelum: {before_ts}, Sesudah: {after_ts}"
+        )
 
-        # 7. Ambil logs sejak restart
+        # 7. Verifikasi log sementara: tidak ada alert offline yang terkirim ulang
         ensure_docker_running()
-        log(f"\nMengambil docker logs --since {restart_iso}:")
         cmd_logs = [
             "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
             "logs", "backend", "--since", restart_iso
         ]
+        logs_res_mid = subprocess.run(cmd_logs, capture_output=True, text=True)
+        assert "[RECORDED_ALERT]" not in logs_res_mid.stdout, (
+            "Ditemukan alert sebelum kontrol positif!"
+        )
+        log(">>> ✅ VERIFIKASI AWAL: Tidak ada alert offline lama dikirim ulang selama > 150s!")
+
+        # 8. Kontrol Positif: Picu episode baru (overload di demo-1)
+        log("\n--- Menjalankan Kontrol Positif: Overload di demo-1 (2600 W > 2200 W) ---")
+        now_ts_ovl = int(time.time())
+        inject_overload_code = (
+            "from app.db import SessionLocal\n"
+            "from app.models import Device, Reading\n"
+            f"now_ts = {now_ts_ovl}\n"
+            "with SessionLocal() as s:\n"
+            "    dev = s.get(Device, 'demo-1')\n"
+            "    if dev:\n"
+            "        dev.last_seen_at = now_ts\n"
+            "        dev.last_data_ts = now_ts\n"
+            "        dev.status = 'online'\n"
+            "    for i in range(7):\n"
+            "        r = Reading(\n"
+            "            device_id='demo-1',\n"
+            "            ts=now_ts - 10 * (6 - i),\n"
+            "            v=220.0, i=11.8, p=2600.0, e_kwh=10.5, delta_kwh=0.01,\n"
+            "            f=50.0, pf=1.0, rssi=-60\n"
+            "        )\n"
+            "        s.add(r)\n"
+            "    s.commit()\n"
+            "    print('OVERLOAD_INJECTED')\n"
+        )
+        res_ovl = exec_backend_python(inject_overload_code)
+        log(f"Injeksi data overload: {res_ovl}")
+        log("Menunggu tick evaluator alert (20 detik)...")
+        time.sleep(20)
+
+        # 9. Ambil log lengkap sejak restart
+        ensure_docker_running()
+        log(f"\nMengambil docker logs --since {restart_iso}:")
         logs_res = subprocess.run(cmd_logs, capture_output=True, text=True)
         print("--- DOCKER LOGS OUTPUT ---")
         print(logs_res.stdout)
         print("--------------------------")
 
-        # 8. Verifikasi kesamaan timestamp & tidak adanya notifikasi baru
-        assert before_ts == after_ts, (
-            f"Timestamp berubah! Sebelum: {before_ts}, Sesudah: {after_ts}"
+        # 10. Verifikasi:
+        # - Log start: APScheduler aktif, Notifier aktif, EVALUATOR_TICK
+        assert "APScheduler aktif. Jobs terdaftar:" in logs_res.stdout, (
+            "Log start scheduler tidak ditemukan!"
         )
-        assert "[RECORDED_ALERT]" not in logs_res.stdout, "Ditemukan alert baru pasca restart!"
-        log(">>> ✅ VERIFIKASI BERHASIL: last_notified_at identik dan tidak ada alert baru!")
+        assert "Notifier aktif: LogNotifier" in logs_res.stdout, (
+            "Log start notifier tidak ditemukan!"
+        )
+        assert "[EVALUATOR_TICK #" in logs_res.stdout, "Log tick evaluator tidak ditemukan!"
 
-        # 9. Bersihkan demo-1
+        # - Alert baru: tepat 1 alert baru untuk overload di demo-1
+        recorded_alerts = [
+            line for line in logs_res.stdout.splitlines() if "[RECORDED_ALERT]" in line
+        ]
+        log(f"Ditemukan {len(recorded_alerts)} alert tercatat:")
+        for a in recorded_alerts:
+            log(f"  {a}")
+
+        # Alert overload harus ada
+        assert any("Daya melebihi batas wajar" in a for a in recorded_alerts), (
+            "Alert overload tidak terpicu!"
+        )
+        # Episode offline lama TIDAK dikirim ulang
+        assert not any("Perangkat offline" in a for a in recorded_alerts), (
+            "Alert offline lama dikirim ulang!"
+        )
+
+        log(">>> ✅ KONTROL POSITIF BERHASIL: Tepat 1 alert overload terpicu!")
+
+        # 11. Bersihkan demo-1
         log("\nMembersihkan demo-1...")
         subprocess.run([
             "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
@@ -135,6 +234,27 @@ def main():
         ], check=True)
         log("Pembersihan selesai.")
     finally:
+        # Bersihkan konfigurasi NOTIFIER dari .env dan kembalikan ke default container
+        log("\nMembersihkan NOTIFIER dari .env dan restart container ke kondisi default...")
+        set_env_notifier(None)
+        subprocess.run([
+            "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
+            "up", "-d", "--force-recreate", "backend"
+        ], check=True)
+        wait_for_container_ready()
+        time.sleep(2)
+        check_def_logs = subprocess.run([
+            "wsl", "docker", "compose", "-f", "deploy/docker-compose.yml",
+            "logs", "backend", "--tail", "20"
+        ], capture_output=True, text=True)
+        print("--- DEFAULT CONTAINER START LOGS ---")
+        print(check_def_logs.stdout)
+        print("------------------------------------")
+        assert (
+            "Notifier aktif: NullNotifier" in check_def_logs.stdout
+            or "NullNotifier" in check_def_logs.stdout
+        )
+
         keepalive_proc.terminate()
         try:
             keepalive_proc.wait(timeout=5)

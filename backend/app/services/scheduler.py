@@ -116,7 +116,8 @@ def start_scheduler() -> bool:
     if not scheduler.running:
         init_scheduler_jobs()
         scheduler.start()
-        logger.info("APScheduler started successfully.")
+        jobs = [f"{j.id} ({j.trigger})" for j in scheduler.get_jobs()]
+        logger.info("APScheduler aktif. Jobs terdaftar: %s", jobs)
         return True
     return False
 

@@ -25,7 +25,7 @@
 - BE-03 Hitung delta kWh dari counter E. Jika E turun (counter direset), delta = E baru. Abaikan lonjakan tak wajar.
 - BE-04 Agregasi per jam dan per hari (kWh, biaya, daya rata-rata, maks, min).
 - BE-05 Retensi data mentah 14 hari; agregat disimpan tanpa batas.
-- BE-06 Deteksi perangkat offline (tidak ada data lebih dari 120 detik atau status offline).
+- BE-06 Deteksi status perangkat dan alert offline: status tampilan (dashboard, /perangkat) langsung offline jika LWT diterima atau last_seen_at > 120 detik; alert notifikasi offline HANYA terpicu jika tidak ada data lebih dari 120 detik (now - last_seen_at > 120 detik).
 - BE-07 Tarif disimpan sebagai `tariff_sen` (integer sen) pada agregat harian `daily_stats` dan dibekukan untuk hari lampau. Perubahan tarif di `settings` hanya berlaku ke depan. Input tarif via API atau Telegram menerima format rupiah desimal (koma atau titik) dan dikonversi ke integer sen di batas input.
 - BE-08 REST API sesuai `05-DATA-CONTRACT.md`.
 
