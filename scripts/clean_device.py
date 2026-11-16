@@ -78,12 +78,22 @@ def main() -> None:
         description="Skrip aman untuk membersihkan perangkat demo/simulasi dan data terkait."
     )
     parser.add_argument(
-        "--device",
-        required=True,
+        "device",
+        nargs="?",
+        default=None,
         help="ID perangkat yang akan dibersihkan (wajib berawalan 'sim-' atau 'demo-')",
     )
+    parser.add_argument(
+        "--device",
+        dest="device_flag",
+        default=None,
+        help="ID perangkat yang akan dibersihkan via flag (wajib berawalan 'sim-' atau 'demo-')",
+    )
     args = parser.parse_args()
-    clean_device(args.device)
+    target_device = args.device or args.device_flag
+    if not target_device:
+        parser.error("Harap tentukan device_id (misal: python scripts/clean_device.py demo-1)")
+    clean_device(target_device)
 
 
 if __name__ == "__main__":
