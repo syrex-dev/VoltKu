@@ -122,4 +122,63 @@ docker compose exec backend python scripts/benchmark_container.py
 docker compose exec backend python -c "import sqlite3; con = sqlite3.connect('/app/data/energy.db'); print(con.execute('PRAGMA integrity_check').fetchall())"
 ```
 
+## 7. Panduan Pengujian Manual Telegram Bot (Milestone 3)
+
+### A. Konfigurasi Kredensial (.env)
+Buka file `.env` di root repositori dan masukkan token bot serta daftar chat ID yang diizinkan:
+```env
+TELEGRAM_BOT_TOKEN=<token_dari_BotFather>
+TELEGRAM_ALLOWED_CHAT_IDS=<chat_id_anda>
+BOT_ENABLED=true
+```
+> **Catatan Keamanan:**
+> - Chat ID dapat diperoleh dengan mengirim pesan ke `@userinfobot` di Telegram.
+> - Kredensial dan token **jangan pernah dicetak di log, commit ke git, atau disebarkan**.
+> - Tanpa token (kosong), bot otomatis dinonaktifkan dan backend FastAPI berjalan normal.
+
+### B. Menjalankan Ulang Backend
+Setelah `.env` diisi, restart container backend:
+```bash
+docker compose up -d --build backend
+```
+Periksa log startup untuk memastikan bot berhasil diinisialisasi:
+```bash
+docker compose logs backend | grep -i "telegram"
+```
+
+### C. Daftar Skenario Uji Manual
+1. **Uji Keamanan Allowlist**:
+   - Kirim pesan `/start` dari akun Telegram yang **tidak terdaftar** di `TELEGRAM_ALLOWED_CHAT_IDS`.
+   - **Hasil yang diharapkan:** Bot sama sekali tidak merespons (senyap), dan log backend mencatat: `Pesan diabaikan dari chat_id asing: <chat_id>` tanpa membocorkan konten pesan.
+
+2. **Uji Perintah Informasi (Akun Terdaftar)**:
+   - `/start` : Menampilkan pesan panduan dan daftar perintah.
+   - `/perangkat` : Menampilkan daftar seluruh perangkat, status (ONLINE/OFFLINE), kapasitas MCB, dan timestamp data terakhir.
+   - `/now` : Menampilkan daya (W), tegangan (V), arus (A), PF, frekuensi (Hz), dan RSSI. Coba juga `/now <device_id>`.
+   - `/today` : Ringkasan energi (kWh), biaya (Rp), dan beban puncak (W) hari ini.
+   - `/week` : Ringkasan energi dan biaya minggu ini (dihitung sejak Senin WIB).
+   - `/month` : Ringkasan energi dan biaya bulan kalender berjalan.
+   - `/forecast` : Proyeksi konsumsi dan tagihan PLN akhir bulan beserta basis hari.
+   - `/anomali` : Riwayat peringatan dan anomali 7 hari terakhir.
+
+3. **Uji Perintah Pengaturan**:
+   - `/tarif 1444.70` : Mengubah tarif listrik PLN (coba masukkan 3 desimal seperti `/tarif 1444.705` untuk menguji penolakan).
+   - `/batas 2500` : Mengubah batas daya peringatan menjadi 2500 Watt.
+   - `/laporan off` lalu `/laporan on` : Mengaktifkan / menonaktifkan pengiriman laporan berkala otomatis.
+
+4. **Uji Notifikasi Alert Real-Time & Pembersihan**:
+   - Jalankan simulator skenario overload dari container:
+     ```bash
+     docker compose exec backend python simulator/publish_fake.py --device demo-1 --mode overload
+     ```
+   - Bot akan menerima notifikasi:
+     - `[PERINGATAN] Demo 1 - Daya melebihi batas wajar: ... W > ... W` (setelah overload 70s).
+     - `[PULIH] Demo 1 - Daya normal kembali: ... W` (setelah daya turun kembali di bawah ambang).
+     - `[PERINGATAN] Demo 1 - Perangkat offline ...` (sekitar 120 detik setelah simulator dimatikan).
+   - Setelah pengujian selesai, bersihkan seluruh data pengujian `demo-1`:
+     ```bash
+     docker compose exec backend python scripts/clean_device.py --device demo-1
+     ```
+
+
 

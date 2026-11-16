@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # M3 Flags & Konfigurasi
     scheduler_enabled: bool = True
     bot_enabled: bool = True
+    recording_notifier: bool = False
     alert_exclude_device_prefixes: str = "sim-"
 
     # Konstanta Tegangan (Bukan di DB settings)
@@ -52,7 +53,21 @@ class Settings(BaseSettings):
     def is_bot_active(self) -> bool:
         if self.app_env == "test":
             return False
-        return self.bot_enabled
+        return self.bot_enabled and bool(
+            self.telegram_bot_token and self.telegram_bot_token.strip()
+        )
+
+    @property
+    def allowed_chat_id_list(self) -> list[int]:
+        res: list[int] = []
+        for x in self.telegram_allowed_chat_ids.split(","):
+            x = x.strip()
+            if x:
+                try:
+                    res.append(int(x))
+                except ValueError:
+                    pass
+        return res
 
     model_config = SettingsConfigDict(
         env_file=".env",

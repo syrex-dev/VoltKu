@@ -12,6 +12,7 @@ from app.db import init_db
 from app.mqtt_ingest import ingest_service
 from app.routers import anomalies, auth, devices
 from app.routers import settings as settings_router
+from app.services.bot import init_and_start_bot, stop_bot
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
@@ -40,17 +41,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Inisialisasi Database
     init_db()
 
-    # Jalankan background worker, MQTT client, dan scheduler hanya jika bukan mode test
+    # Jalankan background worker, MQTT client, scheduler, dan bot hanya jika bukan mode test
     if settings.app_env != "test":
         ingest_service.start_worker()
         ingest_service.start_mqtt()
         if settings.is_scheduler_active:
             start_scheduler()
+        if settings.is_bot_active:
+            await init_and_start_bot()
+        elif settings.recording_notifier:
+            from app.services.notifier import set_notification_sender
+
+            def _record_log(msg: str) -> bool:
+                import logging
+                logging.getLogger("app.alert").warning("[RECORDED_ALERT] %s", msg)
+                return True
+
+            set_notification_sender(_record_log)
 
     yield
 
     # Shutdown
     if settings.app_env != "test":
+        if settings.is_bot_active:
+            await stop_bot()
         if settings.is_scheduler_active:
             stop_scheduler()
         ingest_service.stop_mqtt()
