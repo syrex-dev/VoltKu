@@ -346,7 +346,8 @@ def run_simulator() -> None:
         overload_samples = max(1, (args.overload_seconds // args.interval) + 1)
         print(
             f"Starting OVERLOAD scenario for {args.device} "
-            f"(P > 2200 W for {args.overload_seconds}s, {overload_samples} samples, then recovery)..."
+            f"(P > 2200 W for {args.overload_seconds}s, "
+            f"{overload_samples} samples, then recovery)..."
         )
         # Fase 1: Overload selama overload_seconds
         for i in range(overload_samples):
