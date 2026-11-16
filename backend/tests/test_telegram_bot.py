@@ -1,6 +1,6 @@
 import logging
 import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from app.models import AlertState, Anomaly, Base, Device, Reading, Setting
@@ -376,25 +376,37 @@ async def test_message_truncation_at_4096():
 
 
 def test_send_telegram_broadcast_sync():
+    """Pesan broadcast terkirim ke seluruh chat ID dalam allowlist."""
+    from app.services.bot import _clear_delivery_state
+
+    _clear_delivery_state()
     mock_app = AsyncMock()
     mock_app.bot = AsyncMock()
 
     with patch("app.services.bot._bot_app", mock_app):
         with patch("app.services.bot.get_settings") as mock_settings:
             mock_settings.return_value.allowed_chat_id_list = [123, 456]
+            mock_settings.return_value.telegram_bot_token = "mock_secret_token"
             success = send_telegram_broadcast_sync("Halo semua")
             assert success is True
             assert mock_app.bot.send_message.call_count == 2
 
 
-def test_send_telegram_broadcast_partial_failure_returns_false():
-    """Jika salah satu chat gagal, broadcast dianggap gagal (False) agar state tidak maju."""
+def test_send_telegram_broadcast_partial_success_and_healthy_chat_not_respammed():
+    """Dua chat, satu selalu gagal -> chat sehat menerima tepat 1 pesan, sukses=True."""
+    from app.services.bot import _clear_delivery_state
+
+    _clear_delivery_state()
     mock_app = AsyncMock()
     mock_bot = AsyncMock()
 
+    healthy_calls = []
+
     async def _send_side_effect(*args, **kwargs):
-        if kwargs.get("chat_id") == 456:
-            raise RuntimeError("Network failure to chat 456")
+        cid = kwargs.get("chat_id")
+        if cid == 456:
+            raise RuntimeError("Permanent failure to chat 456")
+        healthy_calls.append(cid)
         return None
 
     mock_bot.send_message.side_effect = _send_side_effect
@@ -403,8 +415,73 @@ def test_send_telegram_broadcast_partial_failure_returns_false():
     with patch("app.services.bot._bot_app", mock_app):
         with patch("app.services.bot.get_settings") as mock_settings:
             mock_settings.return_value.allowed_chat_id_list = [123, 456]
-            success = send_telegram_broadcast_sync("Pesan broadcast penting")
-            assert success is False, "Harus mengembalikan False jika ada chat yang gagal"
+            mock_settings.return_value.telegram_bot_token = "mock_secret_token"
+
+            # Percobaan pertama: chat 123 sukses, chat 456 gagal
+            success1 = send_telegram_broadcast_sync("Alert daya tinggi 2500W")
+            assert success1 is True, "Harus True karena terkirim ke >= 1 chat (chat 123)"
+            assert len(healthy_calls) == 1
+
+            # Percobaan kedua (tick berikutnya untuk pesan yang sama):
+            # Chat sehat (123) tidak boleh dikirimi lagi
+            success2 = send_telegram_broadcast_sync("Alert daya tinggi 2500W")
+            assert success2 is True
+            assert len(healthy_calls) == 1, "Chat sehat tidak boleh diserang berulang kali!"
+
+
+def test_send_telegram_broadcast_all_failed_returns_false():
+    """Jika seluruh chat gagal, broadcast mengembalikan False agar state tidak maju."""
+    from app.services.bot import _clear_delivery_state
+
+    _clear_delivery_state()
+    mock_app = AsyncMock()
+    mock_bot = AsyncMock()
+    mock_bot.send_message.side_effect = RuntimeError("All network failed")
+    mock_app.bot = mock_bot
+
+    with patch("app.services.bot._bot_app", mock_app):
+        with patch("app.services.bot.get_settings") as mock_settings:
+            mock_settings.return_value.allowed_chat_id_list = [123, 456]
+            mock_settings.return_value.telegram_bot_token = "mock_secret_token"
+
+            success = send_telegram_broadcast_sync("Pesan broadcast gagal total")
+            assert success is False, "Harus False jika seluruh chat gagal kirim"
+
+
+def test_notifier_selection_null_and_log_modes(caplog):
+    """Pengujian pemilihan notifier:
+    1. Default / Token kosong -> NullNotifier (gagal, False).
+    2. NOTIFIER=log -> LogNotifier (warning log, True).
+    """
+    from app.services.notifier import NullNotifier, send_alert_notification, setup_notifier
+
+    # Kasus 1: Token kosong -> NullNotifier
+    mock_settings_empty = MagicMock()
+    mock_settings_empty.notifier = ""
+    mock_settings_empty.recording_notifier = False
+    mock_settings_empty.is_bot_active = True
+    mock_settings_empty.telegram_bot_token = ""
+
+    sender_null = setup_notifier(mock_settings_empty)
+    assert isinstance(sender_null, NullNotifier) or sender_null.__name__ == "null_notifier"
+    res_null = send_alert_notification("Pesan uji default")
+    assert res_null is False, "NullNotifier harus mengembalikan False agar state tidak maju"
+
+    # Kasus 2: NOTIFIER=log -> LogNotifier (mencetak peringatan saat inisialisasi)
+    mock_settings_log = MagicMock()
+    mock_settings_log.notifier = "log"
+    mock_settings_log.recording_notifier = False
+    mock_settings_log.is_bot_active = False
+    mock_settings_log.telegram_bot_token = ""
+
+    with caplog.at_level(logging.WARNING):
+        sender_log = setup_notifier(mock_settings_log)
+        assert callable(sender_log)
+        assert "PERINGATAN: Notifier perekam (NOTIFIER=log) aktif!" in caplog.text
+
+        res_log = send_alert_notification("Pesan uji mode log")
+        assert res_log is True, "LogNotifier harus mengembalikan True"
+        assert "[RECORDED_ALERT] Pesan uji mode log" in caplog.text
 
 
 @pytest.mark.anyio

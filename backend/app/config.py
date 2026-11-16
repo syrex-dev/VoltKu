@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # M3 Flags & Konfigurasi
     scheduler_enabled: bool = True
     bot_enabled: bool = True
+    notifier: str = ""
     recording_notifier: bool = False
     alert_exclude_device_prefixes: str = "sim-"
 

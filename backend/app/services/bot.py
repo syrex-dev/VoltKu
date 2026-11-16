@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import hashlib
 import logging
 import time
 from datetime import datetime
@@ -34,6 +35,12 @@ TZ_WIB = ZoneInfo("Asia/Jakarta")
 _bot_app: Optional[Application] = None
 _last_send_times: dict[int, float] = {}
 _send_lock = asyncio.Lock()
+_message_delivery_state: dict[str, dict] = {}
+
+
+def _clear_delivery_state() -> None:
+    """Helper untuk membersihkan riwayat pengiriman per chat (digunakan pada pengujian)."""
+    _message_delivery_state.clear()
 
 
 def _format_id_number(val: float, decimals: int = 3) -> str:
@@ -70,8 +77,16 @@ async def send_message_rate_limited(bot: Bot, chat_id: int, text: str) -> None:
 
 
 def send_telegram_broadcast_sync(message: str) -> bool:
-    """Mengirim pesan notifikasi plain text ke seluruh chat di TELEGRAM_ALLOWED_CHAT_IDS."""
-    global _bot_app
+    """Mengirim notifikasi plain text ke seluruh chat di TELEGRAM_ALLOWED_CHAT_IDS.
+
+    Aturan:
+    - Sukses = terkirim ke >= 1 chat.
+    - Chat yang sudah menerima pesan ini tidak akan dikirimi lagi untuk pesan yang sama.
+    - Chat yang gagal akan dicoba ulang dengan backoff eksponensial.
+    - Kegagalan per chat dicatat di log tanpa membocorkan token.
+    - Jika seluruh chat gagal (0 terkirim), mengembalikan False agar state caller tidak maju.
+    """
+    global _bot_app, _message_delivery_state
     bot_app = _bot_app
     if bot_app is None or not bot_app.bot:
         return False
@@ -82,16 +97,59 @@ def send_telegram_broadcast_sync(message: str) -> bool:
         return False
 
     bot = bot_app.bot
+    msg_hash = hashlib.sha256(message.encode("utf-8")).hexdigest()
+
+    now_wall = time.time()
+    if len(_message_delivery_state) > 500:
+        cutoff = now_wall - 86400.0
+        _message_delivery_state = {
+            k: v for k, v in _message_delivery_state.items() if v.get("created_at", 0) >= cutoff
+        }
+
+    delivery_info = _message_delivery_state.setdefault(
+        msg_hash,
+        {"delivered_chats": set(), "chat_failures": {}, "created_at": now_wall},
+    )
+    delivered_chats: set[int] = delivery_info["delivered_chats"]
+    chat_failures: dict[int, dict] = delivery_info["chat_failures"]
 
     async def _send_all() -> bool:
-        all_success = True
+        now_mono = time.monotonic()
         for cid in chat_ids:
+            # Lewati jika chat ini sudah menerima pesan ini sebelumnya
+            if cid in delivered_chats:
+                continue
+
+            # Lewati jika chat masih dalam masa cooldown backoff kegagalan
+            fail_info = chat_failures.get(cid)
+            if fail_info and now_mono < fail_info.get("next_retry", 0.0):
+                continue
+
             try:
                 await send_message_rate_limited(bot, cid, message)
+                delivered_chats.add(cid)
+                chat_failures.pop(cid, None)
             except Exception as err:
-                logger.error("Gagal mengirim telegram ke chat %s: %s", cid, err)
-                all_success = False
-        return all_success
+                attempts = (fail_info.get("attempts", 0) if fail_info else 0) + 1
+                backoff_delay = min(300.0, 15.0 * (2 ** min(attempts - 1, 5)))
+                chat_failures[cid] = {
+                    "attempts": attempts,
+                    "next_retry": now_mono + backoff_delay,
+                }
+                safe_err = str(err)
+                if settings.telegram_bot_token and settings.telegram_bot_token in safe_err:
+                    safe_err = safe_err.replace(settings.telegram_bot_token, "[REDACTED]")
+                logger.warning(
+                    "Gagal mengirim notifikasi telegram ke chat %s: %s "
+                    "(percobaan %d, retry backoff %.1fs)",
+                    cid,
+                    safe_err,
+                    attempts,
+                    backoff_delay,
+                )
+
+        # Berhasil jika minimal 1 chat di allowlist telah menerima pesan ini
+        return len(delivered_chats) >= 1
 
     try:
         loop = asyncio.get_running_loop()

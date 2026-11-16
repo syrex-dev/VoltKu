@@ -47,17 +47,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         ingest_service.start_mqtt()
         if settings.is_scheduler_active:
             start_scheduler()
+        from app.services.notifier import setup_notifier
+
         if settings.is_bot_active:
             await init_and_start_bot()
-        elif settings.recording_notifier:
-            from app.services.notifier import set_notification_sender
-
-            def _record_log(msg: str) -> bool:
-                import logging
-                logging.getLogger("app.alert").warning("[RECORDED_ALERT] %s", msg)
-                return True
-
-            set_notification_sender(_record_log)
+        else:
+            setup_notifier(settings)
 
     yield
 
