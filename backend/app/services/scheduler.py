@@ -11,7 +11,11 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Setting
 from app.services.alert import run_alert_check_job
-from app.services.report_generator import run_daily_report_job, run_weekly_report_job
+from app.services.report_generator import (
+    run_catchup_reports_job,
+    run_daily_report_job,
+    run_weekly_report_job,
+)
 from app.services.retention import run_retention_job
 
 logger = logging.getLogger(__name__)
@@ -88,6 +92,15 @@ def init_scheduler_jobs(report_hour: Optional[int] = None) -> None:
             run_weekly_report_job,
             trigger=CronTrigger(day_of_week="sun", hour=20, minute=0, timezone=TZ_WIB),
             id="weekly_report_job",
+            replace_existing=True,
+        )
+
+    # 5. Job Catch-up Laporan Terlewat: diperiksa tiap 60 detik (dan saat startup)
+    if not scheduler.get_job("catchup_reports_job"):
+        scheduler.add_job(
+            run_catchup_reports_job,
+            trigger=IntervalTrigger(seconds=60, timezone=TZ_WIB),
+            id="catchup_reports_job",
             replace_existing=True,
         )
 

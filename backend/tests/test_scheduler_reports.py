@@ -7,6 +7,7 @@ from app.models import Base, DailyStat, Device, Reading, ScheduledReportsLog, Se
 from app.mqtt_ingest import process_telemetry_payload
 from app.services.notifier import set_notification_sender
 from app.services.report_generator import (
+    check_and_send_catchup_reports,
     generate_and_send_daily_report,
     generate_and_send_weekly_report,
 )
@@ -207,3 +208,92 @@ async def test_scheduler_reschedule_daily_report():
     assert hour_field == "22"
 
     scheduler.shutdown(wait=False)
+
+
+def test_catchup_reports_restart_2230_sends_once_and_no_duplicate():
+    """Restart 22.30 WIB (> 21.00) -> terkirim sekali; restart kedua kali -> tidak duplikat."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    session.add(Device(id="demo-1", name="Warung Demo", mcb_watt=2200, status="online"))
+    session.commit()
+
+    # Jam 22:30 WIB pada tanggal 2026-11-20
+    dt_2230 = datetime(2026, 11, 20, 22, 30, 0, tzinfo=TZ_WIB)
+
+    # Startup 1: Catch-up harus mendeteksi laporan belum dikirim hari ini
+    actions1 = check_and_send_catchup_reports(session, now_dt=dt_2230)
+    assert actions1 == ["catchup_daily_2026-11-20"]
+    assert len(sent_msgs) == 1
+
+    # Startup 2: Restart ulang di waktu yang sama -> tidak ada duplikasi
+    actions2 = check_and_send_catchup_reports(session, now_dt=dt_2230)
+    assert actions2 == []
+    assert len(sent_msgs) == 1
+
+
+def test_catchup_reports_restart_0030_next_day_does_not_send_yesterday():
+    """Restart 00.30 hari berikutnya -> tidak mengirim laporan kemarin."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    session.add(Device(id="demo-1", name="Warung Demo", mcb_watt=2200, status="online"))
+    session.commit()
+
+    # Jam 00:30 WIB pada hari berikutnya (2026-11-21)
+    # Laporan kemarin (2026-11-20) terlewat dan TIDAK boleh dikirim ulang
+    # Jam sekarang (00:30) belum mencapai report_hour (21:00) untuk hari baru
+    dt_0030 = datetime(2026, 11, 21, 0, 30, 0, tzinfo=TZ_WIB)
+
+    actions = check_and_send_catchup_reports(session, now_dt=dt_0030)
+    assert actions == []
+    assert len(sent_msgs) == 0
+
+    # Pastikan tidak ada log yang dibuat untuk hari kemarin
+    yesterday_log = session.scalar(
+        select(ScheduledReportsLog).where(
+            ScheduledReportsLog.report_date == "2026-11-20"
+        )
+    )
+    assert yesterday_log is None
+
+
+def test_catchup_weekly_report_on_sunday_past_2000():
+    """Catch-up laporan mingguan pada hari Minggu jam >= 20.00 WIB."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    session.add(Device(id="demo-1", name="Warung Demo", mcb_watt=2200, status="online"))
+    session.commit()
+
+    # Minggu, 2026-11-22 jam 21:15 WIB (weekday = 6, hour = 21 >= 20 dan >= report_hour 21)
+    dt_sunday = datetime(2026, 11, 22, 21, 15, 0, tzinfo=TZ_WIB)
+
+    actions = check_and_send_catchup_reports(session, now_dt=dt_sunday)
+    assert "catchup_daily_2026-11-22" in actions
+    assert "catchup_weekly_2026-11-22" in actions
+    assert len(sent_msgs) == 2
+
+
+def test_reports_skip_when_all_devices_are_sim():
+    """Jika tidak ada perangkat riil (hanya sim-), laporan tidak mengirim pesan kosong."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    # Hanya ada perangkat simulasi
+    session.add(Device(id="sim-warung", name="Sim Warung", mcb_watt=2200, status="online"))
+    session.commit()
+
+    # Laporan harian
+    res_daily = generate_and_send_daily_report(session, target_date_str="2026-11-20")
+    assert res_daily is False
+    assert len(sent_msgs) == 0
+
+    # Laporan mingguan
+    res_weekly = generate_and_send_weekly_report(session, target_date_str="2026-11-22")
+    assert res_weekly is False
+    assert len(sent_msgs) == 0

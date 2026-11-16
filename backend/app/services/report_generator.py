@@ -82,13 +82,11 @@ def generate_and_send_daily_report(
     ]
 
     devices = session.scalars(select(Device)).all()
-    # Filter perangkat (jika ada non-sim gunakan non-sim, jika tidak ada kirim perangkat yang ada)
+    # Filter perangkat (hanya perangkat non-sim; jangan kirim laporan kosong jika tidak ada)
     eligible_devices = [d for d in devices if not any(d.id.startswith(p) for p in exclude_prefixes)]
-    if not eligible_devices:
-        eligible_devices = devices
 
     if not eligible_devices:
-        logger.warning("Daily report: no devices found to report.")
+        logger.info("Daily report skipped: no non-sim devices found to report.")
         return False
 
     # Bangun pesan laporan harian
@@ -196,10 +194,9 @@ def generate_and_send_weekly_report(
 
     devices = session.scalars(select(Device)).all()
     eligible_devices = [d for d in devices if not any(d.id.startswith(p) for p in exclude_prefixes)]
-    if not eligible_devices:
-        eligible_devices = devices
 
     if not eligible_devices:
+        logger.info("Weekly report skipped: no non-sim devices found to report.")
         return False
 
     reports_sent = 0
@@ -260,6 +257,71 @@ async def run_daily_report_job(
             return generate_and_send_daily_report(
                 session, target_date_str=target_date_str, force=force, now_ts=now_ts
             )
+
+    return await asyncio.to_thread(_sync)
+
+
+def check_and_send_catchup_reports(
+    session: Session,
+    now_dt: Optional[datetime] = None,
+) -> list[str]:
+    """Memeriksa dan mengirimkan laporan yang terlewat (catch-up).
+
+    Aturan:
+    1. Laporan harian: jika sekarang >= report_hour (WIB) dan belum ada catatan untuk hari itu,
+       kirim (sampai 23.59 WIB hari yang sama; laporan hari kemarin tidak dikirim ulang).
+    2. Laporan mingguan: jika hari ini Minggu (weekday 6) dan jam >= 20 dan belum ada catatan
+       untuk minggu itu, kirim (sampai 23.59 WIB hari Minggu).
+    """
+    if not is_report_enabled(session):
+        return []
+
+    now_wib = now_dt if now_dt is not None else datetime.now(TZ_WIB)
+    today_str = now_wib.strftime("%Y-%m-%d")
+    now_ts = int(now_wib.timestamp())
+    actions: list[str] = []
+
+    # 1. Catch-up harian
+    report_hour_setting = session.scalar(select(Setting.value).where(Setting.key == "report_hour"))
+    report_hour = int(report_hour_setting) if report_hour_setting else 21
+
+    if now_wib.hour >= report_hour:
+        sent_daily = session.scalar(
+            select(ScheduledReportsLog).where(
+                ScheduledReportsLog.report_type == "daily",
+                ScheduledReportsLog.report_date == today_str,
+            )
+        )
+        if not sent_daily:
+            success = generate_and_send_daily_report(
+                session, target_date_str=today_str, force=False, now_ts=now_ts
+            )
+            if success:
+                actions.append(f"catchup_daily_{today_str}")
+
+    # 2. Catch-up mingguan: hanya di hari Minggu (weekday == 6) jam >= 20
+    if now_wib.weekday() == 6 and now_wib.hour >= 20:
+        sent_weekly = session.scalar(
+            select(ScheduledReportsLog).where(
+                ScheduledReportsLog.report_type == "weekly",
+                ScheduledReportsLog.report_date == today_str,
+            )
+        )
+        if not sent_weekly:
+            success = generate_and_send_weekly_report(
+                session, target_date_str=today_str, force=False, now_ts=now_ts
+            )
+            if success:
+                actions.append(f"catchup_weekly_{today_str}")
+
+    return actions
+
+
+async def run_catchup_reports_job(now_dt: Optional[datetime] = None) -> list[str]:
+    """Menjalankan pengecekan catch-up laporan secara asinkron via to_thread."""
+    def _sync():
+        with SessionLocal() as session:
+            return check_and_send_catchup_reports(session, now_dt=now_dt)
 
     return await asyncio.to_thread(_sync)
 
