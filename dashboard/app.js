@@ -60,6 +60,10 @@
     const forecastNote = document.getElementById("forecast-note");
     const forecastStatusTag = document.getElementById("forecast-status-tag");
 
+    // Anomalies elements (UI-04)
+    const anomaliesEmpty = document.getElementById("anomalies-empty");
+    const anomaliesList = document.getElementById("anomalies-list");
+
     // Settings Modal elements
     const settingsModal = document.getElementById("settings-modal");
     const btnOpenSettings = document.getElementById("btn-open-settings");
@@ -204,6 +208,7 @@
             startPolling();
             await loadSummaryCards();
             await loadForecast();
+            await loadAnomalies();
             await loadPowerChart(currentPowerRange);
             await loadDailyChart();
         } catch (err) {
@@ -296,6 +301,7 @@
         await pollLatest();
         await loadSummaryCards();
         await loadForecast();
+        await loadAnomalies();
         await loadPowerChart(currentPowerRange);
         await loadDailyChart();
     });
@@ -424,6 +430,66 @@
             }
         } catch (err) {
             console.error("Gagal memuat proyeksi:", err);
+        }
+    }
+
+    // Anomalies (UI-04)
+    async function loadAnomalies() {
+        if (!activeDeviceId) return;
+        try {
+            const data = await apiRequest(`/api/anomalies?device_id=${activeDeviceId}`);
+            if (!data || data.length === 0) {
+                anomaliesEmpty.classList.remove("hidden");
+                anomaliesList.classList.add("hidden");
+                anomaliesList.replaceChildren();
+                return;
+            }
+
+            anomaliesEmpty.classList.add("hidden");
+            anomaliesList.classList.remove("hidden");
+            anomaliesList.replaceChildren();
+
+            data.forEach((item) => {
+                const row = document.createElement("div");
+                row.className = "anomaly-item";
+                row.style.display = "flex";
+                row.style.justifyContent = "space-between";
+                row.style.alignItems = "center";
+                row.style.padding = "10px 14px";
+                row.style.backgroundColor = "rgba(30, 41, 59, 0.7)";
+                row.style.border = "1px solid var(--border)";
+                row.style.borderRadius = "8px";
+
+                const leftCol = document.createElement("div");
+                leftCol.style.display = "flex";
+                leftCol.style.flexDirection = "column";
+                leftCol.style.gap = "4px";
+
+                const msgSpan = document.createElement("span");
+                msgSpan.style.fontWeight = "600";
+                msgSpan.style.color = "var(--text-main)";
+                msgSpan.textContent = item.message || item.type;
+
+                const timeSpan = document.createElement("span");
+                timeSpan.style.color = "var(--text-sub)";
+                timeSpan.style.fontSize = "0.75rem";
+                timeSpan.textContent = `${formatDateTimeWIB(item.ts)} WIB`;
+
+                leftCol.appendChild(msgSpan);
+                leftCol.appendChild(timeSpan);
+
+                const badge = document.createElement("span");
+                badge.className = `badge ${item.severity === "critical" ? "badge-offline" : "badge-warning"}`;
+                badge.style.fontSize = "0.75rem";
+                badge.style.padding = "2px 8px";
+                badge.textContent = item.severity.toUpperCase();
+
+                row.appendChild(leftCol);
+                row.appendChild(badge);
+                anomaliesList.appendChild(row);
+            });
+        } catch (err) {
+            console.error("Gagal memuat daftar anomali:", err);
         }
     }
 
@@ -592,6 +658,7 @@
             await loadDevices();
             await loadSummaryCards();
             await loadForecast();
+            await loadAnomalies();
             await loadPowerChart(currentPowerRange);
             await loadDailyChart();
         } catch (err) {
