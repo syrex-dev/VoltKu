@@ -65,12 +65,16 @@ def check_dashboard_password(password: str | None, app_env: str) -> tuple[bool, 
             reasons.append(f"mengandung kata umum '{', '.join(matched)}' (ditolak di production)")
         if reasons:
             return False, "; ".join(reasons)
+        return True, "Lolos aturan"
     else:
+        warnings = []
+        if len(password) < 16:
+            warnings.append("panjang < 16 karakter")
         if matched:
-            w_str = ", ".join(matched)
-            return True, f"Lolos aturan (PERINGATAN KERAS: mengandung kata umum '{w_str}')"
-
-    return True, "Lolos aturan"
+            warnings.append(f"mengandung kata umum '{', '.join(matched)}'")
+        if warnings:
+            return True, f"PERINGATAN ({'; '.join(warnings)})"
+        return True, "Lolos aturan"
 
 
 def main() -> None:
@@ -118,7 +122,12 @@ def main() -> None:
 
     # Laporan Kepatuhan DASHBOARD_PASSWORD
     pass_ok, pass_reason = check_dashboard_password(dash_pass, app_env)
-    status_pw = "Ya" if pass_ok else f"Tidak ({pass_reason})"
+    if not pass_ok:
+        status_pw = f"Tidak ({pass_reason})"
+    elif "PERINGATAN" in pass_reason:
+        status_pw = pass_reason
+    else:
+        status_pw = "Ya"
     print(f"  DASHBOARD_PASSWORD lolos aturan?       : {status_pw}")
 
     print("-" * 58)

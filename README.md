@@ -18,6 +18,7 @@ Alat pemantau listrik berbasis ESP32 + PZEM-004T, dengan dashboard web, bot Tele
 | `docs/09-TEST-PLAN.md` | Rencana pengujian |
 | `docs/10-MILESTONES.md` | Milestone M0-M7 dan prompt awal untuk agent |
 | `docs/11-RISKS-BACKLOG.md` | Risiko, mitigasi, backlog |
+| `docs/STATUS.md` | Status jujur setiap milestone & backlog uji perangkat keras |
 
 ## Cara memakai di Antigravity
 

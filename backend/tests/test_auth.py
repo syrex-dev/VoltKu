@@ -204,3 +204,33 @@ def test_route_audit_security_lockdown():
                 assert res.status_code == 401, (
                     f"Route {method} {path} is not secured! Expected 401, got {res.status_code}"
                 )
+
+
+def test_dashboard_password_password12345_is_rejected():
+    """Memverifikasi bahwa 'password12345' ditolak di production dan memicu PERINGATAN di dev."""
+    # 1. Startup production: ditolak tegas dengan RuntimeError
+    s_prod = Settings(
+        app_env="production",
+        dashboard_password="password12345",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        validate_startup_credentials(s_prod)
+    err = str(exc_info.value)
+    assert "at least 16 characters" in err
+    assert "must not contain common words" in err
+
+    # 2. Skrip check_env.py: ditolak di production, PERINGATAN di development
+    from scripts.check_env import check_dashboard_password
+
+    ok_prod, reason_prod = check_dashboard_password("password12345", "production")
+    assert not ok_prod
+    assert "panjang kurang dari 16 karakter" in reason_prod
+    assert "mengandung kata umum" in reason_prod
+
+    ok_dev, reason_dev = check_dashboard_password("password12345", "development")
+    assert ok_dev
+    assert reason_dev.startswith("PERINGATAN")
+    assert "panjang < 16 karakter" in reason_dev
+    assert "kata umum" in reason_dev
+
