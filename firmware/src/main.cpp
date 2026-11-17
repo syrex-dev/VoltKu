@@ -5,13 +5,25 @@
 #include <esp_task_wdt.h>
 #include <time.h>
 
+// Sertakan config.h jika ada di direktori include proyek
 #if __has_include("../include/config.h")
     #include "../include/config.h"
-#elif __has_include("../include/config.example.h")
-    #warning "config.h tidak ditemukan! Menggunakan konfigurasi default dari config.example.h untuk kompilasi."
-    #include "../include/config.example.h"
-#else
-    #error "config.h maupun config.example.h tidak ditemukan!"
+#elif __has_include("include/config.h")
+    #include "include/config.h"
+#endif
+
+// Jika config.h tidak ada di proyek (DEVICE_ID belum terdefinisi), gunakan template config.example.h
+#ifndef DEVICE_ID
+    #warning "config.h tidak ditemukan! Menggunakan template default dari config.example.h untuk kompilasi."
+    #if __has_include("../include/config.example.h")
+        #include "../include/config.example.h"
+    #elif __has_include("include/config.example.h")
+        #include "include/config.example.h"
+    #elif __has_include("config.example.h")
+        #include "config.example.h"
+    #else
+        #error "config.example.h tidak ditemukan!"
+    #endif
 #endif
 
 #include <payload_formatter.hpp>
