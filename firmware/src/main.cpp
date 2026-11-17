@@ -43,7 +43,16 @@ unsigned long lastSensorReadMs = 0;
 unsigned long lastPublishMs = 0;
 unsigned long lastPzemSuccessMs = 0;
 unsigned long lastDrainMs = 0;
+
+// Non-blocking reconnect backoff (5 - 60 detik)
+unsigned long lastWifiReconnectAttemptMs = 0;
+unsigned long wifiReconnectBackoffMs = 5000;
 unsigned long lastMqttReconnectAttemptMs = 0;
+unsigned long mqttReconnectBackoffMs = 5000;
+
+// Overflow tracking
+uint32_t lastReportedOverflow = 0;
+bool pzemErrorActive = false;
 
 // Rolling Accumulator PZEM (10 detik)
 float vAccum = 0.0f;
@@ -63,6 +72,7 @@ void initTopics() {
 
 void onMqttConnect(bool sessionPresent) {
     Serial.println("[MQTT] Terhubung ke broker!");
+    mqttReconnectBackoffMs = 5000; // Reset backoff saat berhasil tersambung
     // Publikasikan status online (retained, QoS 1)
     mqttClient.publish(topicStatus, 1, true, "online");
 }
@@ -79,7 +89,7 @@ void onMqttPublish(uint16_t packetId) {
 
 void setupWiFi() {
     Serial.print("[WiFi] Menghubungkan ke ");
-    Serial.println(WIFI_SSID);
+    Serial.println(WIFI_SSID); // Hanya mencetak SSID, password tidak pernah dicetak
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 }
@@ -120,10 +130,23 @@ void readPZEM() {
         lastValidEnergy = e;
         ++sampleCount;
         lastPzemSuccessMs = millis();
+
+        if (pzemErrorActive) {
+            pzemErrorActive = false;
+            Serial.println("[PZEM] Sensor pulih dan kembali membaca data normal.");
+            if (mqttClient.connected()) {
+                mqttClient.publish(topicStatus, 1, true, "online");
+            }
+        }
     } else {
-        // PZEM tidak merespons / NaN
+        // PZEM tidak merespons / bernilai NaN
         if (millis() - lastPzemSuccessMs > 30000) {
             Serial.println("[PZEM] Tidak ada respons > 30 detik! Me-restart UART2...");
+            pzemErrorActive = true;
+            if (mqttClient.connected()) {
+                // Publikasikan status error non-retained saat sensor gagal membaca
+                mqttClient.publish(topicStatus, 1, false, "error_pzem");
+            }
             PZEMSerial.end();
             delay(50);
             PZEMSerial.begin(9600, SERIAL_8N1, 16, 17);
@@ -162,7 +185,7 @@ void setup() {
     Serial.begin(115200);
     Serial.println("\n--- Monitor Listrik Pintar (ESP32 Firmware) ---");
 
-    // Inisialisasi Watchdog Timer Hardware 15 detik
+    // Inisialisasi Watchdog Timer Hardware 15 detik (API Arduino Core 2.0.17 / ESP-IDF)
     esp_task_wdt_init(15, true);
     esp_task_wdt_add(NULL);
 
@@ -177,7 +200,7 @@ void setup() {
 
     // Konfigurasi MQTT Client dengan LWT QoS 1 Retained
     mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-    mqttClient.setCredentials(MQTT_USER, MQTT_PASS);
+    mqttClient.setCredentials(MQTT_USER, MQTT_PASS); // Kredensial tidak pernah dicetak ke Serial
     mqttClient.setClientId(DEVICE_ID);
     mqttClient.setKeepAlive(15);
     mqttClient.setWill(topicStatus, 1, true, "offline");
@@ -188,30 +211,44 @@ void setup() {
 }
 
 void loop() {
-    // Reset Hardware Watchdog Timer setiap siklus
+    // Reset Hardware Watchdog Timer setiap siklus loop utama
     esp_task_wdt_reset();
 
     unsigned long nowMs = millis();
 
-    // 1. Periksa sinkronisasi waktu NTP
+    // 1. Reconnect WiFi non-blocking dengan backoff eksponensial (5s - 60s)
+    if (WiFi.status() != WL_CONNECTED) {
+        if (nowMs - lastWifiReconnectAttemptMs >= wifiReconnectBackoffMs) {
+            lastWifiReconnectAttemptMs = nowMs;
+            Serial.printf("[WiFi] Mencoba menyambung kembali (backoff %lus)...\n", wifiReconnectBackoffMs / 1000UL);
+            WiFi.disconnect();
+            WiFi.reconnect();
+            wifiReconnectBackoffMs = (wifiReconnectBackoffMs * 2 > 60000) ? 60000 : wifiReconnectBackoffMs * 2;
+        }
+    } else {
+        wifiReconnectBackoffMs = 5000;
+    }
+
+    // 2. Periksa sinkronisasi waktu NTP
     checkTimeSync();
 
-    // 2. Hubungkan kembali MQTT jika terputus (reconnect backoff 5 detik)
+    // 3. Reconnect MQTT non-blocking dengan backoff eksponensial (5s - 60s)
     if (WiFi.status() == WL_CONNECTED && !mqttClient.connected()) {
-        if (nowMs - lastMqttReconnectAttemptMs >= 5000) {
+        if (nowMs - lastMqttReconnectAttemptMs >= mqttReconnectBackoffMs) {
             lastMqttReconnectAttemptMs = nowMs;
-            Serial.println("[MQTT] Mencoba menghubungkan ke broker...");
+            Serial.printf("[MQTT] Mencoba menyambung ke broker (backoff %lus)...\n", mqttReconnectBackoffMs / 1000UL);
             mqttClient.connect();
+            mqttReconnectBackoffMs = (mqttReconnectBackoffMs * 2 > 60000) ? 60000 : mqttReconnectBackoffMs * 2;
         }
     }
 
-    // 3. Pembacaan sensor PZEM setiap 1 detik
+    // 4. Pembacaan sensor PZEM setiap 1 detik
     if (nowMs - lastSensorReadMs >= 1000) {
         lastSensorReadMs = nowMs;
         readPZEM();
     }
 
-    // 4. Agregasi dan pembentukan payload telemetri setiap interval (default 10 detik)
+    // 5. Agregasi dan pembentukan payload telemetri setiap interval (default 10 detik)
     if (nowMs - lastPublishMs >= (PUBLISH_INTERVAL_S * 1000UL)) {
         lastPublishMs = nowMs;
 
@@ -231,7 +268,16 @@ void loop() {
 
             ringBuffer.push(sample);
 
-            // Reset akumulator
+            // Periksa apakah ada buffer overflow yang terjadi
+            if (ringBuffer.overflow_count() > lastReportedOverflow) {
+                Serial.printf(
+                    "[BUFFER] Peringatan: Overflow terjadi! Total sampel terbuang: %u\n",
+                    ringBuffer.overflow_count()
+                );
+                lastReportedOverflow = ringBuffer.overflow_count();
+            }
+
+            // Reset akumulator rolling window
             vAccum = 0.0f;
             iAccum = 0.0f;
             pAccum = 0.0f;
@@ -241,6 +287,6 @@ void loop() {
         }
     }
 
-    // 5. Kuras ring buffer ke broker MQTT secara berurutan (maks 5 sampel / detik)
+    // 6. Kuras ring buffer ke broker MQTT secara berurutan (maks 5 sampel / detik)
     drainRingBuffer();
 }

@@ -25,10 +25,13 @@ Firmware ini berjalan pada mikrokontroler **ESP32 DevKit** yang terhubung ke sen
 
 Sesuai aturan keamanan Mosquitto (`deploy/acl` dan `deploy/passwd`), setiap perangkat memiliki topik isolasi `energy/%u/#`:
 
-1. Buat username & password perangkat di Mosquitto broker menggunakan perintah interaktif (tanpa opsi `-b` agar kata sandi tidak terekspos di riwayat shell):
+1. Buat username & password perangkat di Mosquitto broker menggunakan kontainer sementara (karena berkas passwd pada kontainer backend `energy_mosquitto` di-mount read-only `:ro`) secara interaktif tanpa opsi `-b`:
    ```bash
-   # Di dalam kontainer mosquitto atau melalui host:
-   docker exec -it energy_mosquitto mosquitto_passwd /mosquitto/config/passwd device-01
+   # Linux / WSL / Git Bash:
+   docker run --rm -it -v "$PWD/deploy:/mosquitto/config" eclipse-mosquitto:2.0 mosquitto_passwd /mosquitto/config/passwd device-01
+
+   # Windows PowerShell:
+   docker run --rm -it -v "${PWD}/deploy:/mosquitto/config" eclipse-mosquitto:2.0 mosquitto_passwd /mosquitto/config/passwd device-01
    ```
    *(Ketikkan kata sandi secara interaktif saat diminta prompt).*
 

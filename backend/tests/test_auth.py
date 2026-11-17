@@ -62,7 +62,7 @@ def test_startup_validation_rejects_insecure_secrets():
     # 3. Tolak jika jwt_secret adalah contoh .env.example
     s_example_jwt = Settings(
         app_env="production",
-        dashboard_password="strong_password_123",
+        dashboard_password="kunci_akses_sangat_kuat_2026",
         jwt_secret="ganti_jwt_secret_yang_panjang_dan_acak",
     )
     with pytest.raises(RuntimeError, match="Invalid JWT_SECRET"):
@@ -80,17 +80,47 @@ def test_startup_validation_rejects_insecure_secrets():
     # 5. Tolak jika JWT_SECRET < 32 karakter
     s_short_jwt = Settings(
         app_env="production",
-        dashboard_password="strong_password_123",
+        dashboard_password="kunci_akses_sangat_kuat_2026",
         jwt_secret="short_jwt_secret",
     )
     with pytest.raises(RuntimeError, match="at least 32 characters"):
         validate_startup_credentials(s_short_jwt)
 
-    # 6. Lolos jika kredensial kuat
+    # 6. Tolak jika DASHBOARD_PASSWORD mengandung kata umum di production
+    for word in ("password", "admin", "12345", "qwerty"):
+        s_common = Settings(
+            app_env="production",
+            dashboard_password=f"super_{word}_rahasia_aman",
+            jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        )
+        with pytest.raises(RuntimeError, match="must not contain common words"):
+            validate_startup_credentials(s_common)
+
+    # 7. Peringatan log jika allowlist Telegram memakai placeholder contoh
+    s_placeholder = Settings(
+        app_env="production",
+        dashboard_password="kunci_akses_sangat_kuat_2026",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        telegram_allowed_chat_ids="123456789,987654321",
+    )
+    with pytest.MonkeyPatch().context() as mp:
+        import logging
+
+        records = []
+
+        def custom_warn(self, msg, *args):
+            records.append(msg % args if args else msg)
+
+        mp.setattr(logging.Logger, "warning", custom_warn)
+        validate_startup_credentials(s_placeholder)
+        assert any("placeholder" in r for r in records)
+
+    # 8. Lolos jika kredensial kuat
     s_valid = Settings(
         app_env="production",
-        dashboard_password="strong_password_123",
+        dashboard_password="kunci_akses_sangat_kuat_2026",
         jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        telegram_allowed_chat_ids="77889900",
     )
     validate_startup_credentials(s_valid)  # Tidak raise error
 

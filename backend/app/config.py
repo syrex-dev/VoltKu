@@ -1,7 +1,10 @@
+import logging
 from functools import lru_cache
 from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -97,6 +100,22 @@ def validate_startup_credentials(settings: Settings) -> None:
         raise RuntimeError(
             "Invalid DASHBOARD_PASSWORD: must not be empty, must not match example values, "
             "and must be at least 12 characters."
+        )
+
+    if settings.app_env == "production":
+        common_words = ["password", "admin", "12345", "qwerty"]
+        if any(w in dash_pass.lower() for w in common_words):
+            raise RuntimeError(
+                "Invalid DASHBOARD_PASSWORD: in production, password must not contain common words "
+                "(password, admin, 12345, qwerty)."
+            )
+
+    placeholder_allowlist = "123456789,987654321"
+    if settings.telegram_allowed_chat_ids.strip() == placeholder_allowlist:
+        logger.warning(
+            "TELEGRAM_ALLOWED_CHAT_IDS menggunakan nilai placeholder contoh (%s). "
+            "Pesan bot tidak akan sampai ke pemilik asli!",
+            placeholder_allowlist,
         )
 
     if not jwt_sec or jwt_sec in example_jwt_sec or len(jwt_sec) < 32:
