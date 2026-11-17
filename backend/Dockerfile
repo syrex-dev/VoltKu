@@ -29,6 +29,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--worker
 # Stage test: diturunkan dari runtime untuk menjalankan test suite dengan dependensi dev
 FROM runtime AS test
 USER root
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements-dev.txt /app/requirements-dev.txt
 RUN pip install --no-cache-dir -r /app/requirements-dev.txt
 COPY backend/tests /app/backend/tests

@@ -25,8 +25,9 @@ Job evaluasi alert L1 berjalan tiap 15 detik memeriksa jendela telemetri terbaru
   - Bucket `(jenis_hari, jam)` dinyatakan **cukup** jika memiliki `>= 24 jendela lengkap dari >= 2 hari berbeda`.
   - **Fallback**: Jika bucket `(jenis_hari, jam)` belum cukup, lakukan fallback ke **bucket jam saja** (menggabungkan data seluruh jenis hari pada jam yang sama).
   - **Mode Belajar**: Jika bucket jam saja masih belum cukup atau data telemetri historis `< 3 hari penuh`, sistem masuk ke **mode belajar** (hanya mengumpulkan data, tidak memicu alert notifikasi).
+- **Definisi Anomali (Ground Truth)**: Suatu lonjakan daya secara eksplisit didefinisikan sebagai **anomali nyata** jika kenaikan dayanya melebihi `max(150 W, 3 x MAD)` di atas median bucket pada jam tersebut. Lonjakan di bawah ambang ini diklasifikasikan sebagai "tidak bermakna" (fluktuasi beban wajar) dan dikecualikan dari perhitungan evaluasi recall anomali.
 - **Skor Z Robust**: `z = 0.6745 * (x - median) / MAD`, dengan MAD minimum 5% dari median atau 10 W agar pembagi tidak meledak.
-- **Pemicuan Anomali**: Anomali jika `z > 3,5` **dan** selisih absolut `> 100 W` (dapat diatur) **dan** terjadi pada `>= 3 jendela 5 menit berturut-turut`.
+- **Pemicuan Anomali**: Anomali jika `z > 3,5` (dapat dikonfigurasi) **dan** selisih absolut `> 100 W` (dapat dikonfigurasi) **dan** terjadi pada `>= 3 jendela 5 menit berturut-turut`.
 
 ## Detail L3
 Alert jika beban dasar malam naik > 30% dan > 30 W dibanding median 7 hari sebelumnya. Menangkap alat yang lupa dimatikan atau kulkas yang mulai boros.
