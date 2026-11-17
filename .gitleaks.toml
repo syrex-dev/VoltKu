@@ -1,0 +1,12 @@
+title = "gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore unit test dummy fixtures, test suites, and Dockerfile test args"
+paths = [
+    '''backend/tests/.*''',
+    '''backend/Dockerfile''',
+]
+
