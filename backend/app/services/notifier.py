@@ -13,7 +13,7 @@ _current_sender: Optional[NotificationSender] = None
 class NullNotifier:
     """Default notifier saat channel notifikasi belum dikonfigurasi / token kosong.
 
-    Selalu mengembalikan False agar state alert dan scheduled reports tidak maju jika dipanggil langsung.
+    Selalu return False agar state alert dan scheduled reports tidak maju jika dipanggil langsung.
     """
 
     def __call__(self, message: str, event_key: Optional[str] = None) -> bool:
@@ -95,7 +95,9 @@ def setup_notifier(settings=None) -> NotificationSender:
 
     # Default fallback saat token kosong: NullNotifier (gagal, state tidak maju)
     set_notification_sender(null_notifier)
-    logger.info("Notifier aktif: tidak ada kanal terkonfigurasi (mode pencatatan lokal, notified=0)")
+    logger.info(
+        "Notifier aktif: tidak ada kanal terkonfigurasi (mode pencatatan lokal, notified=0)"
+    )
     return null_notifier
 
 

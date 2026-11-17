@@ -828,6 +828,7 @@ def test_no_channel_mode_catchup_reports_does_not_assemble_reports():
     """Mode tanpa kanal: catch-up laporan tidak menyusun laporan."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     from app.models import ScheduledReportsLog
     from app.services.notifier import null_notifier
     from app.services.report_generator import (
