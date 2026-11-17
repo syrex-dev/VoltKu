@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Device, ScheduledReportsLog, Setting
-from app.services.notifier import send_alert_notification
+from app.services.notifier import is_channel_configured, send_alert_notification
 from app.services.reports import calculate_device_forecast, calculate_device_summary
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,10 @@ def generate_and_send_daily_report(
     - Idempotensi: periksa scheduled_reports_log.
     - Ditulis ke log HANYA jika pengiriman sukses.
     """
+    if not is_channel_configured():
+        logger.info("Daily report skipped: no notification channel configured.")
+        return False
+
     if not is_report_enabled(session):
         logger.info("Daily report skipped: report_enabled is False in settings.")
         return False
@@ -165,6 +169,10 @@ def generate_and_send_weekly_report(
     now_ts: Optional[int] = None,
 ) -> bool:
     """Membuat dan mengirimkan laporan mingguan otomatis (tiap Minggu 20.00 WIB)."""
+    if not is_channel_configured():
+        logger.info("Weekly report skipped: no notification channel configured.")
+        return False
+
     if not is_report_enabled(session):
         logger.info("Weekly report skipped: report_enabled is False in settings.")
         return False
@@ -290,6 +298,9 @@ def check_and_send_catchup_reports(
     2. Laporan mingguan: jika hari ini Minggu (weekday 6) dan jam >= 20 dan belum ada catatan
        untuk minggu itu, kirim (sampai 23.59 WIB hari Minggu).
     """
+    if not is_channel_configured():
+        return []
+
     if not is_report_enabled(session):
         return []
 

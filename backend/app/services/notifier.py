@@ -13,17 +13,35 @@ _current_sender: Optional[NotificationSender] = None
 class NullNotifier:
     """Default notifier saat channel notifikasi belum dikonfigurasi / token kosong.
 
-    Selalu mengembalikan False agar state alert dan scheduled reports tidak maju.
+    Selalu mengembalikan False agar state alert dan scheduled reports tidak maju jika dipanggil langsung.
     """
 
     def __call__(self, message: str, event_key: Optional[str] = None) -> bool:
-        logger.debug("[NULL_NOTIFIER] Notifikasi ditolak karena channel belum aktif: %s", message)
         return False
 
 
 def null_notifier(message: str, event_key: Optional[str] = None) -> bool:
     """Fungsi pembungkus singleton untuk NullNotifier."""
     return NullNotifier()(message, event_key=event_key)
+
+
+def is_channel_configured() -> bool:
+    """Memeriksa apakah terdapat kanal notifikasi yang aktif/terkonfigurasi.
+
+    Mengembalikan False jika sender adalah null_notifier atau NullNotifier
+    (karena TELEGRAM_BOT_TOKEN kosong dan NOTIFIER bukan 'log').
+    """
+    global _current_sender
+    if _current_sender is None:
+        return False
+    if _current_sender is null_notifier:
+        return False
+    if isinstance(_current_sender, NullNotifier):
+        return False
+    fn_name = getattr(_current_sender, "__name__", "")
+    if fn_name in ("null_notifier", "_null_sender"):
+        return False
+    return True
 
 
 def create_log_notifier() -> NotificationSender:
@@ -77,7 +95,7 @@ def setup_notifier(settings=None) -> NotificationSender:
 
     # Default fallback saat token kosong: NullNotifier (gagal, state tidak maju)
     set_notification_sender(null_notifier)
-    logger.info("Notifier aktif: NullNotifier (token kosong / bot dinonaktifkan)")
+    logger.info("Notifier aktif: tidak ada kanal terkonfigurasi (mode pencatatan lokal, notified=0)")
     return null_notifier
 
 

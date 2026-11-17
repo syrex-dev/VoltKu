@@ -8,18 +8,10 @@
 #if __has_include("../include/config.h")
     #include "../include/config.h"
 #elif __has_include("../include/config.example.h")
+    #warning "config.h tidak ditemukan! Menggunakan konfigurasi default dari config.example.h untuk kompilasi."
     #include "../include/config.example.h"
 #else
-    #define WIFI_SSID "NAMA_WIFI_ANDA"
-    #define WIFI_PASS "PASSWORD_WIFI_ANDA"
-    #define MQTT_HOST "192.168.1.100"
-    #define MQTT_PORT 1883
-    #define MQTT_USER "device-01"
-    #define MQTT_PASS "PASSWORD_MQTT_ANDA"
-    #define DEVICE_ID "device-01"
-    #define NTP_SERVER "pool.ntp.org"
-    #define PUBLISH_INTERVAL_S 10
-    #define FIRMWARE_VERSION "1.0.0"
+    #error "config.h maupun config.example.h tidak ditemukan!"
 #endif
 
 #include <payload_formatter.hpp>
@@ -200,8 +192,9 @@ void setup() {
     Serial.println("\n--- Monitor Listrik Pintar (ESP32 Firmware) ---");
 
     // Inisialisasi Watchdog Timer Hardware 15 detik (API Arduino Core 2.0.17 / ESP-IDF)
-    esp_task_wdt_init(15, true);
-    esp_task_wdt_add(NULL);
+    esp_err_t wdt_init_ret = esp_task_wdt_init(15, true);
+    esp_err_t wdt_add_ret = esp_task_wdt_add(NULL);
+    Serial.printf("[WDT] Inisialisasi Hardware WDT (15s): init_ret=%d, add_ret=%d\n", wdt_init_ret, wdt_add_ret);
 
     initTopics();
 

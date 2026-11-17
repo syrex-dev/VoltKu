@@ -13,7 +13,7 @@ from app.config import get_settings
 from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import SessionLocal
 from app.models import AlertState, Anomaly, Device, Reading, Setting
-from app.services.notifier import send_alert_notification
+from app.services.notifier import is_channel_configured, send_alert_notification
 
 logger = logging.getLogger(__name__)
 TZ_WIB = ZoneInfo("Asia/Jakarta")
@@ -115,6 +115,7 @@ def evaluate_device_alerts(
     settings = get_settings()
     cooldown_seconds = alert_cooldown_min * 60
     sent_messages: list[str] = []
+    has_channel = is_channel_configured()
 
     # Ambil status alert saat ini untuk perangkat ini
     existing_states = {
@@ -142,8 +143,16 @@ def evaluate_device_alerts(
                 f"(tidak ada data > {OFFLINE_THRESHOLD_SECONDS} detik)"
             )
             evt_key = f"alert:{device.id}:offline:{now_ts}:0"
-            if send_alert_notification(msg, event_key=evt_key):
-                sent_messages.append(msg)
+            if has_channel:
+                can_advance = send_alert_notification(msg, event_key=evt_key)
+                notified_val = 1
+            else:
+                can_advance = True
+                notified_val = 0
+
+            if can_advance:
+                if has_channel:
+                    sent_messages.append(msg)
                 anom = Anomaly(
                     device_id=device.id,
                     ts=now_ts,
@@ -151,7 +160,7 @@ def evaluate_device_alerts(
                     severity="warning",
                     details_json=json.dumps({"last_seen_at": device.last_seen_at}),
                     message=msg,
-                    notified=1,
+                    notified=notified_val,
                 )
                 session.add(anom)
                 session.flush()
@@ -167,19 +176,23 @@ def evaluate_device_alerts(
                         alert_type="offline",
                         state="active",
                         since=now_ts,
-                        last_notified_at=now_ts,
+                        last_notified_at=now_ts if has_channel else 0,
                         details_json=json.dumps(details),
                     )
                     session.add(offline_state)
                 else:
                     offline_state.state = "active"
                     offline_state.since = now_ts
-                    offline_state.last_notified_at = now_ts
+                    offline_state.last_notified_at = now_ts if has_channel else 0
                     offline_state.details_json = json.dumps(details)
 
                 session.commit()
-        elif (now_ts - offline_state.last_notified_at) >= cooldown_seconds:
-            # Pengingat setelah cooldown
+        elif (
+            has_channel
+            and offline_state.last_notified_at
+            and (now_ts - offline_state.last_notified_at) >= cooldown_seconds
+        ):
+            # Pengingat setelah cooldown HANYA jika ada kanal
             msg = (
                 f"[PENGINGAT] {device.name} - Perangkat masih offline "
                 f"sejak {_format_time_wib(offline_state.since)} WIB"
@@ -197,13 +210,15 @@ def evaluate_device_alerts(
                 offline_state.last_notified_at = now_ts
                 session.commit()
     else:
-        # Perangkat online: kirim pesan pulih HANYA jika alert offline pernah terkirim
+        # Perangkat online: kirim pesan pulih
         if offline_state and offline_state.state == "active":
             msg = f"[PULIH] {device.name} - Perangkat online kembali"
             evt_key = f"recovery:{device.id}:offline:{now_ts}"
-            if send_alert_notification(msg, event_key=evt_key):
-                sent_messages.append(msg)
-                offline_state.state = "cleared"
+            if has_channel:
+                if send_alert_notification(msg, event_key=evt_key):
+                    sent_messages.append(msg)
+            offline_state.state = "cleared"
+            if has_channel:
                 offline_state.last_notified_at = now_ts
 
                 # Catat pemulihan di details_json pada episode anomali yang sama
@@ -271,8 +286,16 @@ def evaluate_device_alerts(
                     f"{avg_p} W > {power_limit_w} W"
                 )
                 evt_key = f"alert:{device.id}:power_limit:{now_ts}:0"
-                if send_alert_notification(msg, event_key=evt_key):
-                    sent_messages.append(msg)
+                if has_channel:
+                    can_advance = send_alert_notification(msg, event_key=evt_key)
+                    notified_val = 1
+                else:
+                    can_advance = True
+                    notified_val = 0
+
+                if can_advance:
+                    if has_channel:
+                        sent_messages.append(msg)
                     details = {
                         "avg_p": avg_p,
                         "limit_w": power_limit_w,
@@ -286,7 +309,7 @@ def evaluate_device_alerts(
                         severity="warning",
                         details_json=json.dumps(details),
                         message=msg,
-                        notified=1,
+                        notified=notified_val,
                     )
                     session.add(anom)
                     session.flush()
@@ -298,18 +321,22 @@ def evaluate_device_alerts(
                             alert_type="power_limit",
                             state="active",
                             since=now_ts,
-                            last_notified_at=now_ts,
+                            last_notified_at=now_ts if has_channel else 0,
                             details_json=json.dumps(details),
                         )
                         session.add(power_state)
                     else:
                         power_state.state = "active"
                         power_state.since = now_ts
-                        power_state.last_notified_at = now_ts
+                        power_state.last_notified_at = now_ts if has_channel else 0
                         power_state.details_json = json.dumps(details)
 
                     session.commit()
-            elif (now_ts - power_state.last_notified_at) >= cooldown_seconds:
+            elif (
+                has_channel
+                and power_state.last_notified_at
+                and (now_ts - power_state.last_notified_at) >= cooldown_seconds
+            ):
                 msg = (
                     f"[PENGINGAT] {device.name} - Daya masih tinggi ({avg_p} W) "
                     f"sejak {_format_time_wib(power_state.since)} WIB"
@@ -330,9 +357,11 @@ def evaluate_device_alerts(
             curr_p = round(readings_60s[-1].p, 1)
             msg = f"[PULIH] {device.name} - Daya normal kembali: {curr_p} W"
             evt_key = f"recovery:{device.id}:power_limit:{now_ts}"
-            if send_alert_notification(msg, event_key=evt_key):
-                sent_messages.append(msg)
-                power_state.state = "cleared"
+            if has_channel:
+                if send_alert_notification(msg, event_key=evt_key):
+                    sent_messages.append(msg)
+            power_state.state = "cleared"
+            if has_channel:
                 power_state.last_notified_at = now_ts
 
                 # Catat pemulihan di details_json pada episode anomali yang sama
@@ -402,8 +431,16 @@ def evaluate_device_alerts(
                 limit_v = settings.voltage_min_v
                 msg = f"[PERINGATAN] {device.name} - Tegangan rendah: {avg_v} V < {limit_v} V"
                 evt_key = f"alert:{device.id}:voltage_low:{now_ts}:0"
-                if send_alert_notification(msg, event_key=evt_key):
-                    sent_messages.append(msg)
+                if has_channel:
+                    can_advance = send_alert_notification(msg, event_key=evt_key)
+                    notified_val = 1
+                else:
+                    can_advance = True
+                    notified_val = 0
+
+                if can_advance:
+                    if has_channel:
+                        sent_messages.append(msg)
                     details = {
                         "sub_type": "low",
                         "avg_v": avg_v,
@@ -417,7 +454,7 @@ def evaluate_device_alerts(
                         severity="warning",
                         details_json=json.dumps(details),
                         message=msg,
-                        notified=1,
+                        notified=notified_val,
                     )
                     session.add(anom)
                     session.flush()
@@ -429,18 +466,22 @@ def evaluate_device_alerts(
                             alert_type="voltage_low",
                             state="active",
                             since=now_ts,
-                            last_notified_at=now_ts,
+                            last_notified_at=now_ts if has_channel else 0,
                             details_json=json.dumps(details),
                         )
                         session.add(v_low_state)
                     else:
                         v_low_state.state = "active"
                         v_low_state.since = now_ts
-                        v_low_state.last_notified_at = now_ts
+                        v_low_state.last_notified_at = now_ts if has_channel else 0
                         v_low_state.details_json = json.dumps(details)
 
                     session.commit()
-            elif (now_ts - v_low_state.last_notified_at) >= cooldown_seconds:
+            elif (
+                has_channel
+                and v_low_state.last_notified_at
+                and (now_ts - v_low_state.last_notified_at) >= cooldown_seconds
+            ):
                 msg = (
                     f"[PENGINGAT] {device.name} - Tegangan masih rendah ({avg_v} V) "
                     f"sejak {_format_time_wib(v_low_state.since)} WIB"
@@ -460,9 +501,11 @@ def evaluate_device_alerts(
         elif all_v_normal and v_low_state and v_low_state.state == "active":
             msg = f"[PULIH] {device.name} - Tegangan normal kembali: {avg_v} V"
             evt_key = f"recovery:{device.id}:voltage_low:{now_ts}"
-            if send_alert_notification(msg, event_key=evt_key):
-                sent_messages.append(msg)
-                v_low_state.state = "cleared"
+            if has_channel:
+                if send_alert_notification(msg, event_key=evt_key):
+                    sent_messages.append(msg)
+            v_low_state.state = "cleared"
+            if has_channel:
                 v_low_state.last_notified_at = now_ts
 
                 # Catat pemulihan di details_json pada episode anomali yang sama
@@ -501,8 +544,16 @@ def evaluate_device_alerts(
                 limit_v = settings.voltage_max_v
                 msg = f"[PERINGATAN] {device.name} - Tegangan tinggi: {avg_v} V > {limit_v} V"
                 evt_key = f"alert:{device.id}:voltage_high:{now_ts}:0"
-                if send_alert_notification(msg, event_key=evt_key):
-                    sent_messages.append(msg)
+                if has_channel:
+                    can_advance = send_alert_notification(msg, event_key=evt_key)
+                    notified_val = 1
+                else:
+                    can_advance = True
+                    notified_val = 0
+
+                if can_advance:
+                    if has_channel:
+                        sent_messages.append(msg)
                     details = {
                         "sub_type": "high",
                         "avg_v": avg_v,
@@ -516,7 +567,7 @@ def evaluate_device_alerts(
                         severity="warning",
                         details_json=json.dumps(details),
                         message=msg,
-                        notified=1,
+                        notified=notified_val,
                     )
                     session.add(anom)
                     session.flush()
@@ -528,18 +579,22 @@ def evaluate_device_alerts(
                             alert_type="voltage_high",
                             state="active",
                             since=now_ts,
-                            last_notified_at=now_ts,
+                            last_notified_at=now_ts if has_channel else 0,
                             details_json=json.dumps(details),
                         )
                         session.add(v_high_state)
                     else:
                         v_high_state.state = "active"
                         v_high_state.since = now_ts
-                        v_high_state.last_notified_at = now_ts
+                        v_high_state.last_notified_at = now_ts if has_channel else 0
                         v_high_state.details_json = json.dumps(details)
 
                     session.commit()
-            elif (now_ts - v_high_state.last_notified_at) >= cooldown_seconds:
+            elif (
+                has_channel
+                and v_high_state.last_notified_at
+                and (now_ts - v_high_state.last_notified_at) >= cooldown_seconds
+            ):
                 msg = (
                     f"[PENGINGAT] {device.name} - Tegangan masih tinggi ({avg_v} V) "
                     f"sejak {_format_time_wib(v_high_state.since)} WIB"
@@ -559,9 +614,11 @@ def evaluate_device_alerts(
         elif all_v_normal and v_high_state and v_high_state.state == "active":
             msg = f"[PULIH] {device.name} - Tegangan normal kembali: {avg_v} V"
             evt_key = f"recovery:{device.id}:voltage_high:{now_ts}"
-            if send_alert_notification(msg, event_key=evt_key):
-                sent_messages.append(msg)
-                v_high_state.state = "cleared"
+            if has_channel:
+                if send_alert_notification(msg, event_key=evt_key):
+                    sent_messages.append(msg)
+            v_high_state.state = "cleared"
+            if has_channel:
                 v_high_state.last_notified_at = now_ts
 
                 # Catat pemulihan di details_json pada episode anomali yang sama

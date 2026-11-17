@@ -772,3 +772,129 @@ def test_offline_alert_only_after_120s_gap_not_immediate_lwt():
     assert len(sent_msgs) == 1
     assert "Perangkat offline" in msgs_121[0]
 
+
+def test_no_channel_mode_100_ticks_records_exactly_one_anomaly_and_zero_sends():
+    """Mode tanpa kanal: anomali dicatat normal (notified=0), state aktif,
+
+    100 tick evaluator -> tepat 1 episode anomali, 0 percobaan kirim.
+    """
+    from app.services.notifier import null_notifier
+
+    _, session = get_test_session()
+    # Atur ke mode tanpa kanal (null_notifier)
+    set_notification_sender(null_notifier)
+
+    start_ts = 1736001000
+    startup_ts = start_ts - 500
+
+    dev = Device(
+        id="demo-nochannel",
+        name="Demo No Channel",
+        mcb_watt=2200,
+        last_seen_at=start_ts - 200,  # Offline > 120s
+        status="online",
+    )
+    session.add(dev)
+    session.commit()
+
+    # Jalankan 100 tick evaluator berturut-turut (interval 15 detik)
+    for tick in range(100):
+        tick_ts = start_ts + (tick * 15)
+        sent = evaluate_all_alerts(session, now_ts=tick_ts, startup_ts=startup_ts)
+        assert len(sent) == 0  # 0 pesan terkirim
+
+    # Verifikasi database:
+    # 1. Tepat 1 episode anomali tercatat
+    anomalies = session.scalars(
+        select(Anomaly).where(Anomaly.device_id == "demo-nochannel")
+    ).all()
+    assert len(anomalies) == 1
+    anom = anomalies[0]
+    assert anom.type == "offline"
+    assert anom.notified == 0  # Ditandai notified=0 karena tidak ada kanal
+
+    # 2. AlertState aktif dan tidak bolak-balik reset
+    st = session.scalar(
+        select(AlertState).where(
+            AlertState.device_id == "demo-nochannel",
+            AlertState.alert_type == "offline",
+        )
+    )
+    assert st is not None
+    assert st.state == "active"
+
+
+def test_no_channel_mode_catchup_reports_does_not_assemble_reports():
+    """Mode tanpa kanal: catch-up laporan tidak menyusun laporan."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from app.models import ScheduledReportsLog
+    from app.services.notifier import null_notifier
+    from app.services.report_generator import (
+        check_and_send_catchup_reports,
+        generate_and_send_daily_report,
+    )
+
+    _, session = get_test_session()
+    set_notification_sender(null_notifier)
+
+    # Tambah perangkat aktif
+    session.add(Device(id="demo-dev", name="Demo Dev", mcb_watt=2200, last_seen_at=1736001000))
+    session.commit()
+
+    tz_wib = ZoneInfo("Asia/Jakarta")
+    dt_catchup = datetime(2026, 1, 15, 22, 0, tzinfo=tz_wib)  # Jam 22.00 WIB (> 21.00)
+
+    # Jalankan catch-up
+    actions = check_and_send_catchup_reports(session, now_dt=dt_catchup)
+    assert actions == []  # Tidak menyusun laporan apapun
+
+    # Panggilan langsung generate_and_send_daily_report juga menolak saat tanpa kanal
+    ok = generate_and_send_daily_report(session, target_date_str="2026-01-15")
+    assert ok is False
+
+    # Scheduled reports log tetap kosong
+    logs = session.scalars(select(ScheduledReportsLog)).all()
+    assert len(logs) == 0
+
+
+def test_configured_channel_failure_does_not_advance_state():
+    """Kanal terkonfigurasi tetapi gagal (misal network error):
+
+    state TIDAK maju dan anomali tidak dicatat notified.
+    """
+    _, session = get_test_session()
+    # Mock kanal yang terkonfigurasi tapi selalu gagal (mengembalikan False)
+    set_notification_sender(lambda m, **kw: False)
+
+    now_ts = 1736001000
+    startup_ts = now_ts - 500
+
+    dev = Device(
+        id="demo-fail-chan",
+        name="Demo Fail Channel",
+        mcb_watt=2200,
+        last_seen_at=now_ts - 200,
+        status="online",
+    )
+    session.add(dev)
+    session.commit()
+
+    sent = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(sent) == 0
+
+    # Karena kanal gagal, state TIDAK maju
+    st = session.scalar(
+        select(AlertState).where(
+            AlertState.device_id == "demo-fail-chan",
+            AlertState.alert_type == "offline",
+        )
+    )
+    assert st is None or st.state != "active"
+
+    # Tidak ada anomali yang tersimpan
+    anomalies = session.scalars(
+        select(Anomaly).where(Anomaly.device_id == "demo-fail-chan")
+    ).all()
+    assert len(anomalies) == 0
+
