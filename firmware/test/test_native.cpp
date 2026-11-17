@@ -398,6 +398,87 @@ void test_ring_buffer_1000_random_cycles_invariant_count_equals_non_empty(void) 
     }
 }
 
+void test_ring_buffer_early_ack_before_mark_frees_slot_immediately() {
+    TelemetryRingBuffer rb;
+    TelemetrySample s{};
+    s.ts = 1736000000LL;
+    s.v = 220.0f;
+    s.p = 500.0f;
+    TEST_ASSERT_TRUE(rb.push(s));
+    TEST_ASSERT_EQUAL_UINT32(1, rb.size());
+
+    size_t idx = 0;
+    TelemetrySample out{};
+    TEST_ASSERT_TRUE(rb.get_next_pending(idx, out));
+
+    // Skenario: PUBACK tiba SEBELUM mark_in_flight dipanggil
+    uint16_t packet_id = 105;
+    TEST_ASSERT_FALSE(rb.handle_puback(packet_id));
+    TEST_ASSERT_TRUE(rb.has_early_ack(packet_id));
+    TEST_ASSERT_EQUAL_UINT32(1, rb.early_acks_count());
+    TEST_ASSERT_EQUAL_UINT32(1, rb.size());
+
+    // Saat mark_in_flight dipanggil dengan packet_id yang sudah di-ACK duluan:
+    // Slot langsung dibebaskan seketika tanpa pernah menjadi IN_FLIGHT!
+    TEST_ASSERT_TRUE(rb.mark_in_flight(idx, packet_id));
+    TEST_ASSERT_EQUAL_UINT32(0, rb.size());
+    TEST_ASSERT_EQUAL_UINT32(0, rb.in_flight_count());
+    TEST_ASSERT_FALSE(rb.has_early_ack(packet_id));
+    TEST_ASSERT_EQUAL_UINT32(0, rb.early_acks_count());
+}
+
+void test_ring_buffer_double_early_ack_and_normal_double_ack() {
+    TelemetryRingBuffer rb;
+    uint16_t pid = 77;
+
+    // 1. Double early ACK
+    rb.handle_puback(pid);
+    rb.handle_puback(pid);
+    TEST_ASSERT_EQUAL_UINT32(1, rb.early_acks_count());
+    TEST_ASSERT_TRUE(rb.has_early_ack(pid));
+
+    // 2. Double ACK pada slot normal
+    TelemetrySample s{};
+    s.ts = 1736000000LL;
+    rb.push(s);
+    size_t idx = 0;
+    TelemetrySample out{};
+    rb.get_next_pending(idx, out);
+    rb.mark_in_flight(idx, 88);
+    TEST_ASSERT_TRUE(rb.handle_puback(88)); // Berhasil free slot
+    TEST_ASSERT_FALSE(rb.handle_puback(88)); // ACK ganda kedua: ditangani anggun tanpa crash
+}
+
+void test_ring_buffer_early_acks_overflow_drops_oldest() {
+    TelemetryRingBuffer rb;
+
+    // Isi early_acks hingga kapasitas penuh (16 entri)
+    for (uint16_t i = 1; i <= 16; ++i) {
+        rb.handle_puback(i);
+    }
+    TEST_ASSERT_EQUAL_UINT32(16, rb.early_acks_count());
+    TEST_ASSERT_TRUE(rb.has_early_ack(1));
+    TEST_ASSERT_TRUE(rb.has_early_ack(16));
+
+    // Tambah entri ke-17: entri tertua (id=1) harus dibuang secara FIFO tanpa crash
+    rb.handle_puback(17);
+    TEST_ASSERT_EQUAL_UINT32(16, rb.early_acks_count());
+    TEST_ASSERT_FALSE(rb.has_early_ack(1));
+    TEST_ASSERT_TRUE(rb.has_early_ack(17));
+}
+
+void test_ring_buffer_disconnect_clears_early_acks() {
+    TelemetryRingBuffer rb;
+    rb.handle_puback(501);
+    rb.handle_puback(502);
+    TEST_ASSERT_EQUAL_UINT32(2, rb.early_acks_count());
+
+    rb.on_disconnect();
+    TEST_ASSERT_EQUAL_UINT32(0, rb.early_acks_count());
+    TEST_ASSERT_FALSE(rb.has_early_ack(501));
+    TEST_ASSERT_FALSE(rb.has_early_ack(502));
+}
+
 int main(int argc, char** argv) {
     UNITY_BEGIN();
     RUN_TEST(test_payload_formatting_and_golden_export);
@@ -412,5 +493,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_ring_buffer_out_of_order_puback_maintains_full_capacity);
     RUN_TEST(test_ring_buffer_overwritten_in_flight_slot_delayed_puback_ignored);
     RUN_TEST(test_ring_buffer_1000_random_cycles_invariant_count_equals_non_empty);
+    RUN_TEST(test_ring_buffer_early_ack_before_mark_frees_slot_immediately);
+    RUN_TEST(test_ring_buffer_double_early_ack_and_normal_double_ack);
+    RUN_TEST(test_ring_buffer_early_acks_overflow_drops_oldest);
+    RUN_TEST(test_ring_buffer_disconnect_clears_early_acks);
     return UNITY_END();
 }

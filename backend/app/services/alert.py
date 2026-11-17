@@ -187,28 +187,48 @@ def evaluate_device_alerts(
                     offline_state.details_json = json.dumps(details)
 
                 session.commit()
-        elif (
-            has_channel
-            and offline_state.last_notified_at
-            and (now_ts - offline_state.last_notified_at) >= cooldown_seconds
+        elif has_channel and (
+            offline_state.last_notified_at == 0
+            or (now_ts - offline_state.last_notified_at) >= cooldown_seconds
         ):
-            # Pengingat setelah cooldown HANYA jika ada kanal
-            msg = (
-                f"[PENGINGAT] {device.name} - Perangkat masih offline "
-                f"sejak {_format_time_wib(offline_state.since)} WIB"
-            )
-            try:
-                d_prev = json.loads(offline_state.details_json or "{}")
-            except Exception:
-                d_prev = {}
-            rem_seq = d_prev.get("reminder_seq", 0) + 1
-            d_prev["reminder_seq"] = rem_seq
-            offline_state.details_json = json.dumps(d_prev)
-            evt_key = f"alert:{device.id}:offline:{offline_state.since}:{rem_seq}"
-            if send_alert_notification(msg, event_key=evt_key):
-                sent_messages.append(msg)
-                offline_state.last_notified_at = now_ts
-                session.commit()
+            if offline_state.last_notified_at == 0:
+                # Episode MASIH aktif dari era tanpa kanal -> kirim notifikasi awal sekarang!
+                msg = (
+                    f"[PERINGATAN] {device.name} - Perangkat offline "
+                    f"(tidak ada data > {OFFLINE_THRESHOLD_SECONDS} detik)"
+                )
+                evt_key = f"alert:{device.id}:offline:{offline_state.since}:0"
+                if send_alert_notification(msg, event_key=evt_key):
+                    sent_messages.append(msg)
+                    offline_state.last_notified_at = now_ts
+                    try:
+                        st_data = json.loads(offline_state.details_json or "{}")
+                        anom_id = st_data.get("anomaly_id")
+                        if anom_id:
+                            anom = session.get(Anomaly, anom_id)
+                            if anom:
+                                anom.notified = 1
+                    except Exception:
+                        pass
+                    session.commit()
+            else:
+                # Pengingat setelah cooldown HANYA jika ada kanal
+                msg = (
+                    f"[PENGINGAT] {device.name} - Perangkat masih offline "
+                    f"sejak {_format_time_wib(offline_state.since)} WIB"
+                )
+                try:
+                    d_prev = json.loads(offline_state.details_json or "{}")
+                except Exception:
+                    d_prev = {}
+                rem_seq = d_prev.get("reminder_seq", 0) + 1
+                d_prev["reminder_seq"] = rem_seq
+                offline_state.details_json = json.dumps(d_prev)
+                evt_key = f"alert:{device.id}:offline:{offline_state.since}:{rem_seq}"
+                if send_alert_notification(msg, event_key=evt_key):
+                    sent_messages.append(msg)
+                    offline_state.last_notified_at = now_ts
+                    session.commit()
     else:
         # Perangkat online: kirim pesan pulih
         if offline_state and offline_state.state == "active":
@@ -332,27 +352,47 @@ def evaluate_device_alerts(
                         power_state.details_json = json.dumps(details)
 
                     session.commit()
-            elif (
-                has_channel
-                and power_state.last_notified_at
-                and (now_ts - power_state.last_notified_at) >= cooldown_seconds
+            elif has_channel and (
+                power_state.last_notified_at == 0
+                or (now_ts - power_state.last_notified_at) >= cooldown_seconds
             ):
-                msg = (
-                    f"[PENGINGAT] {device.name} - Daya masih tinggi ({avg_p} W) "
-                    f"sejak {_format_time_wib(power_state.since)} WIB"
-                )
-                try:
-                    d_prev = json.loads(power_state.details_json or "{}")
-                except Exception:
-                    d_prev = {}
-                rem_seq = d_prev.get("reminder_seq", 0) + 1
-                d_prev["reminder_seq"] = rem_seq
-                power_state.details_json = json.dumps(d_prev)
-                evt_key = f"alert:{device.id}:power_limit:{power_state.since}:{rem_seq}"
-                if send_alert_notification(msg, event_key=evt_key):
-                    sent_messages.append(msg)
-                    power_state.last_notified_at = now_ts
-                    session.commit()
+                if power_state.last_notified_at == 0:
+                    limit_p = device.mcb_watt or settings.default_mcb_watt
+                    msg = (
+                        f"[PERINGATAN] {device.name} - Daya melebihi batas: "
+                        f"{avg_p} W > {limit_p} W"
+                    )
+                    evt_key = f"alert:{device.id}:power_limit:{power_state.since}:0"
+                    if send_alert_notification(msg, event_key=evt_key):
+                        sent_messages.append(msg)
+                        power_state.last_notified_at = now_ts
+                        try:
+                            st_data = json.loads(power_state.details_json or "{}")
+                            anom_id = st_data.get("anomaly_id")
+                            if anom_id:
+                                anom = session.get(Anomaly, anom_id)
+                                if anom:
+                                    anom.notified = 1
+                        except Exception:
+                            pass
+                        session.commit()
+                else:
+                    msg = (
+                        f"[PENGINGAT] {device.name} - Daya masih tinggi ({avg_p} W) "
+                        f"sejak {_format_time_wib(power_state.since)} WIB"
+                    )
+                    try:
+                        d_prev = json.loads(power_state.details_json or "{}")
+                    except Exception:
+                        d_prev = {}
+                    rem_seq = d_prev.get("reminder_seq", 0) + 1
+                    d_prev["reminder_seq"] = rem_seq
+                    power_state.details_json = json.dumps(d_prev)
+                    evt_key = f"alert:{device.id}:power_limit:{power_state.since}:{rem_seq}"
+                    if send_alert_notification(msg, event_key=evt_key):
+                        sent_messages.append(msg)
+                        power_state.last_notified_at = now_ts
+                        session.commit()
         elif all_recovered and power_state and power_state.state == "active":
             curr_p = round(readings_60s[-1].p, 1)
             msg = f"[PULIH] {device.name} - Daya normal kembali: {curr_p} W"
@@ -477,27 +517,44 @@ def evaluate_device_alerts(
                         v_low_state.details_json = json.dumps(details)
 
                     session.commit()
-            elif (
-                has_channel
-                and v_low_state.last_notified_at
-                and (now_ts - v_low_state.last_notified_at) >= cooldown_seconds
+            elif has_channel and (
+                v_low_state.last_notified_at == 0
+                or (now_ts - v_low_state.last_notified_at) >= cooldown_seconds
             ):
-                msg = (
-                    f"[PENGINGAT] {device.name} - Tegangan masih rendah ({avg_v} V) "
-                    f"sejak {_format_time_wib(v_low_state.since)} WIB"
-                )
-                try:
-                    d_prev = json.loads(v_low_state.details_json or "{}")
-                except Exception:
-                    d_prev = {}
-                rem_seq = d_prev.get("reminder_seq", 0) + 1
-                d_prev["reminder_seq"] = rem_seq
-                v_low_state.details_json = json.dumps(d_prev)
-                evt_key = f"alert:{device.id}:voltage_low:{v_low_state.since}:{rem_seq}"
-                if send_alert_notification(msg, event_key=evt_key):
-                    sent_messages.append(msg)
-                    v_low_state.last_notified_at = now_ts
-                    session.commit()
+                if v_low_state.last_notified_at == 0:
+                    limit_v = settings.voltage_min_v
+                    msg = f"[PERINGATAN] {device.name} - Tegangan rendah: {avg_v} V < {limit_v} V"
+                    evt_key = f"alert:{device.id}:voltage_low:{v_low_state.since}:0"
+                    if send_alert_notification(msg, event_key=evt_key):
+                        sent_messages.append(msg)
+                        v_low_state.last_notified_at = now_ts
+                        try:
+                            st_data = json.loads(v_low_state.details_json or "{}")
+                            anom_id = st_data.get("anomaly_id")
+                            if anom_id:
+                                anom = session.get(Anomaly, anom_id)
+                                if anom:
+                                    anom.notified = 1
+                        except Exception:
+                            pass
+                        session.commit()
+                else:
+                    msg = (
+                        f"[PENGINGAT] {device.name} - Tegangan masih rendah ({avg_v} V) "
+                        f"sejak {_format_time_wib(v_low_state.since)} WIB"
+                    )
+                    try:
+                        d_prev = json.loads(v_low_state.details_json or "{}")
+                    except Exception:
+                        d_prev = {}
+                    rem_seq = d_prev.get("reminder_seq", 0) + 1
+                    d_prev["reminder_seq"] = rem_seq
+                    v_low_state.details_json = json.dumps(d_prev)
+                    evt_key = f"alert:{device.id}:voltage_low:{v_low_state.since}:{rem_seq}"
+                    if send_alert_notification(msg, event_key=evt_key):
+                        sent_messages.append(msg)
+                        v_low_state.last_notified_at = now_ts
+                        session.commit()
         elif all_v_normal and v_low_state and v_low_state.state == "active":
             msg = f"[PULIH] {device.name} - Tegangan normal kembali: {avg_v} V"
             evt_key = f"recovery:{device.id}:voltage_low:{now_ts}"
@@ -590,27 +647,44 @@ def evaluate_device_alerts(
                         v_high_state.details_json = json.dumps(details)
 
                     session.commit()
-            elif (
-                has_channel
-                and v_high_state.last_notified_at
-                and (now_ts - v_high_state.last_notified_at) >= cooldown_seconds
+            elif has_channel and (
+                v_high_state.last_notified_at == 0
+                or (now_ts - v_high_state.last_notified_at) >= cooldown_seconds
             ):
-                msg = (
-                    f"[PENGINGAT] {device.name} - Tegangan masih tinggi ({avg_v} V) "
-                    f"sejak {_format_time_wib(v_high_state.since)} WIB"
-                )
-                try:
-                    d_prev = json.loads(v_high_state.details_json or "{}")
-                except Exception:
-                    d_prev = {}
-                rem_seq = d_prev.get("reminder_seq", 0) + 1
-                d_prev["reminder_seq"] = rem_seq
-                v_high_state.details_json = json.dumps(d_prev)
-                evt_key = f"alert:{device.id}:voltage_high:{v_high_state.since}:{rem_seq}"
-                if send_alert_notification(msg, event_key=evt_key):
-                    sent_messages.append(msg)
-                    v_high_state.last_notified_at = now_ts
-                    session.commit()
+                if v_high_state.last_notified_at == 0:
+                    limit_v = settings.voltage_max_v
+                    msg = f"[PERINGATAN] {device.name} - Tegangan tinggi: {avg_v} V > {limit_v} V"
+                    evt_key = f"alert:{device.id}:voltage_high:{v_high_state.since}:0"
+                    if send_alert_notification(msg, event_key=evt_key):
+                        sent_messages.append(msg)
+                        v_high_state.last_notified_at = now_ts
+                        try:
+                            st_data = json.loads(v_high_state.details_json or "{}")
+                            anom_id = st_data.get("anomaly_id")
+                            if anom_id:
+                                anom = session.get(Anomaly, anom_id)
+                                if anom:
+                                    anom.notified = 1
+                        except Exception:
+                            pass
+                        session.commit()
+                else:
+                    msg = (
+                        f"[PENGINGAT] {device.name} - Tegangan masih tinggi ({avg_v} V) "
+                        f"sejak {_format_time_wib(v_high_state.since)} WIB"
+                    )
+                    try:
+                        d_prev = json.loads(v_high_state.details_json or "{}")
+                    except Exception:
+                        d_prev = {}
+                    rem_seq = d_prev.get("reminder_seq", 0) + 1
+                    d_prev["reminder_seq"] = rem_seq
+                    v_high_state.details_json = json.dumps(d_prev)
+                    evt_key = f"alert:{device.id}:voltage_high:{v_high_state.since}:{rem_seq}"
+                    if send_alert_notification(msg, event_key=evt_key):
+                        sent_messages.append(msg)
+                        v_high_state.last_notified_at = now_ts
+                        session.commit()
         elif all_v_normal and v_high_state and v_high_state.state == "active":
             msg = f"[PULIH] {device.name} - Tegangan normal kembali: {avg_v} V"
             evt_key = f"recovery:{device.id}:voltage_high:{now_ts}"

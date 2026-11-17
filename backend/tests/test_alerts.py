@@ -899,3 +899,83 @@ def test_configured_channel_failure_does_not_advance_state():
     ).all()
     assert len(anomalies) == 0
 
+
+def test_channel_reconfiguration_sends_only_still_active_episodes():
+    """Saat kanal baru dikonfigurasi, hanya episode yang MASIH aktif yang dikirim;
+
+    episode yang sudah pulih tidak dikirim.
+    """
+    _, session = get_test_session()
+    from app.services.notifier import null_notifier
+
+    # 1. Mode tanpa kanal
+    set_notification_sender(null_notifier)
+
+    now_ts = 1736001000
+    startup_ts = now_ts - 500
+
+    # Perangkat 1: akan tetap offline (MASIH aktif saat kanal tiba)
+    dev_active = Device(
+        id="demo-still-offline",
+        name="Demo Still Offline",
+        mcb_watt=2200,
+        last_seen_at=now_ts - 200,
+        status="online",
+    )
+    # Perangkat 2: offline lalu pulih sebelum kanal tiba (SUDAH pulih)
+    dev_cleared = Device(
+        id="demo-cleared-before-chan",
+        name="Demo Cleared",
+        mcb_watt=2200,
+        last_seen_at=now_ts - 200,
+        status="online",
+    )
+    session.add_all([dev_active, dev_cleared])
+    session.commit()
+
+    # Evaluasi saat tanpa kanal
+    sent_no_chan = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(sent_no_chan) == 0
+
+    # Pastikan kedua episode tercatat dengan notified=0 dan last_notified_at=0
+    anoms_pre = session.scalars(select(Anomaly)).all()
+    assert len(anoms_pre) == 2
+    assert all(a.notified == 0 for a in anoms_pre)
+
+    # dev_cleared pulih sebelum kanal dikonfigurasi
+    dev_cleared.last_seen_at = now_ts + 10
+    session.commit()
+    evaluate_all_alerts(session, now_ts=now_ts + 10, startup_ts=startup_ts)
+
+    # State dev_cleared sudah "cleared"
+    st_cleared = session.scalar(
+        select(AlertState).where(
+            AlertState.device_id == "demo-cleared-before-chan",
+            AlertState.alert_type == "offline",
+        )
+    )
+    assert st_cleared is not None and st_cleared.state == "cleared"
+
+    # 2. Kanal sekarang dikonfigurasi!
+    sent_live: list[str] = []
+
+    def mock_live_channel(msg: str, **kwargs) -> bool:
+        sent_live.append(msg)
+        return True
+
+    set_notification_sender(mock_live_channel)
+
+    # 3. Evaluasi saat kanal aktif
+    sent_after_config = evaluate_all_alerts(session, now_ts=now_ts + 20, startup_ts=startup_ts)
+
+    # Hanya episode yang MASIH aktif (dev_active) yang dikirim!
+    assert len(sent_after_config) == 1
+    assert "Demo Still Offline" in sent_after_config[0]
+    assert not any("Demo Cleared" in msg for msg in sent_after_config)
+
+    # Anomali dev_active diperbarui menjadi notified=1
+    anom_active = session.scalar(
+        select(Anomaly).where(Anomaly.device_id == "demo-still-offline")
+    )
+    assert anom_active.notified == 1
+

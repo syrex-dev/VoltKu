@@ -4,6 +4,8 @@
 #include <PZEM004Tv30.h>
 #include <esp_task_wdt.h>
 #include <time.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 // Sertakan config.h jika ada di direktori include proyek
 #if __has_include("../include/config.h")
@@ -36,6 +38,22 @@ PZEM004Tv30 pzem(PZEMSerial, 16, 17);
 espMqttClient mqttClient;
 energy_core::TelemetryRingBuffer ringBuffer;
 energy_core::DrainRateLimiter drainLimiter;
+
+// Mutex rekursif pengaman akses ringBuffer di antara loopTask dan task mqttclient
+SemaphoreHandle_t ringBufferMutex = nullptr;
+
+struct RingBufferLock {
+    RingBufferLock() {
+        if (ringBufferMutex) {
+            xSemaphoreTakeRecursive(ringBufferMutex, portMAX_DELAY);
+        }
+    }
+    ~RingBufferLock() {
+        if (ringBufferMutex) {
+            xSemaphoreGiveRecursive(ringBufferMutex);
+        }
+    }
+};
 
 // Buffer penampung payload JSON
 char payloadBuffer[256];
@@ -88,11 +106,13 @@ void onMqttConnect(bool sessionPresent) {
 
 void onMqttDisconnect(espMqttClientTypes::DisconnectReason reason) {
     Serial.printf("[MQTT] Terputus dari broker. Alasan: %u\n", static_cast<unsigned int>(reason));
+    RingBufferLock lock;
     ringBuffer.on_disconnect();
 }
 
 void onMqttPublish(uint16_t packetId) {
     // Dipanggil saat broker mengirim PUBACK (QoS 1)
+    RingBufferLock lock;
     ringBuffer.handle_puback(packetId);
 }
 
@@ -174,8 +194,15 @@ void readPZEM() {
 }
 
 void drainRingBuffer() {
-    if (!mqttClient.connected() || ringBuffer.empty()) {
+    if (!mqttClient.connected()) {
         return;
+    }
+
+    {
+        RingBufferLock lock;
+        if (ringBuffer.empty()) {
+            return;
+        }
     }
 
     // Rate limiter pengurasan ring buffer: maks 5 sampel / detik via energy_core::DrainRateLimiter
@@ -186,11 +213,18 @@ void drainRingBuffer() {
 
     size_t slotIdx = 0;
     energy_core::TelemetrySample sample{};
-    if (ringBuffer.get_next_pending(slotIdx, sample)) {
+    bool hasPending = false;
+    {
+        RingBufferLock lock;
+        hasPending = ringBuffer.get_next_pending(slotIdx, sample);
+    }
+
+    if (hasPending) {
         int len = energy_core::format_telemetry_payload(payloadBuffer, sizeof(payloadBuffer), sample);
         if (len > 0) {
             uint16_t packetId = mqttClient.publish(topicTelemetry, 1, false, payloadBuffer);
             if (packetId > 0) {
+                RingBufferLock lock;
                 ringBuffer.mark_in_flight(slotIdx, packetId);
                 drainLimiter.record_drain(nowMs);
                 lastDrainMs = nowMs;
@@ -202,6 +236,9 @@ void drainRingBuffer() {
 void setup() {
     Serial.begin(115200);
     Serial.println("\n--- Monitor Listrik Pintar (ESP32 Firmware) ---");
+
+    // Inisialisasi Mutex Rekursif pengaman buffer
+    ringBufferMutex = xSemaphoreCreateRecursiveMutex();
 
     // Inisialisasi Watchdog Timer Hardware 15 detik (API Arduino Core 2.0.17 / ESP-IDF)
     esp_err_t wdt_init_ret = esp_task_wdt_init(15, true);
@@ -292,6 +329,7 @@ void loop() {
                 std::strncpy(sample.fw, FIRMWARE_VERSION, sizeof(sample.fw) - 1);
                 sample.fw[sizeof(sample.fw) - 1] = '\0';
 
+                RingBufferLock lock;
                 ringBuffer.push(sample);
 
                 // Periksa apakah ada buffer overflow yang terjadi
