@@ -53,7 +53,7 @@ chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
 - `p_base`: `REAL`, bernilai `NULL` sebelum pukul 05.00 WIB.
 - `alert_state`:
   - `device_id`: `VARCHAR(64)`
-  - `alert_type`: `VARCHAR(32)` (`power_limit`, `voltage_low`, `voltage_high`, `offline`)
+  - `alert_type`: `VARCHAR(32)` (`power_limit`, `voltage_low`, `voltage_high`, `offline`, `spike_vs_baseline`, `night_baseload`)
   - `state`: `VARCHAR(16)` (`active`, `cleared`)
   - `since`, `last_notified_at`: `INTEGER` (epoch detik UTC)
   - `details_json`: `TEXT` (metadata pemicu)
