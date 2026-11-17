@@ -19,10 +19,14 @@ Job evaluasi alert L1 berjalan tiap 15 detik memeriksa jendela telemetri terbaru
 - **Perangkat Offline**: Status tampilan (dashboard, /perangkat) dapat langsung menampilkan status offline dari pesan LWT MQTT. Namun, **alert notifikasi offline HANYA terpicu** jika selisih waktu telemetri `now - last_seen_at > 120 detik`. LWT offline tanpa jeda waktu 120 detik tidak memicu alert notifikasi. Episode alert offline dicatat ke tabel `anomalies`.
 
 ## Detail L2
-- Kelompokkan `p_avg` per jam dari 14 hari terakhir ke bucket (jenis_hari, jam 0-23). Hitung median dan MAD per bucket.
-- Minimal 4 sampel per bucket. Jika kurang, pakai bucket jam saja. Jika masih kurang, masuk **mode belajar** (3 hari pertama, tidak mengirim alert).
-- Skor: `z = 0.6745 * (x - median) / MAD`, dengan MAD minimum 5% dari median atau 10 W agar tidak meledak.
-- Anomali jika z > 3,5 **dan** selisih absolut > 100 W (dapat diatur) **dan** terjadi pada >= 3 jendela 5 menit berturut-turut.
+- **Kelengkapan Jendela 5 Menit**: Suatu jendela 5 menit dinyatakan **lengkap** jika memiliki `>= 24 dari 30 pembacaan` telemetri (80%). Jendela yang tidak lengkap (< 80%) diabaikan dari perhitungan baseline.
+- **Kecukupan Bucket Baseline (14 Hari)**:
+  - Kelompokkan jendela 5 menit lengkap dari 14 hari terakhir ke dalam bucket `(jenis_hari, jam 0-23)`, dengan `jenis_hari` terbagi atas hari kerja (Senin–Jumat) dan akhir pekan (Sabtu–Minggu). Hitung median dan MAD per bucket.
+  - Bucket `(jenis_hari, jam)` dinyatakan **cukup** jika memiliki `>= 24 jendela lengkap dari >= 2 hari berbeda`.
+  - **Fallback**: Jika bucket `(jenis_hari, jam)` belum cukup, lakukan fallback ke **bucket jam saja** (menggabungkan data seluruh jenis hari pada jam yang sama).
+  - **Mode Belajar**: Jika bucket jam saja masih belum cukup atau data telemetri historis `< 3 hari penuh`, sistem masuk ke **mode belajar** (hanya mengumpulkan data, tidak memicu alert notifikasi).
+- **Skor Z Robust**: `z = 0.6745 * (x - median) / MAD`, dengan MAD minimum 5% dari median atau 10 W agar pembagi tidak meledak.
+- **Pemicuan Anomali**: Anomali jika `z > 3,5` **dan** selisih absolut `> 100 W` (dapat diatur) **dan** terjadi pada `>= 3 jendela 5 menit berturut-turut`.
 
 ## Detail L3
 Alert jika beban dasar malam naik > 30% dan > 30 W dibanding median 7 hari sebelumnya. Menangkap alat yang lupa dimatikan atau kulkas yang mulai boros.
