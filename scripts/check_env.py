@@ -26,7 +26,7 @@ REQUIRED_VARS = [
 
 PLACEHOLDER_ALLOWLIST = "123456789,987654321"
 EXAMPLE_PASSWORDS = {"ganti_password_dashboard", "rahasia123", "password", ""}
-COMMON_WORDS = ["password", "admin", "12345", "qwerty"]
+COMMON_WORDS = ["password", "admin", "12345", "qwerty", "letmein", "welcome"]
 
 
 def load_env_file(path: Path) -> dict[str, str]:
@@ -53,11 +53,23 @@ def check_dashboard_password(password: str | None, app_env: str) -> tuple[bool, 
         return False, "Cocok dengan contoh template"
     if len(password) < 12:
         return False, "Panjang kurang dari 12 karakter"
+
+    lower = password.lower()
+    matched = [w for w in COMMON_WORDS if w in lower]
+
     if app_env == "production":
-        lower = password.lower()
-        for w in COMMON_WORDS:
-            if w in lower:
-                return False, f"Mengandung kata umum '{w}' (ditolak di production)"
+        reasons = []
+        if len(password) < 16:
+            reasons.append("panjang kurang dari 16 karakter (wajib >= 16 di production)")
+        if matched:
+            reasons.append(f"mengandung kata umum '{', '.join(matched)}' (ditolak di production)")
+        if reasons:
+            return False, "; ".join(reasons)
+    else:
+        if matched:
+            w_str = ", ".join(matched)
+            return True, f"Lolos aturan (PERINGATAN KERAS: mengandung kata umum '{w_str}')"
+
     return True, "Lolos aturan"
 
 

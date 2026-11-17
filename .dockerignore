@@ -13,7 +13,12 @@ data/*
 !data/.gitkeep
 deploy/passwd
 deploy/*.passwd
-firmware/
+firmware/.pio
+firmware/include
+firmware/lib
+firmware/src
+firmware/platformio.ini
+firmware/README.md
 simulator/
 docs/
 README.md

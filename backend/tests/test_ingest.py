@@ -170,3 +170,40 @@ def test_device_offline_detection():
     # Device dengan status eksplisit 'offline' (LWT)
     dev_lwt = Device(id="d3", name="d3", last_seen_at=now - 10, status="offline")
     assert get_device_status(dev_lwt, now_utc=now) == "offline"
+
+
+def test_ingest_non_standard_status_payload_behavior():
+    """Perilaku ingest saat menerima payload status selain online/offline (misal: 'error_pzem').
+
+    Backend mengabaikan status non-standar sehingga status perangkat tidak rusak,
+    perangkat baru dengan status error tidak dibuat otomatis, dan status perangkat
+    yang sudah online tetap online.
+    """
+    from app.db import SessionLocal
+
+    service = IngestService()
+
+    # 1. Status 'error_pzem' untuk device yang belum terdaftar: tidak membuat entri di DB
+    service._handle_message("energy/dev_unknown/status", "error_pzem")
+    with SessionLocal() as session:
+        dev_unknown = session.scalar(select(Device).where(Device.id == "dev_unknown"))
+        assert dev_unknown is None
+
+    # 2. Status 'online' mendaftarkan device dengan status online
+    service._handle_message("energy/dev_known/status", "online")
+    with SessionLocal() as session:
+        dev_known = session.scalar(select(Device).where(Device.id == "dev_known"))
+        assert dev_known is not None
+        assert dev_known.status == "online"
+        last_seen = dev_known.last_seen_at
+
+    # 3. Payload non-standar tidak mengubah status device yang sudah online
+    for non_std_status in ("error_pzem", "rebooting", "unknown_code", "ERROR"):
+        service._handle_message("energy/dev_known/status", non_std_status)
+        with SessionLocal() as session:
+            dev = session.scalar(select(Device).where(Device.id == "dev_known"))
+            assert dev is not None
+            assert dev.status == "online"
+            # last_seen_at tidak berubah
+            assert dev.last_seen_at == last_seen
+

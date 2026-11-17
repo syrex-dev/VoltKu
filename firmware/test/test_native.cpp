@@ -252,6 +252,152 @@ void test_drain_rate_limiter_max_5_per_second(void) {
     TEST_ASSERT_EQUAL_UINT32(1, limiter.count_in_window());
 }
 
+void test_ring_buffer_out_of_order_puback_maintains_full_capacity(void) {
+    TelemetryRingBuffer rb;
+    // 1. Masukkan 4 sampel
+    for (int i = 0; i < 4; ++i) {
+        TelemetrySample s{};
+        s.ts = 1736000000LL + i;
+        TEST_ASSERT_TRUE(rb.push(s));
+    }
+    TEST_ASSERT_EQUAL_UINT32(4, rb.size());
+
+    // 2. Tandai keempatnya in-flight dengan packet_id 101, 102, 103, 104
+    size_t indices[4];
+    for (int i = 0; i < 4; ++i) {
+        TelemetrySample out{};
+        TEST_ASSERT_TRUE(rb.get_next_pending(indices[i], out));
+        TEST_ASSERT_TRUE(rb.mark_in_flight(indices[i], static_cast<uint16_t>(101 + i)));
+    }
+    TEST_ASSERT_EQUAL_UINT32(4, rb.in_flight_count());
+
+    // 3. Terima PUBACK out-of-order: ACK slot tengah (102 dan 103), slot 101 dan 104 tetap in-flight
+    TEST_ASSERT_TRUE(rb.handle_puback(102));
+    TEST_ASSERT_TRUE(rb.handle_puback(103));
+    TEST_ASSERT_EQUAL_UINT32(2, rb.in_flight_count());
+    TEST_ASSERT_EQUAL_UINT32(2, rb.size());
+
+    // 4. Isi ulang buffer sampai penuh: karena kapasitas 360 dan sisa 2 item, harus bisa push 358 item
+    for (int i = 0; i < 358; ++i) {
+        TelemetrySample s{};
+        s.ts = 1736001000LL + i;
+        TEST_ASSERT_TRUE(rb.push(s));
+    }
+    // Kapasitas efektif harus persis 360 (tidak bocor/tersumbat karena slot tengah kosong)
+    TEST_ASSERT_EQUAL_UINT32(360, rb.size());
+    TEST_ASSERT_EQUAL_UINT32(0, rb.overflow_count());
+    TEST_ASSERT_EQUAL_UINT32(360, rb.count_non_empty_slots());
+
+    // 5. Push 1 lagi -> baru overflow terjadi (360 tetap penuh)
+    TelemetrySample s_overflow{};
+    s_overflow.ts = 1736009999LL;
+    TEST_ASSERT_TRUE(rb.push(s_overflow));
+    TEST_ASSERT_EQUAL_UINT32(360, rb.size());
+    TEST_ASSERT_EQUAL_UINT32(1, rb.overflow_count());
+}
+
+void test_ring_buffer_overwritten_in_flight_slot_delayed_puback_ignored(void) {
+    TelemetryRingBuffer rb;
+    // 1. Isi penuh 360 sampel
+    for (int i = 0; i < 360; ++i) {
+        TelemetrySample s{};
+        s.ts = 1736000000LL + i;
+        TEST_ASSERT_TRUE(rb.push(s));
+    }
+    TEST_ASSERT_EQUAL_UINT32(360, rb.size());
+
+    // 2. Ambil sampel tertua (index paling awal) dan tandai in-flight dengan packet_id 555
+    size_t idx0 = 0;
+    TelemetrySample out0{};
+    TEST_ASSERT_TRUE(rb.get_next_pending(idx0, out0));
+    TEST_ASSERT_EQUAL_INT64(1736000000LL, out0.ts);
+    TEST_ASSERT_TRUE(rb.mark_in_flight(idx0, 555));
+    TEST_ASSERT_EQUAL_UINT32(1, rb.in_flight_count());
+
+    // 3. Masukkan 1 sampel baru saat buffer penuh -> sampel tertua (in-flight 555) ditimpa
+    TelemetrySample s_new{};
+    s_new.ts = 1736050000LL;
+    TEST_ASSERT_TRUE(rb.push(s_new));
+    TEST_ASSERT_EQUAL_UINT32(360, rb.size());
+    TEST_ASSERT_EQUAL_UINT32(1, rb.overflow_count());
+    // In-flight count harus didekrementasi saat slot in-flight ditimpa
+    TEST_ASSERT_EQUAL_UINT32(0, rb.in_flight_count());
+
+    // 4. PUBACK terlambat untuk packet_id 555 datang kemudian -> harus diabaikan (false)
+    TEST_ASSERT_FALSE(rb.handle_puback(555));
+
+    // 5. Pastikan integritas buffer tetap sempurna
+    TEST_ASSERT_EQUAL_UINT32(360, rb.size());
+    TEST_ASSERT_EQUAL_UINT32(0, rb.in_flight_count());
+    TEST_ASSERT_EQUAL_UINT32(1, rb.overflow_count());
+    TEST_ASSERT_EQUAL_UINT32(360, rb.count_non_empty_slots());
+
+    // Sampel terdepan saat ini adalah ts=1736000001
+    size_t next_idx = 0;
+    TelemetrySample next_out{};
+    TEST_ASSERT_TRUE(rb.get_next_pending(next_idx, next_out));
+    TEST_ASSERT_EQUAL_INT64(1736000001LL, next_out.ts);
+}
+
+void test_ring_buffer_1000_random_cycles_invariant_count_equals_non_empty(void) {
+    TelemetryRingBuffer rb;
+    uint32_t seed = 123456789;
+    auto lcg_rand = [&seed]() -> uint32_t {
+        seed = seed * 1664525u + 1013904223u;
+        return seed;
+    };
+
+    uint16_t next_pkt_id = 1;
+    uint16_t active_pkt_ids[16];
+    size_t active_pkt_count = 0;
+    int64_t current_ts = 1736000000LL;
+
+    for (int cycle = 0; cycle < 1000; ++cycle) {
+        uint32_t action = lcg_rand() % 5;
+        if (action == 0 || action == 1) {
+            // Push
+            TelemetrySample s{};
+            s.ts = ++current_ts;
+            s.p = static_cast<float>(lcg_rand() % 5000);
+            rb.push(s);
+        } else if (action == 2) {
+            // Get next pending & mark in flight
+            size_t idx = 0;
+            TelemetrySample out{};
+            if (rb.get_next_pending(idx, out)) {
+                uint16_t pid = next_pkt_id++;
+                if (pid == 0) pid = next_pkt_id++;
+                if (rb.mark_in_flight(idx, pid)) {
+                    if (active_pkt_count < 16) {
+                        active_pkt_ids[active_pkt_count++] = pid;
+                    }
+                }
+            }
+        } else if (action == 3) {
+            // Handle PUBACK
+            if (active_pkt_count > 0) {
+                size_t p_idx = lcg_rand() % active_pkt_count;
+                uint16_t pid = active_pkt_ids[p_idx];
+                active_pkt_ids[p_idx] = active_pkt_ids[active_pkt_count - 1];
+                --active_pkt_count;
+                rb.handle_puback(pid);
+            } else {
+                rb.handle_puback(static_cast<uint16_t>(lcg_rand() % 500));
+            }
+        } else if (action == 4) {
+            if ((lcg_rand() % 20) == 0) {
+                rb.on_disconnect();
+                active_pkt_count = 0;
+            }
+        }
+
+        // Invarian mutlak: count_ (rb.size()) == jumlah slot non-EMPTY di storage
+        TEST_ASSERT_EQUAL_UINT32(rb.size(), rb.count_non_empty_slots());
+        TEST_ASSERT_LESS_OR_EQUAL_UINT32(360, rb.size());
+        TEST_ASSERT_LESS_OR_EQUAL_UINT32(4, rb.in_flight_count());
+    }
+}
+
 int main(int argc, char** argv) {
     UNITY_BEGIN();
     RUN_TEST(test_payload_formatting_and_golden_export);
@@ -263,5 +409,8 @@ int main(int argc, char** argv) {
     RUN_TEST(test_ring_buffer_puback_unknown_packet_id_ignored);
     RUN_TEST(test_ring_buffer_double_puback_handled_gracefully);
     RUN_TEST(test_drain_rate_limiter_max_5_per_second);
+    RUN_TEST(test_ring_buffer_out_of_order_puback_maintains_full_capacity);
+    RUN_TEST(test_ring_buffer_overwritten_in_flight_slot_delayed_puback_ignored);
+    RUN_TEST(test_ring_buffer_1000_random_cycles_invariant_count_equals_non_empty);
     return UNITY_END();
 }

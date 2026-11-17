@@ -35,6 +35,9 @@ Sesuai aturan keamanan Mosquitto (`deploy/acl` dan `deploy/passwd`), setiap pera
    ```
    *(Ketikkan kata sandi secara interaktif saat diminta prompt).*
 
+> ⚠️ **Catatan Keamanan Izin Berkas Passwd (Tugas Milestone 7 - M7)**:
+> Saat pengujian di Windows/pengembangan lokal, Mosquitto mencatat peringatan perizinan berkas (`Warning: File /mosquitto/config/passwd has world readable permissions. To fix this, use chmod 0700... owner is not root. To fix this, use chown root...`). Pengerasan izin berkas menjadi `chmod 0700` dan kepemilikan `root:root` dijadwalkan dan didokumentasikan secara ketat sebagai tugas hardening pada **Milestone 7 (M7 Deployment & Production Readiness)** saat di-host di lingkungan Linux server produksi.
+
 2. Restart kontainer Mosquitto agar memuat ulang berkas kredensial:
    ```bash
    docker compose -f deploy/docker-compose.yml restart mosquitto
@@ -107,24 +110,74 @@ Setelah diizinkan dan perangkat ESP32 terhubung melalui port USB:
 
 ---
 
-## 5. Checklist Pengujian Perangkat Keras (Hardware Test Checklist)
+## 5. Panduan Verifikasi Bertahap Perangkat Keras (Hardware Test Checklist)
 
-Lakukan verifikasi bertahap di meja kerja dengan beban uji lampu pijar/solder sebelum dipasang ke instalasi rumah:
+Lakukan verifikasi secara bertahap di meja kerja sebelum dipasang ke instalasi panel listrik rumah.
 
-- [ ] **1. Pemeriksaan Visual & Multimeter**:
-  - [ ] Resistor pembagi tegangan 10k/20k terpasang dengan benar pada jalur TX PZEM ke GPIO16.
-  - [ ] Tidak ada kawat terkelupas atau logam terbuka pada sisi tegangan tinggi 220 V.
-- [ ] **2. Boot & Serial Log**:
-  - [ ] ESP32 boot normal, WDT aktif 15s.
-  - [ ] Kredensial WiFi dan password MQTT **TIDAK tercetak** di serial monitor.
-- [ ] **3. Konektivitas & NTP**:
-  - [ ] WiFi terhubung dan mendapat alamat IP.
-  - [ ] Sinkronisasi NTP berhasil (`ts >= 1735689600`). Sebelum waktu valid tercapai, telemetri tidak dipublikasikan ke broker.
-- [ ] **4. Telemetri Normal (Lampu Pijar ~60W)**:
-  - [ ] PZEM terbaca valid tiap detik (V ~220V, I ~0.27A, P ~60W).
-  - [ ] Payload JSON terkirim tiap 10 detik via MQTT QoS 1.
-  - [ ] Ring buffer kosong / ter-drain cepat saat online.
-- [ ] **5. Simulasi Offline & Recovery Buffer**:
-  - [ ] Matikan broker MQTT / putus router WiFi selama 3 menit (18 sampel tertampung di buffer).
-  - [ ] Nyalakan kembali router / broker: buffer terkuras teratur (maks 5 sampel/s) hingga kosong.
-  - [ ] Tidak ada sampel duplikat atau data corrupt di backend SQLite.
+### Tahap A: Pengujian ESP32 Saja (Tanpa PZEM & Tanpa Tegangan 220 V)
+*Tujuan: Memverifikasi stabilitas sistem mikroprosesor, konektivitas WiFi, NTP, dan MQTT tanpa risiko sengatan listrik AC.*
+
+- [ ] **1. Daya & Booting**:
+  - Sambungkan board ESP32 ke port USB komputer via kabel data mikro-USB / USB-C.
+  - Buka Serial Monitor pada 115200 baud (`.venv\Scripts\pio device monitor -d firmware -b 115200`).
+  - Verifikasi pesan boot: `--- Monitor Listrik Pintar (ESP32 Firmware) ---`.
+  - Watchdog hardware (WDT) aktif 15 detik; pastikan ESP32 **tidak mengalami boot loop / reset berulang**.
+- [ ] **2. Koneksi WiFi & NTP**:
+  - Pastikan log menampilkan `[WiFi] Menghubungkan ke <SSID>` dan berhasil tersambung.
+  - Alamat IP lokal diperoleh dan ditampilkan di Serial.
+  - Kredensial rahasia (password WiFi) **TIDAK PERNAH** tercetak ke Serial.
+  - Sinkronisasi NTP berhasil: log mencatat `[NTP] Waktu valid berhasil diperoleh: epoch <ts>` dengan nilai epoch >= 1735689600 (tahun 2025+).
+- [ ] **3. Koneksi Broker MQTT & LWT**:
+  - ESP32 berhasil tersambung ke broker Mosquitto: `[MQTT] Terhubung ke broker!`.
+  - Status `online` (retained, QoS 1) otomatis dipublikasikan ke topik `energy/<DEVICE_ID>/status`.
+  - Password MQTT **TIDAK PERNAH** tercetak ke Serial.
+- [ ] **4. Perilaku Saat Sensor PZEM Diam / Tidak Terpasang**:
+  - Karena kabel UART PZEM belum tersambung, pembacaan PZEM menghasilkan nilai NaN.
+  - Log mencatat bahwa tidak ada sampel telemetri yang didorong ke ring buffer (`sampleCount == 0`).
+  - Setelah 30 detik tanpa respons PZEM, log mencetak: `[PZEM] Tidak ada respons > 30 detik! Me-restart UART2...`.
+  - UART2 di-restart tanpa blocking delay, dan **TIDAK** mempublikasikan payload error ke topik status broker MQTT.
+  - Watchdog tetap di-reset secara teratur di `loop()`, mikrokontroler stabil dan tidak restart.
+
+---
+
+### Tahap B: Pengujian ESP32 + Sensor PZEM-004T + Beban Uji Lampu 100 W
+*Tujuan: Memverifikasi keakuratan pembacaan parameter kelistrikan riil AC 220 V dan transmisi telemetri.*
+
+- [ ] **1. Pemasangan Fisik Berisolasi (AC 220 V)**:
+  - Terminal tegangan AC PZEM dihubungkan ke colokan listrik AC 220 V dengan kabel terisolasi rapi di dalam kotak pelindung non-konduktif.
+  - Resistor pembagi tegangan 10kΩ / 20kΩ terpasang pada jalur TX PZEM ke GPIO16 ESP32.
+  - Current Transformer (CT) coil dipasang mengelilingi **hanya 1 kawat fasa** dari kabel beban lampu uji 100 W (bukan kedua kawat kabel ganda).
+- [ ] **2. Pembacaan Sensor & Transmisi Normal**:
+  - Nyalakan beban lampu uji 100 W.
+  - Serial monitor mencatat sensor pulih: `[PZEM] Sensor pulih dan kembali membaca data normal.`.
+  - Pembacaan sensor terbaca valid setiap 1 detik: Tegangan ~220-230 V, Arus ~0.43-0.46 A, Daya ~95-105 W, Energi bertambah secara kumulatif, Frekuensi ~50 Hz, Power Factor ~0.98-1.00.
+  - Setiap 10 detik, telemetri dikumpulkan dan dimasukkan ke ring buffer, kemudian dikirim via MQTT QoS 1 ke topik `energy/<DEVICE_ID>/telemetry`.
+  - Broker mengembalikan konfirmasi PUBACK dan ring buffer mengosongkan sampel tersebut secara mulus.
+- [ ] **3. Ketahanan Terhadap Nilai NaN Frekuensi / PF**:
+  - Jika terjadi interferensi sesaat yang membuat frekuensi atau PF bernilai NaN, firmware melewati nilai NaN tersebut dan mempertahankan nilai valid terakhir tanpa mengarang angka default buatan.
+- [ ] **4. Integritas Timestamp**:
+  - Jika timestamp sampel sama dengan sampel sebelumnya, firmware melewatinya (`[BUFFER] Timestamp sama dengan sampel sebelumnya, melewati push.`) untuk mencegah duplikasi di database.
+- [ ] **5. Pengujian Simulasi Jaringan Terputus (Offline Resilience)**:
+  - Putus sambungan WiFi atau matikan broker selama 3 menit.
+  - Sampel telemetri terkumpul aman di ring buffer lokal (maksimal 360 sampel / 1 jam retensi offline).
+  - Sambungkan kembali WiFi/broker: buffer dikuras secara teratur (maksimal 5 sampel/detik) hingga kosong tanpa ada data yang hilang.
+
+---
+
+### Tabel Pesan Serial Monitor yang Diharapkan (Expected Serial Logs)
+
+| Peristiwa / Status | Pesan Serial yang Diharapkan | Keterangan / Tindakan |
+|---|---|---|
+| **Boot Awal** | `--- Monitor Listrik Pintar (ESP32 Firmware) ---` | Banner inisialisasi boot firmware |
+| **Koneksi WiFi** | `[WiFi] Menghubungkan ke <SSID>` | Mencoba tersambung ke AP WiFi |
+| **WiFi Terhubung** | `[WiFi] Terhubung! Alamat IP: <IP>` | Berhasil memperoleh IP lokal dari DHCP |
+| **Sinkronisasi NTP** | `[NTP] Memulai sinkronisasi waktu dari <SERVER>` | Request sinkronisasi waktu via UDP |
+| **Waktu Valid NTP** | `[NTP] Waktu valid berhasil diperoleh: epoch <TS>` | Epoch >= 1735689600 tercapai, siap telemetri |
+| **Koneksi MQTT** | `[MQTT] Terhubung ke broker!` | Tersambung dan publish `online` retained QoS 1 |
+| **PZEM Normal** | `[PZEM] Sensor pulih dan kembali membaca data normal.` | Sensor merespons komunikasi UART2 dengan data valid |
+| **PZEM Timeout (>30s)** | `[PZEM] Tidak ada respons > 30 detik! Me-restart UART2...` | UART2 di-restart non-blocking; tidak crash |
+| **Frekuensi / PF NaN** | `[PZEM] Frekuensi bernilai NaN, melewati akumulasi dan menandai penggunaan nilai valid terakhir.` | Nilai valid terakhir dipertahankan |
+| **Timestamp Duplikat** | `[BUFFER] Timestamp sama dengan sampel sebelumnya, melewati push.` | Mencegah duplikasi data telemetri di backend |
+| **Buffer Overflow** | `[BUFFER] Peringatan: Overflow terjadi! Total sampel terbuang: <N>` | Terjadi jika offline > 1 jam (> 360 sampel) |
+| **MQTT Terputus** | `[MQTT] Terputus dari broker. Alasan: <KODE>` | Masuk mode offline, antrean in-flight dikembalikan ke PENDING |
+| **MQTT Reconnect** | `[MQTT] Mencoba menyambung ke broker (backoff <N>s)...` | Percobaan ulang koneksi dengan backoff eksponensial |

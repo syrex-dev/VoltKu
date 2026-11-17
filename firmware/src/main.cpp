@@ -61,7 +61,12 @@ float pAccum = 0.0f;
 float fAccum = 0.0f;
 float pfAccum = 0.0f;
 float lastValidEnergy = 0.0f;
+float lastValidF = 50.0f;
+float lastValidPf = 1.0f;
 int sampleCount = 0;
+int fSampleCount = 0;
+int pfSampleCount = 0;
+int64_t lastPublishedTs = 0;
 
 bool timeSynchronized = false;
 
@@ -125,30 +130,39 @@ void readPZEM() {
         vAccum += v;
         iAccum += i;
         pAccum += p;
-        fAccum += (!isnan(f) ? f : 50.0f);
-        pfAccum += (!isnan(pf) ? pf : 1.0f);
         lastValidEnergy = e;
         ++sampleCount;
         lastPzemSuccessMs = millis();
 
+        // Frekuensi: jangan mengarang 50.0 saat NaN, lewati sampel dan gunakan nilai valid terakhir
+        if (!isnan(f)) {
+            fAccum += f;
+            ++fSampleCount;
+            lastValidF = f;
+        } else {
+            Serial.println("[PZEM] Frekuensi bernilai NaN, melewati akumulasi dan menandai penggunaan nilai valid terakhir.");
+        }
+
+        // Power factor: jangan mengarang 1.0 saat NaN, lewati sampel dan gunakan nilai valid terakhir
+        if (!isnan(pf)) {
+            pfAccum += pf;
+            ++pfSampleCount;
+            lastValidPf = pf;
+        } else {
+            Serial.println("[PZEM] Power factor bernilai NaN, melewati akumulasi dan menandai penggunaan nilai valid terakhir.");
+        }
+
         if (pzemErrorActive) {
             pzemErrorActive = false;
             Serial.println("[PZEM] Sensor pulih dan kembali membaca data normal.");
-            if (mqttClient.connected()) {
-                mqttClient.publish(topicStatus, 1, true, "online");
-            }
         }
     } else {
         // PZEM tidak merespons / bernilai NaN
         if (millis() - lastPzemSuccessMs > 30000) {
             Serial.println("[PZEM] Tidak ada respons > 30 detik! Me-restart UART2...");
             pzemErrorActive = true;
-            if (mqttClient.connected()) {
-                // Publikasikan status error non-retained saat sensor gagal membaca
-                mqttClient.publish(topicStatus, 1, false, "error_pzem");
-            }
+            // Tanpa delay blocking (millis loop) dan tanpa publish status error_pzem ke broker
             PZEMSerial.end();
-            delay(50);
             PZEMSerial.begin(9600, SERIAL_8N1, 16, 17);
             lastPzemSuccessMs = millis();
         }
@@ -254,27 +268,35 @@ void loop() {
 
         // Jangan publikasikan telemetri sebelum waktu valid NTP diperoleh
         if (timeSynchronized && sampleCount > 0) {
-            energy_core::TelemetrySample sample{};
-            sample.ts = static_cast<int64_t>(time(nullptr));
-            sample.v = vAccum / sampleCount;
-            sample.i = iAccum / sampleCount;
-            sample.p = pAccum / sampleCount;
-            sample.e = lastValidEnergy;
-            sample.f = fAccum / sampleCount;
-            sample.pf = pfAccum / sampleCount;
-            sample.rssi = static_cast<int16_t>(WiFi.RSSI());
-            std::strncpy(sample.fw, FIRMWARE_VERSION, sizeof(sample.fw) - 1);
-            sample.fw[sizeof(sample.fw) - 1] = '\0';
+            int64_t currentTs = static_cast<int64_t>(time(nullptr));
 
-            ringBuffer.push(sample);
+            // Hindari duplikasi timestamp: lewati jika timestamp sama dengan sampel sebelumnya
+            if (currentTs == lastPublishedTs) {
+                Serial.println("[BUFFER] Timestamp sama dengan sampel sebelumnya, melewati push.");
+            } else {
+                lastPublishedTs = currentTs;
+                energy_core::TelemetrySample sample{};
+                sample.ts = currentTs;
+                sample.v = vAccum / sampleCount;
+                sample.i = iAccum / sampleCount;
+                sample.p = pAccum / sampleCount;
+                sample.e = lastValidEnergy;
+                sample.f = (fSampleCount > 0) ? (fAccum / fSampleCount) : lastValidF;
+                sample.pf = (pfSampleCount > 0) ? (pfAccum / pfSampleCount) : lastValidPf;
+                sample.rssi = static_cast<int16_t>(WiFi.RSSI());
+                std::strncpy(sample.fw, FIRMWARE_VERSION, sizeof(sample.fw) - 1);
+                sample.fw[sizeof(sample.fw) - 1] = '\0';
 
-            // Periksa apakah ada buffer overflow yang terjadi
-            if (ringBuffer.overflow_count() > lastReportedOverflow) {
-                Serial.printf(
-                    "[BUFFER] Peringatan: Overflow terjadi! Total sampel terbuang: %u\n",
-                    ringBuffer.overflow_count()
-                );
-                lastReportedOverflow = ringBuffer.overflow_count();
+                ringBuffer.push(sample);
+
+                // Periksa apakah ada buffer overflow yang terjadi
+                if (ringBuffer.overflow_count() > lastReportedOverflow) {
+                    Serial.printf(
+                        "[BUFFER] Peringatan: Overflow terjadi! Total sampel terbuang: %u\n",
+                        ringBuffer.overflow_count()
+                    );
+                    lastReportedOverflow = ringBuffer.overflow_count();
+                }
             }
 
             // Reset akumulator rolling window
@@ -284,6 +306,8 @@ void loop() {
             fAccum = 0.0f;
             pfAccum = 0.0f;
             sampleCount = 0;
+            fSampleCount = 0;
+            pfSampleCount = 0;
         }
     }
 

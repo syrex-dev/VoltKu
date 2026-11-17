@@ -102,12 +102,26 @@ def validate_startup_credentials(settings: Settings) -> None:
             "and must be at least 12 characters."
         )
 
+    common_words = ["password", "admin", "12345", "qwerty", "letmein", "welcome"]
+    matched_common = [w for w in common_words if w in dash_pass.lower()]
+
     if settings.app_env == "production":
-        common_words = ["password", "admin", "12345", "qwerty"]
-        if any(w in dash_pass.lower() for w in common_words):
-            raise RuntimeError(
-                "Invalid DASHBOARD_PASSWORD: in production, password must not contain common words "
-                "(password, admin, 12345, qwerty)."
+        if len(dash_pass) < 16 or matched_common:
+            reasons = []
+            if len(dash_pass) < 16:
+                reasons.append("must be at least 16 characters")
+            if matched_common:
+                found_str = ", ".join(matched_common)
+                reasons.append(
+                    f"must not contain common words ({', '.join(common_words)}). Found: {found_str}"
+                )
+            raise RuntimeError(f"Invalid DASHBOARD_PASSWORD: in production, {'; '.join(reasons)}.")
+    else:
+        if matched_common:
+            logger.warning(
+                "PERINGATAN KERAS: DASHBOARD_PASSWORD mengandung kata umum (%s). "
+                "Ganti sebelum deploy ke production!",
+                ", ".join(matched_common),
             )
 
     placeholder_allowlist = "123456789,987654321"

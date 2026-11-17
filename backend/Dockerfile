@@ -32,6 +32,7 @@ USER root
 COPY backend/requirements-dev.txt /app/requirements-dev.txt
 RUN pip install --no-cache-dir -r /app/requirements-dev.txt
 COPY backend/tests /app/backend/tests
+COPY firmware/test /app/firmware/test
 COPY pyproject.toml /app/pyproject.toml
 USER appuser
 ENV DATABASE_URL="sqlite:///:memory:" \

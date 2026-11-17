@@ -86,17 +86,53 @@ def test_startup_validation_rejects_insecure_secrets():
     with pytest.raises(RuntimeError, match="at least 32 characters"):
         validate_startup_credentials(s_short_jwt)
 
-    # 6. Tolak jika DASHBOARD_PASSWORD mengandung kata umum di production
-    for word in ("password", "admin", "12345", "qwerty"):
+    # 6. Tolak jika DASHBOARD_PASSWORD < 16 karakter di production
+    s_short_prod = Settings(
+        app_env="production",
+        dashboard_password="short_secret_15",  # 15 chars
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+    )
+    with pytest.raises(RuntimeError, match="at least 16 characters"):
+        validate_startup_credentials(s_short_prod)
+
+    # 7. Tolak "password12345" di production secara spesifik
+    s_pwd12345 = Settings(
+        app_env="production",
+        dashboard_password="password12345",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+    )
+    with pytest.raises(RuntimeError, match="must be at least 16 characters"):
+        validate_startup_credentials(s_pwd12345)
+
+    # 8. Tolak jika DASHBOARD_PASSWORD mengandung kata umum di production (case-insensitive)
+    for word in ("password", "admin", "12345", "qwerty", "letmein", "welcome"):
         s_common = Settings(
             app_env="production",
-            dashboard_password=f"super_{word}_rahasia_aman",
+            dashboard_password=f"super_{word.upper()}_rahasia_aman_2026",
             jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
         )
         with pytest.raises(RuntimeError, match="must not contain common words"):
             validate_startup_credentials(s_common)
 
-    # 7. Peringatan log jika allowlist Telegram memakai placeholder contoh
+    # 9. Peringatan keras jika DASHBOARD_PASSWORD mengandung kata umum di development
+    s_dev_common = Settings(
+        app_env="development",
+        dashboard_password="dev_password12345",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+    )
+    with pytest.MonkeyPatch().context() as mp:
+        import logging
+
+        dev_records = []
+
+        def dev_warn(self, msg, *args):
+            dev_records.append(msg % args if args else msg)
+
+        mp.setattr(logging.Logger, "warning", dev_warn)
+        validate_startup_credentials(s_dev_common)
+        assert any("PERINGATAN KERAS" in r for r in dev_records)
+
+    # 10. Peringatan log jika allowlist Telegram memakai placeholder contoh
     s_placeholder = Settings(
         app_env="production",
         dashboard_password="kunci_akses_sangat_kuat_2026",
