@@ -61,3 +61,10 @@ Thumbs.db
 [Dd]esktop.ini
 .DS_Store
 
+# Node & Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dashboard_legacy/
+
+

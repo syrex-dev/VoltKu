@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -31,8 +32,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "default-src 'self'; "
             "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
-            "connect-src 'self'; "
-            "img-src 'self' data:;"
+            "connect-src 'self' http://localhost:5173 http://127.0.0.1:5173 "
+            "http://localhost:8000 http://127.0.0.1:8000; "
+            "img-src 'self' data:; "
+            "font-src 'self' data:;"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -80,6 +83,20 @@ app = FastAPI(
 
 # Pasang Security Headers
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Pasang CORS Middleware untuk mendukung Vite dev server & dashboard
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Standardize error format to {"error": {"code": ..., "message": ...}}
