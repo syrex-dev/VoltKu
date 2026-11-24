@@ -24,6 +24,20 @@ export default function App() {
   })
   const [loginError, setLoginError] = useState(null)
 
+  // Theme State ('dark' | 'light')
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'dark'
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
+  }
+
   // App Data State
   const [devices, setDevices] = useState([])
   const [activeDeviceId, setActiveDeviceId] = useState('')
@@ -293,6 +307,8 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onLogout={handleLogout}
         lastDataTs={latestData?.ts}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       <main className="container">
@@ -314,9 +330,10 @@ export default function App() {
             setPowerRange(newRange)
             loadPowerChart(newRange)
           }}
+          theme={theme}
         />
 
-        <DailyChart points={dailyPoints} />
+        <DailyChart points={dailyPoints} theme={theme} />
 
         <AnomaliesList anomalies={anomalies} />
       </main>

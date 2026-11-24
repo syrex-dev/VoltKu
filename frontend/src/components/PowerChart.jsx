@@ -25,7 +25,8 @@ ChartJS.register(
   Filler
 )
 
-export function PowerChart({ points, range, onRangeChange, loading }) {
+export function PowerChart({ points, range, onRangeChange, loading, theme = 'dark' }) {
+  const isLight = theme === 'light'
   const labels = points.map((p) => {
     if (range === '5h') return formatTimeWIB(p.ts)
     return formatDateTimeWIB(p.ts)
@@ -38,24 +39,33 @@ export function PowerChart({ points, range, onRangeChange, loading }) {
       {
         label: 'Daya Aktif',
         data: dataValues,
-        borderColor: '#38bdf8',
+        borderColor: '#0284c7',
         borderWidth: 2,
         tension: 0.3,
         pointRadius: points.length > 80 ? 0 : 2.5,
         pointHoverRadius: 5,
-        pointBackgroundColor: '#0ea5e9',
+        pointBackgroundColor: '#0284c7',
         fill: true,
         backgroundColor: (context) => {
           const ctx = context.chart.ctx
           const gradient = ctx.createLinearGradient(0, 0, 0, 260)
-          gradient.addColorStop(0, 'rgba(14, 165, 233, 0.32)')
-          gradient.addColorStop(0.6, 'rgba(14, 165, 233, 0.05)')
-          gradient.addColorStop(1, 'rgba(14, 165, 233, 0)')
+          if (isLight) {
+            gradient.addColorStop(0, 'rgba(2, 132, 199, 0.22)')
+            gradient.addColorStop(0.7, 'rgba(2, 132, 199, 0.03)')
+            gradient.addColorStop(1, 'rgba(2, 132, 199, 0)')
+          } else {
+            gradient.addColorStop(0, 'rgba(14, 165, 233, 0.32)')
+            gradient.addColorStop(0.7, 'rgba(14, 165, 233, 0.04)')
+            gradient.addColorStop(1, 'rgba(14, 165, 233, 0)')
+          }
           return gradient
         },
       },
     ],
   }
+
+  const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.05)'
+  const tickColor = isLight ? '#64748b' : '#94a3b8'
 
   const options = {
     responsive: true,
@@ -67,27 +77,27 @@ export function PowerChart({ points, range, onRangeChange, loading }) {
     },
     scales: {
       x: {
-        ticks: { color: '#64748b', maxTicksLimit: 8, font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 } },
-        grid: { color: 'rgba(255, 255, 255, 0.04)', drawTicks: false },
+        ticks: { color: tickColor, maxTicksLimit: 8, font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 } },
+        grid: { color: gridColor, drawTicks: false },
         border: { display: false },
       },
       y: {
         ticks: {
-          color: '#64748b',
+          color: tickColor,
           font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 },
           callback: (val) => `${val} W`,
         },
-        grid: { color: 'rgba(255, 255, 255, 0.05)', drawTicks: false },
+        grid: { color: gridColor, drawTicks: false },
         border: { display: false },
       },
     },
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#0c1220',
-        titleColor: '#94a3b8',
-        bodyColor: '#38bdf8',
-        borderColor: 'rgba(255, 255, 255, 0.12)',
+        backgroundColor: isLight ? '#ffffff' : '#0c1220',
+        titleColor: isLight ? '#64748b' : '#94a3b8',
+        bodyColor: isLight ? '#0284c7' : '#38bdf8',
+        borderColor: isLight ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.12)',
         borderWidth: 1,
         padding: 12,
         cornerRadius: 8,

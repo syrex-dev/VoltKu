@@ -1,5 +1,6 @@
 import React from 'react'
-import { Zap, Sliders, LogOut, ChevronDown, Radio } from 'lucide-react'
+import { Zap, Sliders, LogOut, Sun, Moon } from 'lucide-react'
+import { CustomDeviceSelector } from './CustomDeviceSelector'
 import { formatDateTimeWIB } from '../utils/formatters'
 
 export function Header({
@@ -9,6 +10,8 @@ export function Header({
   onOpenSettings,
   onLogout,
   lastDataTs,
+  theme,
+  onToggleTheme,
 }) {
   const activeDevice = devices.find((d) => d.id === activeDeviceId)
 
@@ -35,29 +38,13 @@ export function Header({
             </div>
           </div>
 
-          {/* Device Switcher & Live Status */}
+          {/* Device Switcher (Custom CSS Dropdown) & Live Status */}
           <div className="header-center">
-            <div className="device-picker">
-              <span className="device-label">
-                <Radio size={13} /> Perangkat:
-              </span>
-              <select
-                className="device-select-custom"
-                value={activeDeviceId}
-                onChange={(e) => onSelectDevice(e.target.value)}
-                aria-label="Pilih Perangkat"
-              >
-                {devices.length === 0 ? (
-                  <option value="">Tidak ada perangkat</option>
-                ) : (
-                  devices.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name || d.id} • {d.mcb_watt} W
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+            <CustomDeviceSelector
+              devices={devices}
+              activeDeviceId={activeDeviceId}
+              onSelectDevice={onSelectDevice}
+            />
 
             <div className={`status-pill ${isOnline ? 'online' : 'offline'}`}>
               <span className="pulse-beacon"></span>
@@ -71,15 +58,29 @@ export function Header({
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons & Theme Switcher */}
           <div className="header-right">
+            {/* Theme Toggle Button */}
+            <button
+              className="btn btn-secondary btn-icon-only"
+              onClick={onToggleTheme}
+              title={theme === 'dark' ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap'}
+              aria-label="Toggle Theme"
+            >
+              {theme === 'dark' ? (
+                <Sun size={16} className="text-amber" />
+              ) : (
+                <Moon size={16} className="text-purple" />
+              )}
+            </button>
+
             <button
               className="btn btn-secondary"
               onClick={onOpenSettings}
               title="Pengaturan Sistem"
             >
               <Sliders size={15} />
-              <span>Pengaturan</span>
+              <span className="btn-text-desktop">Pengaturan</span>
             </button>
             <button
               className="btn btn-danger-ghost"
@@ -87,7 +88,7 @@ export function Header({
               title="Keluar dari Dashboard"
             >
               <LogOut size={15} />
-              <span>Keluar</span>
+              <span className="btn-text-desktop">Keluar</span>
             </button>
           </div>
         </header>
