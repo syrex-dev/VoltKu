@@ -9,6 +9,9 @@ import { PowerChart } from './components/PowerChart'
 import { DailyChart } from './components/DailyChart'
 import { AnomaliesList } from './components/AnomaliesList'
 import { SettingsModal } from './components/SettingsModal'
+import { SettingsView } from './components/SettingsView'
+import { BottomNav } from './components/BottomNav'
+import { DesktopTabBar } from './components/DesktopTabBar'
 
 export default function App() {
   // Auth State
@@ -51,6 +54,9 @@ export default function App() {
   const [powerPoints, setPowerPoints] = useState([])
   const [powerRange, setPowerRange] = useState('5h')
   const [dailyPoints, setDailyPoints] = useState([])
+
+  // Active Tab State ('live' | 'charts' | 'anomalies' | 'settings')
+  const [activeTab, setActiveTab] = useState('live')
 
   // Modal State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -304,39 +310,80 @@ export default function App() {
         devices={devices}
         activeDeviceId={activeDeviceId}
         onSelectDevice={setActiveDeviceId}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={() => {
+          setActiveTab('settings')
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        }}
         onLogout={handleLogout}
         lastDataTs={latestData?.ts}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
 
-      <main className="container">
-        <WarningBanner settings={settings} activeDevice={activeDevice} />
-
-        <RealtimeTelemetry latest={latestData} settings={settings} />
-
-        <EnergyMetrics
-          today={todaySummary}
-          week={weekSummary}
-          month={monthSummary}
-          forecast={forecast}
+      <main className="container main-content-wrap">
+        <DesktopTabBar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          anomalyCount={anomalies.length}
         />
 
-        <PowerChart
-          points={powerPoints}
-          range={powerRange}
-          onRangeChange={(newRange) => {
-            setPowerRange(newRange)
-            loadPowerChart(newRange)
-          }}
-          theme={theme}
-        />
+        {activeTab === 'live' && (
+          <div className="tab-pane-fade">
+            <WarningBanner settings={settings} activeDevice={activeDevice} />
+            <RealtimeTelemetry latest={latestData} settings={settings} />
+            <EnergyMetrics
+              today={todaySummary}
+              week={weekSummary}
+              month={monthSummary}
+              forecast={forecast}
+            />
+          </div>
+        )}
 
-        <DailyChart points={dailyPoints} theme={theme} />
+        {activeTab === 'charts' && (
+          <div className="tab-pane-fade">
+            <PowerChart
+              points={powerPoints}
+              range={powerRange}
+              onRangeChange={(newRange) => {
+                setPowerRange(newRange)
+                loadPowerChart(newRange)
+              }}
+              theme={theme}
+            />
+            <DailyChart points={dailyPoints} theme={theme} />
+            <EnergyMetrics
+              today={todaySummary}
+              week={weekSummary}
+              month={monthSummary}
+              forecast={forecast}
+            />
+          </div>
+        )}
 
-        <AnomaliesList anomalies={anomalies} />
+        {activeTab === 'anomalies' && (
+          <div className="tab-pane-fade">
+            <AnomaliesList anomalies={anomalies} />
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="tab-pane-fade">
+            <SettingsView
+              settings={settings}
+              activeDevice={activeDevice}
+              onSave={handleSaveSettings}
+            />
+          </div>
+        )}
       </main>
+
+      {/* Floating / Fixed Bottom Navigation Bar (Mobile) */}
+      <BottomNav
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        anomalyCount={anomalies.length}
+      />
 
       <SettingsModal
         isOpen={isSettingsOpen}
