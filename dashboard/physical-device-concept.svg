@@ -1,0 +1,202 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" width="100%" height="100%" style="background:#090d16; font-family: 'Plus Jakarta Sans', system-ui, sans-serif;">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0e1726" />
+      <stop offset="100%" stop-color="#070a10" />
+    </linearGradient>
+    <linearGradient id="boxBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc" />
+      <stop offset="50%" stop-color="#e2e8f0" />
+      <stop offset="100%" stop-color="#cbd5e1" />
+    </linearGradient>
+    <linearGradient id="boxInnerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="railGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#94a3b8" />
+      <stop offset="50%" stop-color="#e2e8f0" />
+      <stop offset="100%" stop-color="#64748b" />
+    </linearGradient>
+    <linearGradient id="ctGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#334155" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="copperGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#b45309" />
+      <stop offset="50%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+    
+    <!-- Filter Glow -->
+    <filter id="cyanGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.65" />
+    </filter>
+  </defs>
+
+  <!-- Title Banner -->
+  <text x="450" y="42" text-anchor="middle" fill="#38bdf8" font-size="20" font-weight="800" letter-spacing="1">DESAIN FISIK &amp; ANATOMI PERANGKAT MONITOR LISTRIK PINTAR</text>
+  <text x="450" y="66" text-anchor="middle" fill="#94a3b8" font-size="13">Bentuk Fisik Modul DIN-Rail 4-Pole (Terpasang pada Box MCB Panel Listrik)</text>
+
+  <!-- 35mm Metal DIN Rail (Background) -->
+  <g transform="translate(40, 260)">
+    <rect x="0" y="0" width="820" height="70" fill="url(#railGrad)" rx="2" />
+    <line x1="0" y1="12" x2="820" y2="12" stroke="#475569" stroke-width="2" />
+    <line x1="0" y1="58" x2="820" y2="58" stroke="#cbd5e1" stroke-width="2" />
+    <!-- Rail Slots -->
+    <rect x="50" y="24" width="30" height="22" rx="4" fill="#334155" opacity="0.6" />
+    <rect x="120" y="24" width="30" height="22" rx="4" fill="#334155" opacity="0.6" />
+    <rect x="680" y="24" width="30" height="22" rx="4" fill="#334155" opacity="0.6" />
+    <rect x="750" y="24" width="30" height="22" rx="4" fill="#334155" opacity="0.6" />
+    <text x="60" y="88" fill="#64748b" font-size="11" font-family="monospace">DIN RAIL 35mm (Rel Panel MCB)</text>
+  </g>
+
+  <!-- ==================== MCB 1-Pole (PLN Breaker) ==================== -->
+  <g transform="translate(140, 150)" filter="url(#dropShadow)">
+    <rect x="0" y="0" width="60" height="300" rx="6" fill="url(#boxBodyGrad)" stroke="#94a3b8" stroke-width="1.5" />
+    <!-- MCB Toggle Switch -->
+    <rect x="15" y="110" width="30" height="70" rx="4" fill="#1e293b" />
+    <rect x="18" y="115" width="24" height="35" rx="3" fill="#ea580c" />
+    <text x="30" y="137" fill="#ffffff" font-size="10" font-weight="700" text-anchor="middle">ON</text>
+    <text x="30" y="80" fill="#0f172a" font-size="12" font-weight="800" text-anchor="middle">MCB</text>
+    <text x="30" y="96" fill="#475569" font-size="10" font-weight="600" text-anchor="middle">C10 (10A)</text>
+    <!-- Terminal Screw -->
+    <circle cx="30" cy="24" r="8" fill="#64748b" />
+    <line x1="25" y1="24" x2="35" y2="24" stroke="#e2e8f0" stroke-width="2" />
+    <circle cx="30" cy="276" r="8" fill="#64748b" />
+    <line x1="25" y1="276" x2="35" y2="276" stroke="#e2e8f0" stroke-width="2" />
+  </g>
+
+  <!-- Main Phase Wire from MCB through CT Clamp -->
+  <path d="M 170 150 L 170 100 Q 170 80 190 80 L 320 80 Q 340 80 340 100 L 340 500" fill="none" stroke="#0f172a" stroke-width="14" stroke-linecap="round" />
+  <path d="M 170 150 L 170 100 Q 170 80 190 80 L 320 80 Q 340 80 340 100 L 340 500" fill="none" stroke="#ea580c" stroke-width="10" stroke-linecap="round" />
+  <text x="250" y="70" fill="#f97316" font-size="11" font-weight="700">Kabel Fasa Utama (Beban Rumah)</text>
+
+  <!-- ==================== CURRENT TRANSFORMER (CT CLAMP) ==================== -->
+  <g transform="translate(305, 120)" filter="url(#dropShadow)">
+    <!-- CT Clamp Body -->
+    <rect x="0" y="0" width="70" height="75" rx="10" fill="url(#ctGrad)" stroke="#38bdf8" stroke-width="1.5" />
+    <rect x="18" y="16" width="34" height="42" rx="6" fill="#0b0f17" stroke="#475569" stroke-width="1" />
+    <!-- CT Latch mechanism -->
+    <rect x="58" y="26" width="14" height="22" rx="3" fill="#0284c7" />
+    <text x="35" y="100" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">CT Clamp</text>
+    <text x="35" y="114" fill="#94a3b8" font-size="9" text-anchor="middle">Non-Invasive 100A</text>
+    
+    <!-- CT Signal Wires to Main Device -->
+    <path d="M 35 75 Q 35 120 440 120 L 440 160" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="4,4" />
+  </g>
+
+  <!-- ==================== MAIN SMART MONITOR DEVICE (4-MODULE DIN ENCLOSURE) ==================== -->
+  <g transform="translate(420, 130)" filter="url(#dropShadow)">
+    <!-- White Industrial DIN Enclosure Body -->
+    <rect x="0" y="0" width="220" height="340" rx="12" fill="url(#boxBodyGrad)" stroke="#94a3b8" stroke-width="2" />
+    
+    <!-- Top Terminal Blocks (AC 220V Sensing & Power) -->
+    <rect x="25" y="6" width="40" height="28" rx="4" fill="#1e293b" />
+    <circle cx="45" cy="20" r="7" fill="#64748b" />
+    <line x1="40" y1="20" x2="50" y2="20" stroke="#f8fafc" stroke-width="2" />
+    <text x="45" y="44" fill="#0f172a" font-size="9" font-weight="700" text-anchor="middle">L (Fasa)</text>
+
+    <rect x="75" y="6" width="40" height="28" rx="4" fill="#1e293b" />
+    <circle cx="95" cy="20" r="7" fill="#64748b" />
+    <line x1="90" y1="20" x2="100" y2="20" stroke="#f8fafc" stroke-width="2" />
+    <text x="95" y="44" fill="#0f172a" font-size="9" font-weight="700" text-anchor="middle">N (Netral)</text>
+
+    <!-- Top Right Terminal (CT Sensor Input) -->
+    <rect x="145" y="6" width="50" height="28" rx="4" fill="#0284c7" />
+    <circle cx="160" cy="20" r="6" fill="#0f172a" />
+    <circle cx="180" cy="20" r="6" fill="#0f172a" />
+    <text x="170" y="44" fill="#0284c7" font-size="9" font-weight="700" text-anchor="middle">CT In</text>
+
+    <!-- Front Recessed Dark Faceplate -->
+    <rect x="15" y="55" width="190" height="235" rx="8" fill="url(#boxInnerGrad)" stroke="#38bdf8" stroke-width="1.5" />
+    
+    <!-- Brand Logo on Faceplate -->
+    <g transform="translate(25, 70)">
+      <rect x="0" y="0" width="22" height="22" rx="4" fill="#0284c7" />
+      <path d="M 12 3 L 6 12 L 11 12 L 10 19 L 16 10 L 11 10 Z" fill="#ffffff" />
+      <text x="30" y="12" fill="#ffffff" font-size="11" font-weight="800" letter-spacing="0.5">MONITOR LISTRIK</text>
+      <text x="30" y="22" fill="#38bdf8" font-size="8" font-weight="700">PINTAR • IoT + AI</text>
+    </g>
+
+    <!-- Internal Architecture Diagram inside Enclosure Window -->
+    <g transform="translate(25, 105)">
+      <!-- Mini OLED Display / Status Window -->
+      <rect x="0" y="0" width="170" height="110" rx="6" fill="#080b11" stroke="#334155" stroke-width="1" />
+      
+      <!-- Inside Components Representation -->
+      <g transform="translate(10, 10)">
+        <!-- ESP32 Chip -->
+        <rect x="0" y="0" width="70" height="42" rx="4" fill="#1e293b" stroke="#0ea5e9" stroke-width="1" />
+        <text x="35" y="16" fill="#38bdf8" font-size="9" font-weight="800" text-anchor="middle">ESP32</text>
+        <text x="35" y="28" fill="#94a3b8" font-size="7" text-anchor="middle">Wi-Fi + WDT</text>
+        <text x="35" y="38" fill="#34d399" font-size="7" text-anchor="middle">MQTT QoS 1</text>
+
+        <!-- PZEM-004T Chip -->
+        <rect x="80" y="0" width="70" height="42" rx="4" fill="#1e293b" stroke="#10b981" stroke-width="1" />
+        <text x="115" y="16" fill="#34d399" font-size="9" font-weight="800" text-anchor="middle">PZEM-004T</text>
+        <text x="115" y="28" fill="#94a3b8" font-size="7" text-anchor="middle">V, I, W, kWh</text>
+        <text x="115" y="38" fill="#38bdf8" font-size="7" text-anchor="middle">UART Modbus</text>
+
+        <!-- Power Supply HLK-PM01 -->
+        <rect x="0" y="50" width="150" height="34" rx="4" fill="#111827" stroke="#475569" stroke-width="1" />
+        <text x="75" y="65" fill="#f8fafc" font-size="8" font-weight="700" text-anchor="middle">AC-DC Isolated PSU (HLK-PM01)</text>
+        <text x="75" y="76" fill="#94a3b8" font-size="7" text-anchor="middle">Input 220V AC → Output 5V DC (Internal)</text>
+      </g>
+    </g>
+
+    <!-- LED Status Indicators -->
+    <g transform="translate(30, 235)">
+      <!-- Power LED -->
+      <circle cx="15" cy="15" r="5" fill="#22c55e" filter="url(#cyanGlow)" />
+      <text x="15" y="35" fill="#94a3b8" font-size="9" font-weight="700" text-anchor="middle">PWR</text>
+
+      <!-- WiFi LED -->
+      <circle cx="80" cy="15" r="5" fill="#0ea5e9" filter="url(#cyanGlow)" />
+      <text x="80" y="35" fill="#94a3b8" font-size="9" font-weight="700" text-anchor="middle">WIFI</text>
+
+      <!-- MQTT / Data LED -->
+      <circle cx="145" cy="15" r="5" fill="#f59e0b" filter="url(#cyanGlow)" />
+      <text x="145" y="35" fill="#94a3b8" font-size="9" font-weight="700" text-anchor="middle">DATA</text>
+    </g>
+
+    <!-- Bottom DIN Release Clip -->
+    <rect x="85" y="318" width="50" height="16" rx="3" fill="#0284c7" />
+    <text x="110" y="330" fill="#ffffff" font-size="8" font-weight="700" text-anchor="middle">DIN LOCK</text>
+  </g>
+
+  <!-- ==================== Callout Annotations ==================== -->
+  <!-- Callout 1: Comparison with User's Photo -->
+  <g transform="translate(680, 120)">
+    <rect x="0" y="0" width="180" height="150" rx="8" fill="#111827" stroke="#f59e0b" stroke-width="1.5" />
+    <text x="12" y="24" fill="#f59e0b" font-size="12" font-weight="800">Bedanya dengan Foto Anda:</text>
+    <text x="12" y="44" fill="#cbd5e1" font-size="10" font-weight="600">• Foto Anda (D52-2066):</text>
+    <text x="18" y="58" fill="#94a3b8" font-size="10">Hanya meter LCD lokal biasa,</text>
+    <text x="18" y="70" fill="#94a3b8" font-size="10">tidak ada Wi-Fi / kirim data.</text>
+
+    <text x="12" y="94" fill="#38bdf8" font-size="10" font-weight="600">• Alat Proyek Kita (IoT + AI):</text>
+    <text x="18" y="108" fill="#94a3b8" font-size="10">Berisi ESP32 + PZEM-004T,</text>
+    <text x="18" y="120" fill="#94a3b8" font-size="10">kirim data tiap 10 detik</text>
+    <text x="18" y="132" fill="#34d399" font-size="10">ke Dashboard &amp; Bot Telegram.</text>
+  </g>
+
+  <!-- Callout 2: CT Safety Feature -->
+  <g transform="translate(680, 310)">
+    <rect x="0" y="0" width="180" height="135" rx="8" fill="#111827" stroke="#38bdf8" stroke-width="1.5" />
+    <text x="12" y="24" fill="#38bdf8" font-size="12" font-weight="800">Keunggulan Desain:</text>
+    <text x="12" y="44" fill="#34d399" font-size="10" font-weight="700">✓ Aman (Non-Invasive)</text>
+    <text x="18" y="58" fill="#94a3b8" font-size="10">Kabel fasa tidak dipotong,</text>
+    <text x="18" y="70" fill="#94a3b8" font-size="10">cukup dijepit klem CT.</text>
+    <text x="12" y="94" fill="#34d399" font-size="10" font-weight="700">✓ Rapi di Box Sekring</text>
+    <text x="18" y="108" fill="#94a3b8" font-size="10">Bisa masuk box panel MCB</text>
+    <text x="18" y="120" fill="#94a3b8" font-size="10">standar rumah / toko.</text>
+  </g>
+
+  <!-- Footer Specification -->
+  <text x="450" y="590" text-anchor="middle" fill="#64748b" font-size="11">Dimensi: Standar 4-Module DIN Rail Enclosure (72mm x 90mm x 65mm) • Tegangan Operasi: 80 - 260 V AC • Arus Maksimal: 100 A</text>
+</svg>
