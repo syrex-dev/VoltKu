@@ -36,6 +36,7 @@ COPY backend/tests /app/backend/tests
 COPY firmware/test /app/firmware/test
 COPY pyproject.toml /app/pyproject.toml
 USER appuser
+# gitleaks:allow
 ENV DATABASE_URL="sqlite:///:memory:" \
     APP_ENV="test" \
     JWT_SECRET="test_jwt_secret_at_least_32_chars_1234567890" \

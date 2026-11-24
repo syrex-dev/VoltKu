@@ -54,7 +54,7 @@ def test_startup_validation_rejects_insecure_secrets():
     s_example_pw = Settings(
         app_env="production",
         dashboard_password="ganti_password_dashboard",
-        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",  # gitleaks:allow
     )
     with pytest.raises(RuntimeError, match="Invalid DASHBOARD_PASSWORD"):
         validate_startup_credentials(s_example_pw)
@@ -62,8 +62,8 @@ def test_startup_validation_rejects_insecure_secrets():
     # 3. Tolak jika jwt_secret adalah contoh .env.example
     s_example_jwt = Settings(
         app_env="production",
-        dashboard_password="kunci_akses_sangat_kuat_2026",
-        jwt_secret="ganti_jwt_secret_yang_panjang_dan_acak",
+        dashboard_password="kunci_akses_sangat_kuat_2026",  # gitleaks:allow
+        jwt_secret="ganti_jwt_secret_yang_panjang_dan_acak",  # gitleaks:allow
     )
     with pytest.raises(RuntimeError, match="Invalid JWT_SECRET"):
         validate_startup_credentials(s_example_jwt)
@@ -72,7 +72,7 @@ def test_startup_validation_rejects_insecure_secrets():
     s_short_pw = Settings(
         app_env="production",
         dashboard_password="short_pw",
-        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",  # gitleaks:allow
     )
     with pytest.raises(RuntimeError, match="at least 12 characters"):
         validate_startup_credentials(s_short_pw)
@@ -80,7 +80,7 @@ def test_startup_validation_rejects_insecure_secrets():
     # 5. Tolak jika JWT_SECRET < 32 karakter
     s_short_jwt = Settings(
         app_env="production",
-        dashboard_password="kunci_akses_sangat_kuat_2026",
+        dashboard_password="kunci_akses_sangat_kuat_2026",  # gitleaks:allow
         jwt_secret="short_jwt_secret",
     )
     with pytest.raises(RuntimeError, match="at least 32 characters"):
@@ -90,7 +90,7 @@ def test_startup_validation_rejects_insecure_secrets():
     s_short_prod = Settings(
         app_env="production",
         dashboard_password="short_secret_15",  # 15 chars
-        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",  # gitleaks:allow
     )
     with pytest.raises(RuntimeError, match="at least 16 characters"):
         validate_startup_credentials(s_short_prod)
@@ -99,7 +99,7 @@ def test_startup_validation_rejects_insecure_secrets():
     s_pwd12345 = Settings(
         app_env="production",
         dashboard_password="password12345",
-        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",  # gitleaks:allow
     )
     with pytest.raises(RuntimeError, match="must be at least 16 characters"):
         validate_startup_credentials(s_pwd12345)
@@ -108,8 +108,8 @@ def test_startup_validation_rejects_insecure_secrets():
     for word in ("password", "admin", "12345", "qwerty", "letmein", "welcome"):
         s_common = Settings(
             app_env="production",
-            dashboard_password=f"super_{word.upper()}_rahasia_aman_2026",
-            jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+            dashboard_password=f"super_{word.upper()}_rahasia_aman_2026",  # gitleaks:allow
+            jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",  # gitleaks:allow
         )
         with pytest.raises(RuntimeError, match="must not contain common words"):
             validate_startup_credentials(s_common)
@@ -118,7 +118,7 @@ def test_startup_validation_rejects_insecure_secrets():
     s_dev_common = Settings(
         app_env="development",
         dashboard_password="dev_password12345",
-        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",  # gitleaks:allow
     )
     with pytest.MonkeyPatch().context() as mp:
         import logging
@@ -135,8 +135,8 @@ def test_startup_validation_rejects_insecure_secrets():
     # 10. Peringatan log jika allowlist Telegram memakai placeholder contoh
     s_placeholder = Settings(
         app_env="production",
-        dashboard_password="kunci_akses_sangat_kuat_2026",
-        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        dashboard_password="kunci_akses_sangat_kuat_2026",  # gitleaks:allow
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",  # gitleaks:allow
         telegram_allowed_chat_ids="123456789,987654321",
     )
     with pytest.MonkeyPatch().context() as mp:
@@ -154,8 +154,8 @@ def test_startup_validation_rejects_insecure_secrets():
     # 8. Lolos jika kredensial kuat
     s_valid = Settings(
         app_env="production",
-        dashboard_password="kunci_akses_sangat_kuat_2026",
-        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        dashboard_password="kunci_akses_sangat_kuat_2026",  # gitleaks:allow
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",  # gitleaks:allow
         telegram_allowed_chat_ids="77889900",
     )
     validate_startup_credentials(s_valid)  # Tidak raise error
@@ -174,7 +174,9 @@ def test_jwt_token_validation_and_tampering():
 
     # Token dengan secret salah
     fake_token = jwt.encode(
-        {"sub": "admin"}, "wrong_secret_key_12345678901234567890", algorithm="HS256"
+        {"sub": "admin"},
+        "wrong_secret_key_12345678901234567890",  # gitleaks:allow
+        algorithm="HS256",
     )
     res_fake = client.get("/api/settings", headers={"Authorization": f"Bearer {fake_token}"})
     assert res_fake.status_code == 401
@@ -212,7 +214,7 @@ def test_dashboard_password_password12345_is_rejected():
     s_prod = Settings(
         app_env="production",
         dashboard_password="password12345",
-        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",
+        jwt_secret="a_valid_jwt_secret_that_is_at_least_32_characters_long",  # gitleaks:allow
     )
     with pytest.raises(RuntimeError) as exc_info:
         validate_startup_credentials(s_prod)

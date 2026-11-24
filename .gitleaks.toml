@@ -2,17 +2,3 @@ title = "gitleaks configuration"
 
 [extend]
 useDefault = true
-
-[allowlist]
-description = "Allowlist sempit untuk fixture mock token/kunci pengujian unit test dan Dockerfile test stage"
-paths = [
-    '''^backend/tests/test_auth\.py$''',
-    '''^backend/tests/conftest\.py$''',
-    '''^backend/Dockerfile$''',
-]
-stopwords = [
-    "test_jwt_secret_at_least_32_chars_1234567890",
-    "a_valid_jwt_secret_that_is_at_least_32_characters_long",
-    "another_different_valid_jwt_secret_key_at_least_32_characters",
-    "test_secret_key_for_testing_123",
-]
