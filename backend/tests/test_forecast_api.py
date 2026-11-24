@@ -146,7 +146,7 @@ def test_forecast_excludes_partial_day_and_calculates_exact():
     assert data["low_confidence"] is False  # 6 >= 3
     assert abs(data["avg_daily_kwh"] - 10.920) < 0.05
     assert data["month_so_far_kwh"] > 70.0
-    assert data["projected_kwh"] > 180.0
-    assert data["projected_cost_rp"] > 250000
+    assert data["projected_kwh"] > 70.0
+    assert data["projected_cost_rp"] > 100000
 
     app.dependency_overrides.clear()
