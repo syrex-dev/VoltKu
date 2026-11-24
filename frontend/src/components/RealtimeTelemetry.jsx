@@ -1,5 +1,5 @@
 import React from 'react'
-import { Zap, Gauge, Activity, Wifi, ShieldAlert } from 'lucide-react'
+import { Zap, Gauge, Activity, Wifi, ShieldAlert, Cpu } from 'lucide-react'
 import { formatNum, formatTimeWIB } from '../utils/formatters'
 
 export function RealtimeTelemetry({ latest, settings }) {
@@ -31,8 +31,8 @@ export function RealtimeTelemetry({ latest, settings }) {
         <div className="section-title-line"></div>
       </div>
 
-      <div className="telemetry-cockpit">
-        {/* Hero Active Power Card */}
+      <div className="telemetry-cockpit-layout">
+        {/* Hero Active Power Card (Full width on top) */}
         <div className="card power-hero-card card-hero-glow">
           <div className="card-top-row">
             <span className="card-label">
@@ -64,57 +64,78 @@ export function RealtimeTelemetry({ latest, settings }) {
           </div>
         </div>
 
-        {/* Tegangan Jaringan */}
-        <div className="card telemetry-card">
-          <div className="card-top-row">
-            <span className="card-label">
-              <Gauge size={15} /> Tegangan AC
-            </span>
+        {/* Secondary Telemetry Grid (2x2 on mobile, 3 columns on desktop) */}
+        <div className="telemetry-subgrid">
+          {/* Tegangan AC */}
+          <div className="card telemetry-mini-card">
+            <div className="card-top-row">
+              <span className="card-label">
+                <Gauge size={14} className="text-secondary" /> Tegangan AC
+              </span>
+            </div>
+            <div className="telemetry-val-wrap">
+              <span className="telemetry-number num-tabular">
+                {v !== null ? formatNum(v, 1) : '-'}
+              </span>
+              <span className="telemetry-unit">Volt</span>
+            </div>
+            <div className="card-detail-pill num-tabular">
+              <span>{f !== null ? `${formatNum(f, 1)} Hz` : '- Hz'}</span>
+            </div>
           </div>
-          <div className="telemetry-val-wrap">
-            <span className="telemetry-number num-tabular">
-              {v !== null ? formatNum(v, 1) : '-'}
-            </span>
-            <span className="telemetry-unit">Volt</span>
-          </div>
-          <div className="card-detail-pill num-tabular">
-            <span>Frekuensi: {f !== null ? `${formatNum(f, 1)} Hz` : '-'}</span>
-          </div>
-        </div>
 
-        {/* Arus Listrik */}
-        <div className="card telemetry-card">
-          <div className="card-top-row">
-            <span className="card-label">
-              <Activity size={15} /> Arus Listrik
-            </span>
+          {/* Arus Listrik */}
+          <div className="card telemetry-mini-card">
+            <div className="card-top-row">
+              <span className="card-label">
+                <Activity size={14} className="text-secondary" /> Arus Listrik
+              </span>
+            </div>
+            <div className="telemetry-val-wrap">
+              <span className="telemetry-number num-tabular">
+                {i !== null ? formatNum(i, 2) : '-'}
+              </span>
+              <span className="telemetry-unit">Ampere</span>
+            </div>
+            <div className="card-detail-pill num-tabular">
+              <span>PF: {pf !== null ? formatNum(pf, 2) : '-'}</span>
+            </div>
           </div>
-          <div className="telemetry-val-wrap">
-            <span className="telemetry-number num-tabular">
-              {i !== null ? formatNum(i, 2) : '-'}
-            </span>
-            <span className="telemetry-unit">Ampere</span>
-          </div>
-          <div className="card-detail-pill num-tabular">
-            <span>Power Factor: {pf !== null ? formatNum(pf, 2) : '-'}</span>
-          </div>
-        </div>
 
-        {/* Koneksi & Waktu */}
-        <div className="card telemetry-card">
-          <div className="card-top-row">
-            <span className="card-label">
-              <Wifi size={15} /> Jaringan Sensor
-            </span>
+          {/* Sinyal Wi-Fi / Jaringan */}
+          <div className="card telemetry-mini-card">
+            <div className="card-top-row">
+              <span className="card-label">
+                <Wifi size={14} className="text-secondary" /> Sinyal Wi-Fi
+              </span>
+            </div>
+            <div className="telemetry-val-wrap">
+              <span className="telemetry-number num-tabular">
+                {rssi !== null ? rssi : '-'}
+              </span>
+              <span className="telemetry-unit">dBm</span>
+            </div>
+            <div className="card-detail-pill num-tabular">
+              <span>{rssi && rssi > -70 ? 'Sinyal Baik' : 'Sinyal Cukup'}</span>
+            </div>
           </div>
-          <div className="telemetry-val-wrap">
-            <span className="telemetry-number num-tabular">
-              {rssi !== null ? rssi : '-'}
-            </span>
-            <span className="telemetry-unit">dBm</span>
-          </div>
-          <div className="card-detail-pill num-tabular">
-            <span>Pukul {ts ? formatTimeWIB(ts) : '-'} WIB</span>
+
+          {/* Pembaruan Terakhir */}
+          <div className="card telemetry-mini-card">
+            <div className="card-top-row">
+              <span className="card-label">
+                <Cpu size={14} className="text-secondary" /> Pembacaan
+              </span>
+            </div>
+            <div className="telemetry-val-wrap">
+              <span className="telemetry-number num-tabular" style={{ fontSize: '1.25rem' }}>
+                {ts ? formatTimeWIB(ts) : '-'}
+              </span>
+              <span className="telemetry-unit">WIB</span>
+            </div>
+            <div className="card-detail-pill num-tabular">
+              <span>Sensor Aktif</span>
+            </div>
           </div>
         </div>
       </div>

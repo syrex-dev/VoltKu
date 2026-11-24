@@ -94,6 +94,11 @@
   padding: 0;
 }
 
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
   background-color: var(--bg-app);
   background-image: var(--bg-radial);
@@ -103,9 +108,17 @@ body {
   font-size: 14px;
   line-height: 1.5;
   min-height: 100vh;
-  padding-bottom: 60px;
+  overflow-x: hidden;
+  padding-bottom: max(32px, env(safe-area-inset-bottom, 32px));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.btn:active:not(:disabled),
+.custom-dropdown-trigger:active,
+.segment-btn:active,
+.custom-dropdown-item:active {
+  transform: scale(0.97);
 }
 
 /* Tabular numbers for live telemetry & financial numbers */
@@ -117,7 +130,13 @@ body {
 .container {
   max-width: 1240px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 20px;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 0 12px;
+  }
 }
 
 /* ==========================================================================
@@ -127,26 +146,105 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(8, 11, 17, 0.82);
+  background: rgba(8, 11, 17, 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 64px;
+  min-height: 60px;
   gap: 16px;
+  padding: 8px 0;
+}
+
+.header-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
 }
 
 .header-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   text-decoration: none;
+  flex-shrink: 0;
+}
+
+.header-center-desktop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.header-mobile-subrow {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0 10px 0;
+    min-height: auto;
+  }
+
+  .header-center-desktop {
+    display: none;
+  }
+
+  .header-mobile-subrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding-top: 2px;
+  }
+
+  .mobile-selector-col {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-selector-col .custom-dropdown-container {
+    width: 100%;
+  }
+
+  .mobile-selector-col .custom-dropdown-trigger {
+    width: 100%;
+    justify-content: space-between;
+    padding: 6px 10px;
+  }
+
+  .mobile-selector-col .dropdown-trigger-value {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
+  }
+
+  .btn-text-desktop {
+    display: none;
+  }
+
+  .btn-icon-only-mobile {
+    padding: 7px 9px;
+  }
 }
 
 .brand-icon-box {
@@ -279,6 +377,15 @@ body {
   z-index: 1000;
   padding: 8px;
   animation: dropdownFade 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (max-width: 768px) {
+  .custom-dropdown-popover {
+    left: 0;
+    right: 0;
+    min-width: 100%;
+    width: 100%;
+  }
 }
 
 [data-theme="light"] .custom-dropdown-popover {
@@ -617,21 +724,95 @@ body {
 /* ==========================================================================
    Telemetry Cockpit Grid (Cockpit Layout)
    ========================================================================== */
-.telemetry-cockpit {
+.telemetry-cockpit-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.telemetry-subgrid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1fr;
-  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
 }
 
 @media (max-width: 1024px) {
-  .telemetry-cockpit {
-    grid-template-columns: 1fr 1fr;
+  .telemetry-subgrid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
   }
 }
 
 @media (max-width: 640px) {
-  .telemetry-cockpit {
-    grid-template-columns: 1fr;
+  .telemetry-subgrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+}
+
+.telemetry-mini-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px 18px;
+}
+
+@media (max-width: 640px) {
+  .telemetry-mini-card {
+    padding: 12px 14px;
+  }
+  .telemetry-mini-card .telemetry-number {
+    font-size: 1.35rem;
+  }
+  .telemetry-mini-card .telemetry-val-wrap {
+    margin: 4px 0 6px 0;
+  }
+  .telemetry-mini-card .card-label {
+    font-size: 11px;
+  }
+  .telemetry-mini-card .card-detail-pill {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+}
+
+/* ==========================================================================
+   Energy & Cost Overview Grid
+   ========================================================================== */
+.energy-grid-modern {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 1024px) {
+  .energy-grid-modern {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .energy-grid-modern {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .forecast-span-mobile {
+    grid-column: span 2;
+  }
+  .cost-card {
+    padding: 14px 12px;
+  }
+  .cost-primary {
+    font-size: 1.25rem;
+  }
+  .cost-kwh {
+    font-size: 11px;
+  }
+  .cost-meta {
+    font-size: 10px;
+    margin-top: 6px;
+    padding-top: 6px;
   }
 }
 
@@ -789,25 +970,8 @@ body {
 }
 
 /* ==========================================================================
-   Energy & Cost Overview Grid
+   Cost Cards Styling
    ========================================================================== */
-.energy-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-
-@media (max-width: 1024px) {
-  .energy-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .energy-grid {
-    grid-template-columns: 1fr;
-  }
-}
 
 .cost-card {
   display: flex;
@@ -877,6 +1041,40 @@ body {
   height: 290px;
   width: 100%;
   margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .chart-container-modern {
+    height: 220px;
+    margin-top: 10px;
+  }
+
+  .card {
+    padding: 16px 14px;
+    border-radius: var(--radius-sm);
+  }
+
+  .power-number {
+    font-size: 1.85rem;
+  }
+
+  .segmented-control {
+    padding: 2px;
+    gap: 1px;
+  }
+
+  .segment-btn {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .section-header {
+    margin-bottom: 10px;
+  }
+
+  .section-block {
+    margin-bottom: 18px;
+  }
 }
 
 /* ==========================================================================

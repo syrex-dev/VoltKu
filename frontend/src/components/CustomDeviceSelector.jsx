@@ -48,7 +48,7 @@ export function CustomDeviceSelector({ devices, activeDeviceId, onSelectDevice }
           <Radio size={13} className="trigger-icon" /> Perangkat:
         </span>
         <span className="dropdown-trigger-value">
-          {activeDevice ? `${activeDevice.name || activeDevice.id}` : 'Pilih Perangkat'}
+          {activeDevice ? (activeDevice.name || activeDevice.id) : 'Pilih Perangkat'}
         </span>
         {activeDevice && (
           <span className="dropdown-trigger-mcb">{activeDevice.mcb_watt} W</span>
@@ -59,7 +59,7 @@ export function CustomDeviceSelector({ devices, activeDeviceId, onSelectDevice }
       {isOpen && (
         <div className="custom-dropdown-popover" role="listbox">
           <div className="dropdown-popover-header">
-            <span>Daftar Perangkat Sensor</span>
+            <span>Daftar Sensor Perangkat</span>
             <span className="dropdown-badge-count">{devices.length}</span>
           </div>
 

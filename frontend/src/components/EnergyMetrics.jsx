@@ -7,17 +7,17 @@ export function EnergyMetrics({ today, week, month, forecast }) {
     <section className="section-block">
       <div className="section-header">
         <h2 className="section-title">
-          <TrendingUp size={14} className="text-primary" /> Akumulasi Energi & Estimasi Biaya
+          <TrendingUp size={14} className="text-primary" /> Akumulasi Energi & Biaya
         </h2>
         <div className="section-title-line"></div>
       </div>
 
-      <div className="energy-grid">
+      <div className="energy-grid-modern">
         {/* Hari Ini */}
         <div className="card cost-card">
           <div className="card-top-row">
             <span className="card-label">
-              <Clock size={14} /> Hari Ini
+              <Clock size={13} /> Hari Ini
             </span>
             {today?.cost_estimated && (
               <span className="badge-forecast badge-warning-soft">Estimasi</span>
@@ -29,8 +29,8 @@ export function EnergyMetrics({ today, week, month, forecast }) {
           </div>
           <div className="cost-meta num-tabular">
             {today?.peak_w > 0 && today?.peak_ts
-              ? `Beban Puncak: ${formatNum(today.peak_w, 1)} W (${formatTimeWIB(today.peak_ts)})`
-              : 'Beban Puncak: - W'}
+              ? `Puncak: ${formatNum(today.peak_w, 1)} W (${formatTimeWIB(today.peak_ts)})`
+              : 'Puncak: - W'}
           </div>
         </div>
 
@@ -38,7 +38,7 @@ export function EnergyMetrics({ today, week, month, forecast }) {
         <div className="card cost-card">
           <div className="card-top-row">
             <span className="card-label">
-              <Calendar size={14} /> Minggu Ini
+              <Calendar size={13} /> Minggu Ini
             </span>
           </div>
           <div className="cost-primary num-tabular">{formatRp(week?.cost_rp)}</div>
@@ -54,7 +54,7 @@ export function EnergyMetrics({ today, week, month, forecast }) {
         <div className="card cost-card">
           <div className="card-top-row">
             <span className="card-label">
-              <Calendar size={14} /> Bulan Ini (Berjalan)
+              <Calendar size={13} /> Bulan Ini (Berjalan)
             </span>
           </div>
           <div className="cost-primary num-tabular">{formatRp(month?.cost_rp)}</div>
@@ -62,15 +62,15 @@ export function EnergyMetrics({ today, week, month, forecast }) {
             {month ? `${formatNum(month.kwh, 3)} kWh` : '- kWh'}
           </div>
           <div className="cost-meta num-tabular">
-            Puncak Bulanan: {month ? `${formatNum(month.peak_w, 1)} W` : '- W'}
+            Puncak: {month ? `${formatNum(month.peak_w, 1)} W` : '- W'}
           </div>
         </div>
 
         {/* Proyeksi Akhir Bulan */}
-        <div className="card cost-card forecast-card-modern">
+        <div className="card cost-card forecast-card-modern forecast-span-mobile">
           <div className="card-top-row">
             <span className="card-label" style={{ color: '#c084fc' }}>
-              <Sparkles size={14} /> Proyeksi Akhir Bulan
+              <Sparkles size={13} /> Proyeksi Akhir Bulan
             </span>
             {forecast?.available ? (
               <span
@@ -97,7 +97,7 @@ export function EnergyMetrics({ today, week, month, forecast }) {
               ? 'Butuh data minimal 24 jam penuh'
               : forecast.low_confidence
               ? `Akurasi kasar (${forecast.basis_days} hari data)`
-              : `Rata-rata: ${formatNum(forecast.avg_daily_kwh, 2)} kWh/hari`}
+              : `Rata-rata harian: ${formatNum(forecast.avg_daily_kwh, 2)} kWh/hari`}
           </div>
         </div>
       </div>
