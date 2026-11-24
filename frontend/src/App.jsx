@@ -285,7 +285,7 @@ export default function App() {
   }
 
   return (
-    <div className="container">
+    <div className="app-layout">
       <Header
         devices={devices}
         activeDeviceId={activeDeviceId}
@@ -295,29 +295,31 @@ export default function App() {
         lastDataTs={latestData?.ts}
       />
 
-      <WarningBanner settings={settings} activeDevice={activeDevice} />
+      <main className="container">
+        <WarningBanner settings={settings} activeDevice={activeDevice} />
 
-      <RealtimeTelemetry latest={latestData} settings={settings} />
+        <RealtimeTelemetry latest={latestData} settings={settings} />
 
-      <EnergyMetrics
-        today={todaySummary}
-        week={weekSummary}
-        month={monthSummary}
-        forecast={forecast}
-      />
+        <EnergyMetrics
+          today={todaySummary}
+          week={weekSummary}
+          month={monthSummary}
+          forecast={forecast}
+        />
 
-      <PowerChart
-        points={powerPoints}
-        range={powerRange}
-        onRangeChange={(newRange) => {
-          setPowerRange(newRange)
-          loadPowerChart(newRange)
-        }}
-      />
+        <PowerChart
+          points={powerPoints}
+          range={powerRange}
+          onRangeChange={(newRange) => {
+            setPowerRange(newRange)
+            loadPowerChart(newRange)
+          }}
+        />
 
-      <DailyChart points={dailyPoints} />
+        <DailyChart points={dailyPoints} />
 
-      <AnomaliesList anomalies={anomalies} />
+        <AnomaliesList anomalies={anomalies} />
+      </main>
 
       <SettingsModal
         isOpen={isSettingsOpen}

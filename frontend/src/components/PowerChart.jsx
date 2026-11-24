@@ -11,6 +11,7 @@ import {
   Filler,
 } from 'chart.js'
 import { Line } from 'react-chartjs-2'
+import { Activity } from 'lucide-react'
 import { formatTimeWIB, formatDateTimeWIB } from '../utils/formatters'
 
 ChartJS.register(
@@ -35,14 +36,23 @@ export function PowerChart({ points, range, onRangeChange, loading }) {
     labels,
     datasets: [
       {
-        label: 'Daya Aktif (Watt)',
+        label: 'Daya Aktif',
         data: dataValues,
         borderColor: '#38bdf8',
-        backgroundColor: 'rgba(56, 189, 248, 0.12)',
         borderWidth: 2,
-        tension: 0.2,
-        pointRadius: points.length > 100 ? 0 : 2,
+        tension: 0.3,
+        pointRadius: points.length > 80 ? 0 : 2.5,
+        pointHoverRadius: 5,
+        pointBackgroundColor: '#0ea5e9',
         fill: true,
+        backgroundColor: (context) => {
+          const ctx = context.chart.ctx
+          const gradient = ctx.createLinearGradient(0, 0, 0, 260)
+          gradient.addColorStop(0, 'rgba(14, 165, 233, 0.32)')
+          gradient.addColorStop(0.6, 'rgba(14, 165, 233, 0.05)')
+          gradient.addColorStop(1, 'rgba(14, 165, 233, 0)')
+          return gradient
+        },
       },
     ],
   }
@@ -51,31 +61,55 @@ export function PowerChart({ points, range, onRangeChange, loading }) {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
     scales: {
       x: {
-        ticks: { color: '#94a3b8', maxTicksLimit: 8 },
-        grid: { color: 'rgba(51, 65, 85, 0.4)' },
+        ticks: { color: '#64748b', maxTicksLimit: 8, font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 } },
+        grid: { color: 'rgba(255, 255, 255, 0.04)', drawTicks: false },
+        border: { display: false },
       },
       y: {
-        ticks: { color: '#94a3b8' },
-        grid: { color: 'rgba(51, 65, 85, 0.4)' },
+        ticks: {
+          color: '#64748b',
+          font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 },
+          callback: (val) => `${val} W`,
+        },
+        grid: { color: 'rgba(255, 255, 255, 0.05)', drawTicks: false },
+        border: { display: false },
       },
     },
     plugins: {
       legend: { display: false },
       tooltip: {
-        mode: 'index',
-        intersect: false,
+        backgroundColor: '#0c1220',
+        titleColor: '#94a3b8',
+        bodyColor: '#38bdf8',
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+        borderWidth: 1,
+        padding: 12,
+        cornerRadius: 8,
+        displayColors: false,
+        titleFont: { size: 11, family: "'Plus Jakarta Sans', sans-serif" },
+        bodyFont: { size: 14, weight: '700', family: "'Plus Jakarta Sans', sans-serif" },
+        callbacks: {
+          label: (context) => `${context.parsed.y.toLocaleString('id-ID')} Watt`,
+        },
       },
     },
   }
 
   return (
     <section className="section-block">
-      <div className="card chart-card">
-        <div className="chart-header">
-          <h3 className="chart-title">Grafik Profil Daya (Watt)</h3>
-          <div className="btn-group">
+      <div className="card">
+        <div className="section-header" style={{ marginBottom: 4 }}>
+          <div className="section-title">
+            <Activity size={15} className="text-primary" /> Profil Beban Daya
+          </div>
+
+          <div className="segmented-control">
             {[
               { id: '5h', label: '5 Jam' },
               { id: '24h', label: '24 Jam' },
@@ -84,7 +118,7 @@ export function PowerChart({ points, range, onRangeChange, loading }) {
             ].map((r) => (
               <button
                 key={r.id}
-                className={`btn btn-sm btn-toggle ${range === r.id ? 'active' : ''}`}
+                className={`segment-btn ${range === r.id ? 'active' : ''}`}
                 onClick={() => onRangeChange(r.id)}
                 disabled={loading}
               >
@@ -93,7 +127,8 @@ export function PowerChart({ points, range, onRangeChange, loading }) {
             ))}
           </div>
         </div>
-        <div className="chart-container">
+
+        <div className="chart-container-modern">
           <Line data={chartData} options={options} />
         </div>
       </div>

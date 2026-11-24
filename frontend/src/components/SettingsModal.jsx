@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Save, Settings as SettingsIcon } from 'lucide-react'
+import { X, Check, Sliders, Shield } from 'lucide-react'
 
 export function SettingsModal({
   isOpen,
@@ -46,10 +46,10 @@ export function SettingsModal({
     try {
       await onSave(payload)
       setIsError(false)
-      setStatusMsg('Pengaturan berhasil disimpan!')
+      setStatusMsg('Pengaturan berhasil diperbarui!')
       setTimeout(() => {
         onClose()
-      }, 1200)
+      }, 1000)
     } catch (err) {
       setIsError(true)
       setStatusMsg(err.message || 'Gagal menyimpan pengaturan.')
@@ -59,107 +59,145 @@ export function SettingsModal({
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-card">
-        <div className="modal-header">
-          <div className="modal-title-wrap">
-            <SettingsIcon size={20} className="text-primary" />
-            <h3>Pengaturan Sistem</h3>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-dialog-modern" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header-modern">
+          <div className="modal-title-group">
+            <Sliders size={20} className="modal-title-icon" />
+            <h3 className="modal-title-text">Parameter Sistem & Biaya</h3>
           </div>
-          <button className="btn-close" onClick={onClose} aria-label="Tutup">
-            <X size={20} />
+          <button className="btn-icon-close" onClick={onClose} aria-label="Tutup">
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="settings-form">
-          <div className="form-group">
-            <label htmlFor="input-tariff">Tarif Listrik (Rp/kWh)</label>
-            <input
-              type="text"
-              id="input-tariff"
-              value={tariff}
-              onChange={(e) => setTariff(e.target.value)}
-              placeholder="Contoh: 1444.70"
-              required
-            />
-            <small className="form-help">Maksimal 2 desimal. Contoh: 1444.70 atau 1444,70</small>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="input-power-limit">Batas Daya PLN (Watt)</label>
-            <input
-              type="number"
-              id="input-power-limit"
-              value={powerLimit}
-              onChange={(e) => setPowerLimit(e.target.value)}
-              min="100"
-              max="25000"
-              required
-            />
-            <small className="form-help">Rentang 100 s.d. 25.000 Watt (Contoh: 2200)</small>
-          </div>
-
-          <div className="form-group">
-            <label>Kapasitas MCB Perangkat (Info)</label>
-            <input
-              type="text"
-              value={activeDevice ? `${activeDevice.mcb_watt} W` : '-'}
-              disabled
-              readOnly
-              className="input-disabled"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="input-cooldown">Cooldown Notifikasi (Menit)</label>
-            <input
-              type="number"
-              id="input-cooldown"
-              value={cooldown}
-              onChange={(e) => setCooldown(e.target.value)}
-              min="5"
-              max="1440"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="input-extra-percent">Biaya Tambahan / Pajak (%)</label>
-            <input
-              type="number"
-              id="input-extra-percent"
-              value={extraPercent}
-              onChange={(e) => setExtraPercent(e.target.value)}
-              min="0"
-              step="0.1"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="input-report-hour">Jam Laporan Harian (WIB)</label>
-            <input
-              type="number"
-              id="input-report-hour"
-              value={reportHour}
-              onChange={(e) => setReportHour(e.target.value)}
-              min="0"
-              max="23"
-              required
-            />
-          </div>
-
+        <form onSubmit={handleSubmit}>
           {statusMsg && (
-            <div className={isError ? 'error-msg' : 'status-msg'}>{statusMsg}</div>
+            <div className={`feedback-msg ${isError ? 'error' : 'success'}`}>
+              {statusMsg}
+            </div>
           )}
 
-          <div className="modal-footer">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="form-field-group">
+              <label className="field-label" htmlFor="input-tariff">
+                Tarif Listrik PLN
+              </label>
+              <div className="input-affix-wrap">
+                <span className="input-affix-prefix">Rp</span>
+                <input
+                  type="text"
+                  id="input-tariff"
+                  className="modern-input has-prefix has-suffix num-tabular"
+                  value={tariff}
+                  onChange={(e) => setTariff(e.target.value)}
+                  placeholder="1444.70"
+                  required
+                />
+                <span className="input-affix-suffix">/kWh</span>
+              </div>
+              <small className="field-hint">Maksimal 2 desimal</small>
+            </div>
+
+            <div className="form-field-group">
+              <label className="field-label" htmlFor="input-power-limit">
+                Batas Daya Kontrak
+              </label>
+              <div className="input-affix-wrap">
+                <input
+                  type="number"
+                  id="input-power-limit"
+                  className="modern-input has-suffix num-tabular"
+                  value={powerLimit}
+                  onChange={(e) => setPowerLimit(e.target.value)}
+                  min="100"
+                  max="25000"
+                  required
+                />
+                <span className="input-affix-suffix">Watt</span>
+              </div>
+              <small className="field-hint">Ambang batas beban (100-25k W)</small>
+            </div>
+          </div>
+
+          <div className="form-field-group">
+            <label className="field-label">Kapasitas MCB Terpasang (Hardware)</label>
+            <div className="input-affix-wrap">
+              <input
+                type="text"
+                value={activeDevice ? `${activeDevice.mcb_watt} Watt` : 'Belum terhubung'}
+                disabled
+                readOnly
+                className="modern-input"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="form-field-group">
+              <label className="field-label" htmlFor="input-cooldown">
+                Jeda Peringatan Ulang
+              </label>
+              <div className="input-affix-wrap">
+                <input
+                  type="number"
+                  id="input-cooldown"
+                  className="modern-input has-suffix num-tabular"
+                  value={cooldown}
+                  onChange={(e) => setCooldown(e.target.value)}
+                  min="5"
+                  max="1440"
+                  required
+                />
+                <span className="input-affix-suffix">Menit</span>
+              </div>
+            </div>
+
+            <div className="form-field-group">
+              <label className="field-label" htmlFor="input-extra-percent">
+                Pajak / PPJ / Tambahan
+              </label>
+              <div className="input-affix-wrap">
+                <input
+                  type="number"
+                  id="input-extra-percent"
+                  className="modern-input has-suffix num-tabular"
+                  value={extraPercent}
+                  onChange={(e) => setExtraPercent(e.target.value)}
+                  min="0"
+                  step="0.1"
+                  required
+                />
+                <span className="input-affix-suffix">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="form-field-group">
+            <label className="field-label" htmlFor="input-report-hour">
+              Jadwal Rekap Laporan Harian
+            </label>
+            <div className="input-affix-wrap">
+              <input
+                type="number"
+                id="input-report-hour"
+                className="modern-input has-suffix num-tabular"
+                value={reportHour}
+                onChange={(e) => setReportHour(e.target.value)}
+                min="0"
+                max="23"
+                required
+              />
+              <span className="input-affix-suffix">:00 WIB</span>
+            </div>
+          </div>
+
+          <div className="modal-actions-row">
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               Batal
             </button>
-            <button type="submit" className="btn btn-primary btn-icon-text" disabled={saving}>
-              <Save size={16} />
-              <span>{saving ? 'Menyimpan...' : 'Simpan Pengaturan'}</span>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Menyimpan...' : 'Terapkan Konfigurasi'}
             </button>
           </div>
         </form>

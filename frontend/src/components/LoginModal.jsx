@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Lock, Zap } from 'lucide-react'
+import { Lock, Zap, ArrowRight } from 'lucide-react'
 
 export function LoginModal({ onLogin, error }) {
   const [password, setPassword] = useState('')
@@ -17,24 +17,27 @@ export function LoginModal({ onLogin, error }) {
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="login-card">
-        <div className="login-header">
-          <div className="login-icon-wrap">
-            <Zap className="login-icon" size={32} />
+    <div className="auth-hero-backdrop">
+      <div className="auth-card-modern">
+        <div className="auth-header">
+          <div className="auth-icon-halo">
+            <Zap size={28} />
           </div>
-          <h2>Monitor Listrik Pintar</h2>
-          <p>Masukkan kata sandi untuk mengakses dashboard</p>
+          <h2 className="auth-title">Monitor Listrik Pintar</h2>
+          <p className="auth-subtitle">Sistem Monitoring Energi IoT & Deteksi Anomali AI</p>
         </div>
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="form-group">
-            <label htmlFor="password-input">Kata Sandi Dashboard</label>
-            <div className="input-with-icon">
-              <Lock size={18} className="input-icon" />
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-field-group">
+            <label className="field-label" htmlFor="password-input">
+              Kata Sandi Dashboard
+            </label>
+            <div className="input-affix-wrap">
               <input
                 type="password"
                 id="password-input"
-                placeholder="Masukkan kata sandi"
+                className="modern-input"
+                placeholder="Masukkan kata sandi otorisasi"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -43,9 +46,17 @@ export function LoginModal({ onLogin, error }) {
               />
             </div>
           </div>
-          {error && <div className="error-msg">{error}</div>}
-          <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-            {submitting ? 'Memproses...' : 'Masuk ke Dashboard'}
+
+          {error && <div className="feedback-msg error">{error}</div>}
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ width: '100%', padding: '11px', marginTop: 8 }}
+            disabled={submitting}
+          >
+            <span>{submitting ? 'Memverifikasi...' : 'Buka Dashboard'}</span>
+            <ArrowRight size={16} />
           </button>
         </form>
       </div>

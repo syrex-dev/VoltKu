@@ -10,12 +10,11 @@ export function WarningBanner({ settings, activeDevice }) {
   if (pLimit <= mcbWatt) return null
 
   return (
-    <div className="alert-banner alert-warning">
-      <AlertTriangle className="alert-icon" size={20} />
-      <span className="alert-text">
-        <strong>Peringatan:</strong> Batas daya PLN ({pLimit} W) melebihi kapasitas MCB perangkat (
-        {mcbWatt} W)!
-      </span>
+    <div className="alert-banner-modern">
+      <AlertTriangle className="alert-banner-icon" size={22} />
+      <div>
+        <strong style={{ color: '#ffffff' }}>Peringatan Kapasitas:</strong> Batas daya PLN konfigurasi ({pLimit} W) melebihi batas MCB fisik perangkat ({mcbWatt} W). Mohon sesuaikan pengaturan agar MCB tidak anjlok mendadak.
+      </div>
     </div>
   )
 }

@@ -1,43 +1,50 @@
 import React from 'react'
-import { AlertCircle, ShieldAlert, CheckCircle2 } from 'lucide-react'
+import { ShieldAlert, ShieldCheck, AlertCircle } from 'lucide-react'
 import { formatDateTimeWIB } from '../utils/formatters'
 
 export function AnomaliesList({ anomalies }) {
   return (
     <section className="section-block">
       <div className="card">
-        <div className="chart-header">
-          <div className="chart-title-wrap">
-            <ShieldAlert size={20} className="text-warning" />
-            <h3 className="chart-title">Riwayat Peringatan & Anomali (7 Hari Terakhir)</h3>
+        <div className="section-header">
+          <div className="section-title">
+            <ShieldAlert size={15} className="text-warning" /> Riwayat Deteksi Anomali & Peringatan (7 Hari)
           </div>
         </div>
-        <div className="anomalies-container">
-          {!anomalies || anomalies.length === 0 ? (
-            <div className="anomalies-empty">
-              <CheckCircle2 size={24} className="text-success" />
-              <p>Tidak ada anomali atau peringatan terdeteksi dalam 7 hari terakhir.</p>
+
+        {!anomalies || anomalies.length === 0 ? (
+          <div className="empty-healthy-card">
+            <div className="healthy-icon-wrap">
+              <ShieldCheck size={26} />
             </div>
-          ) : (
-            <div className="anomalies-list">
-              {anomalies.map((item) => (
-                <div key={item.id || `${item.ts}-${item.type}`} className="anomaly-item">
-                  <div className="anomaly-left">
-                    <span className="anomaly-message">{item.message || item.type}</span>
-                    <span className="anomaly-time">{formatDateTimeWIB(item.ts)} WIB</span>
+            <div style={{ fontWeight: 600, color: '#f8fafc' }}>Kondisi Kelistrikan Normal</div>
+            <div style={{ fontSize: 12 }}>Tidak ada deviasi daya, lonjakan, atau anomali dalam 7 hari terakhir.</div>
+          </div>
+        ) : (
+          <div className="anomalies-list-modern">
+            {anomalies.map((item) => {
+              const isCrit = item.severity === 'critical'
+              return (
+                <div key={item.id || `${item.ts}-${item.type}`} className="anomaly-row">
+                  <div className="anomaly-left-col">
+                    <div className={`anomaly-icon-badge ${isCrit ? 'critical' : 'warning'}`}>
+                      <AlertCircle size={18} />
+                    </div>
+                    <div className="anomaly-content">
+                      <div className="anomaly-title">{item.message || item.type}</div>
+                      <div className="anomaly-time-str num-tabular">
+                        {formatDateTimeWIB(item.ts)} WIB
+                      </div>
+                    </div>
                   </div>
-                  <span
-                    className={`badge ${
-                      item.severity === 'critical' ? 'badge-offline' : 'badge-warning'
-                    }`}
-                  >
+                  <span className={isCrit ? 'pill-critical' : 'pill-warning'}>
                     {item.severity.toUpperCase()}
                   </span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </section>
   )
