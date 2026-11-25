@@ -13,6 +13,7 @@ import {
   Clock,
   Globe,
   UserCheck,
+  Crown,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatTimeWIB } from '../utils/formatters'
@@ -24,6 +25,7 @@ const SUB_TABS = [
   { id: 'akses', label: '3. Akses & Login', icon: Lock },
   { id: 'legal', label: '4. Legal & Audit', icon: ShieldCheck },
   { id: 'operasional', label: '5. Operasional & Dukungan', icon: Sliders },
+  { id: 'freemium', label: '6. Paket & Freemium', icon: Crown },
 ]
 
 const VIA_LABELS = {
@@ -112,6 +114,21 @@ export function AdminAppSettingsTab({
         support_whatsapp: (form.support_whatsapp || '').trim(),
         support_telegram: (form.support_telegram || '').trim(),
         support_email: (form.support_email || '').trim(),
+        freemium_enabled: Boolean(form.freemium_enabled),
+        free_plan_name: (form.free_plan_name || '').trim() || 'VoltKu Gratis',
+        free_max_devices: Math.max(1, parseInt(form.free_max_devices, 10) || 1),
+        free_history_days: Math.max(1, parseInt(form.free_history_days, 10) || 3),
+        free_forecast_enabled: Boolean(form.free_forecast_enabled),
+        free_export_enabled: Boolean(form.free_export_enabled),
+        pro_plan_name: (form.pro_plan_name || '').trim() || 'VoltKu Pro',
+        pro_monthly_price_rp: Math.max(0, parseInt(form.pro_monthly_price_rp, 10) || 0),
+        pro_yearly_price_rp: Math.max(0, parseInt(form.pro_yearly_price_rp, 10) || 0),
+        pro_max_devices:
+          form.pro_max_devices === '' || form.pro_max_devices === null
+            ? 10
+            : parseInt(form.pro_max_devices, 10),
+        pro_history_days: Math.max(1, parseInt(form.pro_history_days, 10) || 90),
+        upgrade_instructions: (form.upgrade_instructions || '').trim(),
         tariff_rp: String(form.tariff_rp || '1444.70').trim(),
         power_limit_w: parseInt(form.power_limit_w, 10) || 2200,
         alert_cooldown_min: parseInt(form.alert_cooldown_min, 10) || 30,
@@ -851,6 +868,209 @@ export function AdminAppSettingsTab({
                     onChange={(e) => updateField('support_email', e.target.value)}
                   />
                 </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        {subTab === 'freemium' && (
+          <>
+            <section className="clean-sheet admin-card-block">
+              <div className="admin-card-head">
+                <h3>Pengaturan Model Bisnis Freemium</h3>
+              </div>
+
+              <div className="admin-toggle-row" style={{ marginBottom: 14 }}>
+                <div>
+                  <div className="admin-row-title">Aktifkan Pembatasan Paket (Freemium)</div>
+                  <div className="admin-row-sub">
+                    Jika aktif, pengguna baru masuk ke paket Gratis sesuai kuota panel &amp;
+                    riwayat di bawah. Jika dimatikan, seluruh pengguna otomatis terbuka penuh.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(form.freemium_enabled)}
+                  className={`admin-switch ${form.freemium_enabled ? 'on' : ''}`}
+                  onClick={() => updateField('freemium_enabled', !form.freemium_enabled)}
+                >
+                  <span className="admin-switch-thumb" />
+                </button>
+              </div>
+            </section>
+
+            <section className="clean-sheet admin-card-block">
+              <div className="admin-card-head">
+                <h3>Paket Gratis (Free Tier)</h3>
+              </div>
+              <div className="settings-fields-grid">
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="cfg-free-name">
+                    Nama Paket Gratis
+                  </label>
+                  <input
+                    id="cfg-free-name"
+                    type="text"
+                    className="modern-input"
+                    value={form.free_plan_name || ''}
+                    onChange={(e) => updateField('free_plan_name', e.target.value)}
+                  />
+                </div>
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="cfg-free-max-dev">
+                    Maksimal Panel Aktif
+                  </label>
+                  <input
+                    id="cfg-free-max-dev"
+                    type="number"
+                    min="1"
+                    max="100"
+                    className="modern-input num-tabular"
+                    value={form.free_max_devices ?? 1}
+                    onChange={(e) => updateField('free_max_devices', e.target.value)}
+                  />
+                </div>
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="cfg-free-days">
+                    Batas Riwayat Grafik (Hari)
+                  </label>
+                  <input
+                    id="cfg-free-days"
+                    type="number"
+                    min="1"
+                    max="366"
+                    className="modern-input num-tabular"
+                    value={form.free_history_days ?? 3}
+                    onChange={(e) => updateField('free_history_days', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="admin-toggle-row" style={{ marginTop: 12 }}>
+                <div>
+                  <div className="admin-row-title">Izinkan Proyeksi Tagihan di Paket Gratis</div>
+                  <div className="admin-row-sub">
+                    Matikan agar fitur Perkiraan Akhir Bulan eksklusif untuk pelanggan Pro.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(form.free_forecast_enabled)}
+                  className={`admin-switch ${form.free_forecast_enabled ? 'on' : ''}`}
+                  onClick={() =>
+                    updateField('free_forecast_enabled', !form.free_forecast_enabled)
+                  }
+                >
+                  <span className="admin-switch-thumb" />
+                </button>
+              </div>
+
+              <div className="admin-toggle-row" style={{ marginTop: 12 }}>
+                <div>
+                  <div className="admin-row-title">Izinkan Ekspor CSV di Paket Gratis</div>
+                  <div className="admin-row-sub">
+                    Matikan agar unduhan laporan konsumsi CSV hanya untuk pelanggan Pro.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(form.free_export_enabled)}
+                  className={`admin-switch ${form.free_export_enabled ? 'on' : ''}`}
+                  onClick={() => updateField('free_export_enabled', !form.free_export_enabled)}
+                >
+                  <span className="admin-switch-thumb" />
+                </button>
+              </div>
+            </section>
+
+            <section className="clean-sheet admin-card-block">
+              <div className="admin-card-head">
+                <h3>Paket Pro (Berbayar)</h3>
+              </div>
+              <div className="settings-fields-grid">
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="cfg-pro-name">
+                    Nama Paket Pro
+                  </label>
+                  <input
+                    id="cfg-pro-name"
+                    type="text"
+                    className="modern-input"
+                    value={form.pro_plan_name || ''}
+                    onChange={(e) => updateField('pro_plan_name', e.target.value)}
+                  />
+                </div>
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="cfg-pro-month">
+                    Harga Bulanan (Rp)
+                  </label>
+                  <input
+                    id="cfg-pro-month"
+                    type="number"
+                    min="0"
+                    className="modern-input num-tabular"
+                    value={form.pro_monthly_price_rp ?? 30000}
+                    onChange={(e) => updateField('pro_monthly_price_rp', e.target.value)}
+                  />
+                </div>
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="cfg-pro-year">
+                    Harga Tahunan (Rp)
+                  </label>
+                  <input
+                    id="cfg-pro-year"
+                    type="number"
+                    min="0"
+                    className="modern-input num-tabular"
+                    value={form.pro_yearly_price_rp ?? 300000}
+                    onChange={(e) => updateField('pro_yearly_price_rp', e.target.value)}
+                  />
+                </div>
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="cfg-pro-max-dev">
+                    Maksimal Panel Pro (-1 = Tanpa Batas)
+                  </label>
+                  <input
+                    id="cfg-pro-max-dev"
+                    type="number"
+                    min="-1"
+                    max="10000"
+                    className="modern-input num-tabular"
+                    value={form.pro_max_devices ?? 10}
+                    onChange={(e) => updateField('pro_max_devices', e.target.value)}
+                  />
+                </div>
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="cfg-pro-days">
+                    Riwayat Grafik Pro (Hari)
+                  </label>
+                  <input
+                    id="cfg-pro-days"
+                    type="number"
+                    min="1"
+                    max="366"
+                    className="modern-input num-tabular"
+                    value={form.pro_history_days ?? 90}
+                    onChange={(e) => updateField('pro_history_days', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="form-field-group" style={{ marginTop: 8, marginBottom: 0 }}>
+                <label className="field-label" htmlFor="cfg-upg-inst">
+                  Instruksi Pembayaran / Konfirmasi Upgrade (Ditampilkan ke Pelanggan)
+                </label>
+                <textarea
+                  id="cfg-upg-inst"
+                  rows={3}
+                  className="modern-input admin-textarea"
+                  placeholder="Contoh: Transfer QRIS / BCA ... lalu klik ajukan & konfirmasi ke WhatsApp admin."
+                  value={form.upgrade_instructions || ''}
+                  onChange={(e) => updateField('upgrade_instructions', e.target.value)}
+                />
               </div>
             </section>
           </>

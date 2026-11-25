@@ -16,7 +16,16 @@ from app.auth import (
 )
 from app.config import get_settings
 from app.db import get_db
-from app.models import Anomaly, Device, Reading, Setting, TermsConsent, User, UserSetting
+from app.models import (
+    Anomaly,
+    Device,
+    Reading,
+    Setting,
+    TermsConsent,
+    UpgradeRequest,
+    User,
+    UserSetting,
+)
 from app.mqtt_ingest import ingest_service
 from app.routers.anomalies import query_anomalies_list
 from app.routers.devices import (
@@ -31,8 +40,10 @@ from app.routers.users import EMAIL_RE, _serialize_user
 from app.services.app_config import (
     get_active_terms_version,
     get_admin_app_settings,
+    get_app_config_map,
     update_admin_app_settings,
 )
+from app.services.plans import apply_user_plan_update, serialize_upgrade_request
 
 auth_router = APIRouter(prefix="/api/admin", tags=["Admin Auth"])
 router = APIRouter(
@@ -52,12 +63,23 @@ class AdminUserCreateRequest(BaseModel):
     name: str
     email: str
     password: str
+    plan_tier: str = "free"
+    plan_duration_days: Optional[int] = None
 
 
 class AdminUserUpdateRequest(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
+    plan_tier: Optional[str] = None
+    plan_duration_days: Optional[int] = None
+    clear_plan_expiration: Optional[bool] = None
+
+
+class AdminUpgradeResolveRequest(BaseModel):
+    action: str  # "approve" | "reject"
+    duration_days: Optional[int] = None
+    admin_note: Optional[str] = None
 
 
 class AdminDeviceUpdateRequest(BaseModel):
@@ -99,6 +121,18 @@ class AdminAppSettingsUpdateRequest(BaseModel):
     support_whatsapp: Optional[str] = None
     support_telegram: Optional[str] = None
     support_email: Optional[str] = None
+    freemium_enabled: Optional[bool] = None
+    free_plan_name: Optional[str] = None
+    free_max_devices: Optional[int] = None
+    free_history_days: Optional[int] = None
+    free_forecast_enabled: Optional[bool] = None
+    free_export_enabled: Optional[bool] = None
+    pro_plan_name: Optional[str] = None
+    pro_monthly_price_rp: Optional[int] = None
+    pro_yearly_price_rp: Optional[int] = None
+    pro_max_devices: Optional[int] = None
+    pro_history_days: Optional[int] = None
+    upgrade_instructions: Optional[str] = None
     tariff_rp: Optional[str] = None
     power_limit_w: Optional[int] = None
     alert_cooldown_min: Optional[int] = None
@@ -151,6 +185,22 @@ def get_admin_overview(session: Session = Depends(get_db)):
 
     users_total = session.scalar(select(func.count(User.id))) or 0
     users_active = session.scalar(select(func.count(User.id)).where(User.is_active == 1)) or 0
+    now_utc = int(time.time())
+    users_pro = (
+        session.scalar(
+            select(func.count(User.id)).where(
+                User.plan_tier == "pro",
+                (User.plan_expires_at.is_(None)) | (User.plan_expires_at > now_utc),
+            )
+        )
+        or 0
+    )
+    pending_upgrades = (
+        session.scalar(
+            select(func.count(UpgradeRequest.id)).where(UpgradeRequest.status == "pending")
+        )
+        or 0
+    )
 
     cutoff_7d = int(time.time()) - (7 * 86400)
     anomalies_7d = session.scalar(
@@ -175,6 +225,8 @@ def get_admin_overview(session: Session = Depends(get_db)):
         "devices_public_demo": demo_count,
         "users_total": int(users_total),
         "users_active": int(users_active),
+        "users_pro": int(users_pro),
+        "pending_upgrades": int(pending_upgrades),
         "anomalies_7d": int(anomalies_7d),
         "readings_total": int(readings_total),
         "public_read_enabled": is_public_dashboard_enabled(session),
@@ -190,8 +242,9 @@ def get_admin_overview(session: Session = Depends(get_db)):
 
 @router.get("/users", response_model=list[dict[str, Any]])
 def list_admin_users(session: Session = Depends(get_db)):
-    """Daftar seluruh akun tenant/pembeli beserta jumlah perangkat miliknya."""
+    """Daftar seluruh akun tenant/pembeli beserta jumlah perangkat dan paket langganannya."""
     users = session.scalars(select(User).order_by(User.id.desc())).all()
+    cfg_map = get_app_config_map(session)
     dev_counts = dict(
         session.execute(
             select(Device.owner_user_id, func.count(Device.id))
@@ -201,8 +254,9 @@ def list_admin_users(session: Session = Depends(get_db)):
     )
     results = []
     for u in users:
-        item = _serialize_user(u)
-        item["device_count"] = int(dev_counts.get(u.id, 0))
+        cnt = int(dev_counts.get(u.id, 0))
+        item = _serialize_user(u, session=session, cfg_map=cfg_map, device_count=cnt)
+        item["device_count"] = cnt
         results.append(item)
     return results
 
@@ -230,10 +284,20 @@ def create_admin_user(req: AdminUserCreateRequest, session: Session = Depends(ge
         is_active=1,
         created_at=int(datetime.now(timezone.utc).timestamp()),
     )
+    try:
+        apply_user_plan_update(
+            user,
+            plan_tier=req.plan_tier,
+            duration_days=req.plan_duration_days,
+        )
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
     session.add(user)
     session.commit()
     session.refresh(user)
-    item = _serialize_user(user)
+    cfg_map = get_app_config_map(session)
+    item = _serialize_user(user, session=session, cfg_map=cfg_map, device_count=0)
     item["device_count"] = 0
     return item
 
@@ -244,7 +308,7 @@ def update_admin_user(
     req: AdminUserUpdateRequest,
     session: Session = Depends(get_db),
 ):
-    """Mengubah nama, status aktif, atau reset sandi akun tenant."""
+    """Mengubah nama, status aktif, sandi, atau paket langganan akun tenant."""
     user = session.get(User, user_id)
     if not user:
         raise _admin_err(status.HTTP_404_NOT_FOUND, "User not found")
@@ -261,13 +325,29 @@ def update_admin_user(
             raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, "Kata sandi minimal 6 karakter")
         user.password_hash = hash_password(req.password)
 
+    if (
+        req.plan_tier is not None
+        or req.plan_duration_days is not None
+        or req.clear_plan_expiration
+    ):
+        try:
+            apply_user_plan_update(
+                user,
+                plan_tier=req.plan_tier,
+                duration_days=req.plan_duration_days,
+                clear_expiration=bool(req.clear_plan_expiration),
+            )
+        except ValueError as err:
+            raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
     session.commit()
     session.refresh(user)
-    dev_count = (
+    dev_count = int(
         session.scalar(select(func.count(Device.id)).where(Device.owner_user_id == user.id)) or 0
     )
-    item = _serialize_user(user)
-    item["device_count"] = int(dev_count)
+    cfg_map = get_app_config_map(session)
+    item = _serialize_user(user, session=session, cfg_map=cfg_map, device_count=dev_count)
+    item["device_count"] = dev_count
     return item
 
 
@@ -462,3 +542,69 @@ def get_admin_terms_consents(
         "total_logged": len(items),
         "items": items,
     }
+
+
+@router.get("/upgrade-requests", response_model=list[dict[str, Any]])
+def list_admin_upgrade_requests(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=500),
+    session: Session = Depends(get_db),
+):
+    """Daftar pengajuan upgrade paket dari pengguna untuk ditinjau Admin."""
+    stmt = select(UpgradeRequest)
+    if status_filter and status_filter.strip().lower() in ("pending", "approved", "rejected"):
+        stmt = stmt.where(UpgradeRequest.status == status_filter.strip().lower())
+    rows = session.scalars(
+        stmt.order_by(UpgradeRequest.created_at.desc(), UpgradeRequest.id.desc()).limit(limit)
+    ).all()
+    users_map = {u.id: u for u in session.scalars(select(User)).all()}
+    return [serialize_upgrade_request(r, user=users_map.get(r.user_id)) for r in rows]
+
+
+@router.patch("/upgrade-requests/{request_id}", response_model=dict[str, Any])
+def resolve_admin_upgrade_request(
+    request_id: int,
+    req: AdminUpgradeResolveRequest,
+    session: Session = Depends(get_db),
+):
+    """Menyetujui atau menolak pengajuan upgrade user sekaligus mengaktifkan paket Pro."""
+    entry = session.get(UpgradeRequest, request_id)
+    if not entry:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Permintaan upgrade tidak ditemukan")
+    if entry.status != "pending":
+        raise _admin_err(
+            status.HTTP_409_CONFLICT,
+            f"Permintaan ini sudah berstatus '{entry.status}'",
+        )
+
+    action = (req.action or "").strip().lower()
+    if action not in ("approve", "reject"):
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "action harus 'approve' atau 'reject'",
+        )
+
+    user = session.get(User, entry.user_id)
+    if not user:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Akun pengguna tidak ditemukan")
+
+    now_utc = int(time.time())
+    clean_note = req.admin_note.strip()[:255] if req.admin_note and req.admin_note.strip() else None
+
+    if action == "approve":
+        default_days = 365 if entry.billing_cycle == "yearly" else 30
+        days_to_apply = default_days if req.duration_days is None else int(req.duration_days)
+        apply_user_plan_update(
+            user,
+            plan_tier=entry.requested_tier or "pro",
+            duration_days=days_to_apply,
+        )
+        entry.status = "approved"
+    else:
+        entry.status = "rejected"
+
+    entry.admin_note = clean_note
+    entry.resolved_at = now_utc
+    session.commit()
+    session.refresh(entry)
+    return serialize_upgrade_request(entry, user=user)

@@ -17,8 +17,10 @@ import {
   MessageCircle,
   Send,
   Mail,
+  Crown,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
+import { formatTimeWIB } from '../utils/formatters'
 
 const PRESET_ROOMS = ['Panel Utama', 'Ruang Tamu', 'Kamar Tidur', 'Dapur', 'Lantai 2', 'Warung']
 
@@ -45,6 +47,7 @@ export function SettingsView({
   onLogout,
   onReplayTour,
   onOpenTerms,
+  onOpenPlanModal,
   appConfig = {},
 }) {
   const [tariff, setTariff] = useState('')
@@ -367,6 +370,53 @@ export function SettingsView({
           )
         )}
       </section>
+
+      {/* Ringkasan Paket & Kuota (Freemium) */}
+      {isAuthenticated && currentUser?.plan && currentUser.plan.freemium_enabled !== false && (
+        <section className="clean-sheet plan-summary-sheet">
+          <div className="plan-summary-head">
+            <div className="plan-summary-title-group">
+              <span className={`plan-badge-chip ${currentUser.plan.is_pro ? 'is-pro' : ''}`}>
+                <Crown size={14} />
+                <span>{currentUser.plan.plan_name}</span>
+              </span>
+              {currentUser.plan.pending_upgrade && !currentUser.plan.is_pro && (
+                <span className="admin-pill warn">Menunggu Aktivasi</span>
+              )}
+            </div>
+            {onOpenPlanModal && (
+              <button
+                type="button"
+                className={`btn btn-compact ${currentUser.plan.is_pro ? 'btn-secondary' : 'btn-primary'}`}
+                onClick={() => onOpenPlanModal('')}
+              >
+                {currentUser.plan.is_pro ? 'Detail Paket' : 'Upgrade Pro'}
+              </button>
+            )}
+          </div>
+          <div className="plan-summary-meta num-tabular">
+            <span>
+              Panel:{' '}
+              <strong>
+                {currentUser.plan.usage?.device_count ?? 0} /{' '}
+                {currentUser.plan.limits?.max_devices < 0
+                  ? 'Tak terbatas'
+                  : currentUser.plan.limits?.max_devices ?? 1}
+              </strong>
+            </span>
+            <span>
+              Riwayat: <strong>{currentUser.plan.limits?.history_days ?? 3} hari</strong>
+            </span>
+            {currentUser.plan.is_pro && (
+              <span>
+                {currentUser.plan.expires_at
+                  ? `Aktif s.d. ${formatTimeWIB(currentUser.plan.expires_at)}`
+                  : 'Aktif Permanen'}
+              </span>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Menu Aplikasi & Dukungan */}
       <section className="clean-sheet app-menu-group">

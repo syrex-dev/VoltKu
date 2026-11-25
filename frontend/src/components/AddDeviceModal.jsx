@@ -86,6 +86,7 @@ export function AddDeviceModal({
   token,
   existingDevices = [],
   onDeviceAdded,
+  onPlanLimitReached,
   onLogout,
 }) {
   // Step 0: Panduan Visual Carousel, Step 1: Metode, Step 2: Wi-Fi Alat, Step 3: Pairing Cek, Step 4: Nama & Ruangan, Step 5: Selesai
@@ -222,6 +223,11 @@ export function AddDeviceModal({
       if (onDeviceAdded) await onDeviceAdded(saved.id)
       setStep(5)
     } catch (err) {
+      if (err?.reason === 'plan_upgrade_required' && onPlanLimitReached) {
+        onClose()
+        onPlanLimitReached(err.message)
+        return
+      }
       setErrorMsg(err.message || 'Gagal menyimpan perangkat.')
     } finally {
       setSaving(false)

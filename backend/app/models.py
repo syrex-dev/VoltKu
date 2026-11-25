@@ -30,11 +30,33 @@ class User(Base):
     avatar_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     terms_version_accepted: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     terms_accepted_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    plan_tier: Mapped[str] = mapped_column(String(16), default="free", nullable=False)
+    plan_expires_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    plan_updated_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[int] = mapped_column(
         Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
     )
     last_login_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class UpgradeRequest(Base):
+    __tablename__ = "upgrade_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    requested_tier: Mapped[str] = mapped_column(String(16), default="pro", nullable=False)
+    billing_cycle: Mapped[str] = mapped_column(String(16), default="monthly", nullable=False)
+    amount_rp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    user_note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    admin_note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
+    resolved_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class TermsConsent(Base):

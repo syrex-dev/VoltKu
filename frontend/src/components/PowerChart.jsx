@@ -11,7 +11,7 @@ import {
   Filler,
 } from 'chart.js'
 import { Line } from 'react-chartjs-2'
-import { Activity } from 'lucide-react'
+import { Activity, Lock } from 'lucide-react'
 import { formatTimeWIB, formatDateTimeWIB } from '../utils/formatters'
 
 ChartJS.register(
@@ -25,7 +25,15 @@ ChartJS.register(
   Filler
 )
 
-export function PowerChart({ points, range, onRangeChange, loading, theme = 'dark' }) {
+export function PowerChart({
+  points,
+  range,
+  onRangeChange,
+  loading,
+  theme = 'dark',
+  historyDaysLimit = 366,
+  onOpenUpgrade,
+}) {
   const isLight = theme === 'light'
   const labels = points.map((p) => {
     if (range === '5h') return formatTimeWIB(p.ts)
@@ -125,21 +133,33 @@ export function PowerChart({ points, range, onRangeChange, loading, theme = 'dar
 
         <div className="clean-range-tabs" role="tablist" aria-label="Rentang Grafik">
           {[
-            { id: '5h', label: '5 Jam' },
-            { id: '24h', label: '24 Jam' },
-            { id: '3d', label: '3 Hari' },
-            { id: '30d', label: '30 Hari' },
-          ].map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              className={`clean-range-btn ${range === r.id ? 'active' : ''}`}
-              onClick={() => onRangeChange(r.id)}
-              disabled={loading}
-            >
-              {r.label}
-            </button>
-          ))}
+            { id: '5h', label: '5 Jam', days: 1 },
+            { id: '24h', label: '24 Jam', days: 1 },
+            { id: '3d', label: '3 Hari', days: 3 },
+            { id: '30d', label: '30 Hari', days: 30 },
+          ].map((r) => {
+            const locked = r.days > historyDaysLimit
+            return (
+              <button
+                key={r.id}
+                type="button"
+                className={`clean-range-btn ${range === r.id ? 'active' : ''} ${locked ? 'is-locked' : ''}`}
+                onClick={() => {
+                  if (locked && onOpenUpgrade) {
+                    onOpenUpgrade(
+                      `Grafik rentang ${r.label} tersedia pada paket VoltKu Pro (paket saat ini maks. ${historyDaysLimit} hari).`
+                    )
+                    return
+                  }
+                  onRangeChange(r.id)
+                }}
+                disabled={loading}
+              >
+                {locked && <Lock size={11} />}
+                <span>{r.label}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 

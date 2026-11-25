@@ -4,6 +4,7 @@ import { App as CapApp } from '@capacitor/app'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import {
   apiRequest,
+  buildApiUrl,
   getOrCreateClientId,
   getStoredUserToken,
   setStoredUserToken,
@@ -30,6 +31,7 @@ import { PwaInstallPrompt } from './components/PwaInstallPrompt'
 import { AdminPanel } from './components/AdminPanel'
 import { TermsAgreementModal } from './components/TermsAgreementModal'
 import { OnboardingTour } from './components/OnboardingTour'
+import { PlanUpgradeModal } from './components/PlanUpgradeModal'
 
 const DEFAULT_LOGIN_SUBTITLE = 'Pantau listrik rumah lebih tenang dan akurat'
 const DEFAULT_TERMS_VERSION = '2026-11-v1'
@@ -239,6 +241,8 @@ function CustomerPortalRoot() {
   const [dailyPoints, setDailyPoints] = useState([])
 
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false)
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false)
+  const [planModalReason, setPlanModalReason] = useState('')
 
   const homePollRef = useRef(null)
   const pollTimerRef = useRef(null)
@@ -337,25 +341,31 @@ function CustomerPortalRoot() {
     }
   }, [userToken, handleLogout])
 
+  const refreshCurrentUser = useCallback(async () => {
+    if (!userToken) return
+    try {
+      const profile = await apiRequest('/api/users/me', {}, userToken, handleUnauthorized)
+      if (profile?.role === 'admin') {
+        handleLogout()
+        return
+      }
+      setCurrentUser(profile)
+      if (profile?.terms_version_accepted) {
+        localStorage.setItem(TERMS_STORAGE_KEY, profile.terms_version_accepted)
+        setAcceptedTermsVersion(profile.terms_version_accepted)
+      }
+    } catch {
+      setCurrentUser(null)
+    }
+  }, [userToken, handleUnauthorized, handleLogout])
+
   useEffect(() => {
     if (!userToken) {
       setCurrentUser(null)
       return
     }
-    apiRequest('/api/users/me', {}, userToken, handleUnauthorized)
-      .then((profile) => {
-        if (profile?.role === 'admin') {
-          handleLogout()
-          return
-        }
-        setCurrentUser(profile)
-        if (profile?.terms_version_accepted) {
-          localStorage.setItem(TERMS_STORAGE_KEY, profile.terms_version_accepted)
-          setAcceptedTermsVersion(profile.terms_version_accepted)
-        }
-      })
-      .catch(() => setCurrentUser(null))
-  }, [userToken, handleUnauthorized, handleLogout])
+    refreshCurrentUser()
+  }, [userToken, refreshCurrentUser])
 
   const maybeTriggerOnboarding = useCallback(() => {
     if (
@@ -591,6 +601,19 @@ function CustomerPortalRoot() {
     }
   }, [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized])
 
+  const userPlan = isAuthenticated ? currentUser?.plan || null : null
+  const freemiumActive = Boolean(isAuthenticated && userPlan?.freemium_enabled !== false)
+  const historyDaysLimit = freemiumActive
+    ? userPlan?.limits?.history_days ?? 3
+    : 366
+  const forecastEnabled = !freemiumActive || Boolean(userPlan?.limits?.forecast_enabled)
+  const exportEnabled = !freemiumActive || Boolean(userPlan?.limits?.export_enabled)
+
+  const openPlanModal = useCallback((reason = '') => {
+    setPlanModalReason(reason || '')
+    setIsPlanModalOpen(true)
+  }, [])
+
   const loadPeriodicData = useCallback(async () => {
     if (!canReadDashboard || !activeDeviceId) return
     try {
@@ -607,12 +630,14 @@ function CustomerPortalRoot() {
           userToken,
           handleUnauthorized
         ).catch(() => null),
-        apiRequest(
-          `${readBase}/devices/${activeDeviceId}/forecast`,
-          {},
-          userToken,
-          handleUnauthorized
-        ).catch(() => null),
+        forecastEnabled
+          ? apiRequest(
+              `${readBase}/devices/${activeDeviceId}/forecast`,
+              {},
+              userToken,
+              handleUnauthorized
+            ).catch(() => null)
+          : Promise.resolve(null),
         apiRequest(
           `${readBase}/anomalies?device_id=${activeDeviceId}`,
           {},
@@ -627,7 +652,14 @@ function CustomerPortalRoot() {
     } catch (err) {
       console.error('Gagal memuat data periodik:', err)
     }
-  }, [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized])
+  }, [
+    canReadDashboard,
+    readBase,
+    activeDeviceId,
+    userToken,
+    handleUnauthorized,
+    forecastEnabled,
+  ])
 
   const loadPowerChart = useCallback(
     async (rangeVal) => {
@@ -635,7 +667,9 @@ function CustomerPortalRoot() {
       const nowSec = Math.floor(Date.now() / 1000)
       let dur = 5 * 3600
       if (rangeVal === '24h') dur = 24 * 3600
+      else if (rangeVal === '3d') dur = 3 * 86400
       else if (rangeVal === '7d') dur = 7 * 86400
+      else if (rangeVal === '30d') dur = 30 * 86400
       const fromTs = nowSec - dur
 
       try {
@@ -656,7 +690,8 @@ function CustomerPortalRoot() {
   const loadDailyChart = useCallback(async () => {
     if (!canReadDashboard || !activeDeviceId) return
     const nowSec = Math.floor(Date.now() / 1000)
-    const fromTs = nowSec - 90 * 86400
+    const dailyWindowDays = Math.min(historyDaysLimit, 14)
+    const fromTs = nowSec - dailyWindowDays * 86400
     try {
       const res = await apiRequest(
         `${readBase}/devices/${activeDeviceId}/series?from=${fromTs}&to=${nowSec}&resolution=1d`,
@@ -668,7 +703,7 @@ function CustomerPortalRoot() {
     } catch {
       setDailyPoints([])
     }
-  }, [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized])
+  }, [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized, historyDaysLimit])
 
   useEffect(() => {
     if (!canReadDashboard) {
@@ -789,7 +824,46 @@ function CustomerPortalRoot() {
       setShowLoginModal(true)
       return
     }
+    const maxDev = userPlan?.limits?.max_devices
+    if (freemiumActive && typeof maxDev === 'number' && maxDev >= 0 && devices.length >= maxDev) {
+      openPlanModal(
+        `Kuota panel paket ${userPlan?.plan_name || 'Gratis'} sudah penuh (${devices.length}/${maxDev} panel). Upgrade ke ${publicAppConfig?.plans?.pro?.name || 'VoltKu Pro'} untuk menambah panel lagi.`
+      )
+      return
+    }
     setIsAddDeviceOpen(true)
+  }
+
+  const handleExportDeviceCsv = async () => {
+    if (!activeDeviceId || !userToken) return
+    if (!exportEnabled) {
+      openPlanModal('Ekspor laporan konsumsi CSV tersedia pada paket VoltKu Pro.')
+      return
+    }
+    try {
+      const resp = await fetch(buildApiUrl(`/api/devices/${activeDeviceId}/export?days=30`), {
+        headers: { Authorization: `Bearer ${userToken}` },
+      })
+      if (resp.status === 403) {
+        const errBody = await resp.json().catch(() => ({}))
+        openPlanModal(
+          errBody?.error?.message || 'Ekspor laporan konsumsi CSV tersedia pada paket VoltKu Pro.'
+        )
+        return
+      }
+      if (!resp.ok) throw new Error('Gagal mengunduh CSV.')
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `voltku-${activeDeviceId}-30d.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert(err.message || 'Gagal mengunduh laporan CSV.')
+    }
   }
 
   const handleTabChange = (nextTab) => {
@@ -817,6 +891,8 @@ function CustomerPortalRoot() {
     CapApp.addListener('backButton', () => {
       if (termsReaderDoc) {
         setTermsReaderDoc(null)
+      } else if (isPlanModalOpen) {
+        setIsPlanModalOpen(false)
       } else if (showTour) {
         finishTour()
       } else if (isAddDeviceOpen) {
@@ -840,7 +916,15 @@ function CustomerPortalRoot() {
         handleRef.remove()
       }
     }
-  }, [termsReaderDoc, showTour, isAddDeviceOpen, showLoginModal, activeDeviceId, activeTab])
+  }, [
+    termsReaderDoc,
+    isPlanModalOpen,
+    showTour,
+    isAddDeviceOpen,
+    showLoginModal,
+    activeDeviceId,
+    activeTab,
+  ])
 
   if (!userToken && !accessChecked) {
     return null
@@ -930,6 +1014,7 @@ function CustomerPortalRoot() {
   const hasForegroundOverlay =
     (showLoginModal && !userToken) ||
     (isAuthenticated && isAddDeviceOpen) ||
+    isPlanModalOpen ||
     Boolean(termsReaderDoc) ||
     (showTour && !isDeviceScope && activeTab === 'home')
 
@@ -1014,6 +1099,7 @@ function CustomerPortalRoot() {
                 setShowTour(true)
               }}
               onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
+              onOpenPlanModal={openPlanModal}
               appConfig={publicAppConfig}
             />
           </div>
@@ -1041,6 +1127,8 @@ function CustomerPortalRoot() {
               month={monthSummary}
               forecast={forecast}
               settings={settings}
+              forecastLocked={!forecastEnabled}
+              onOpenUpgrade={openPlanModal}
             />
             <div className="charts-desktop-grid">
               <PowerChart
@@ -1051,8 +1139,18 @@ function CustomerPortalRoot() {
                   loadPowerChart(newRange)
                 }}
                 theme={theme}
+                historyDaysLimit={historyDaysLimit}
+                onOpenUpgrade={openPlanModal}
               />
-              <DailyChart points={dailyPoints} theme={theme} tariff={tariffNum} />
+              <DailyChart
+                points={dailyPoints}
+                theme={theme}
+                tariff={tariffNum}
+                historyDays={Math.min(historyDaysLimit, 14)}
+                exportEnabled={exportEnabled}
+                onExportCsv={handleExportDeviceCsv}
+                onOpenUpgrade={openPlanModal}
+              />
             </div>
           </div>
         )}
@@ -1075,6 +1173,7 @@ function CustomerPortalRoot() {
               onDeviceUpdated={() => loadDevicesAndAlerts()}
               onDeviceDeleted={async () => {
                 await loadDevicesAndAlerts()
+                await refreshCurrentUser()
                 setActiveDeviceId('')
                 setActiveTab('home')
               }}
@@ -1104,13 +1203,31 @@ function CustomerPortalRoot() {
           token={userToken}
           existingDevices={devices}
           onLogout={handleLogout}
+          onPlanLimitReached={(msg) => openPlanModal(msg)}
           onDeviceAdded={async (newId) => {
             await loadDevicesAndAlerts()
+            await refreshCurrentUser()
             if (newId) {
               setActiveDeviceId(newId)
               setActiveTab('live')
             }
           }}
+        />
+      )}
+
+      {isAuthenticated && (
+        <PlanUpgradeModal
+          isOpen={isPlanModalOpen}
+          onClose={() => {
+            setIsPlanModalOpen(false)
+            setPlanModalReason('')
+          }}
+          currentUser={currentUser}
+          appConfig={publicAppConfig}
+          token={userToken}
+          onLogout={handleLogout}
+          onUpgradeSubmitted={refreshCurrentUser}
+          lockedReason={planModalReason}
         />
       )}
 

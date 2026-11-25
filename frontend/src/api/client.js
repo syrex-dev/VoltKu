@@ -99,7 +99,11 @@ export async function apiRequest(endpoint, options = {}, token = '', onUnauthori
     const data = await resp.json().catch(() => ({}))
     if (!resp.ok) {
       const errMsg = data?.error?.message || data?.detail || `HTTP ${resp.status}`
-      throw new Error(errMsg)
+      const apiErr = new Error(errMsg)
+      apiErr.status = resp.status
+      apiErr.reason = data?.error?.reason || null
+      apiErr.feature = data?.error?.feature || null
+      throw apiErr
     }
     return data
   } catch (err) {

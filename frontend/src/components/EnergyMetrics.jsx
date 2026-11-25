@@ -1,8 +1,16 @@
 import React from 'react'
-import { Calendar, TrendingUp, Clock } from 'lucide-react'
+import { Calendar, TrendingUp, Clock, Lock } from 'lucide-react'
 import { formatRp, formatNum } from '../utils/formatters'
 
-export function EnergyMetrics({ today, week, month, forecast, settings }) {
+export function EnergyMetrics({
+  today,
+  week,
+  month,
+  forecast,
+  settings,
+  forecastLocked = false,
+  onOpenUpgrade,
+}) {
   const currentMonthYear = new Date().toLocaleDateString('id-ID', {
     month: 'long',
     year: 'numeric',
@@ -88,22 +96,38 @@ export function EnergyMetrics({ today, week, month, forecast, settings }) {
           <span className="grouped-row-val num-tabular">{formatRp(week?.cost_rp)}</span>
         </div>
 
-        <div className="grouped-row">
+        <div
+          className={`grouped-row ${forecastLocked && onOpenUpgrade ? 'is-clickable' : ''}`}
+          onClick={
+            forecastLocked && onOpenUpgrade
+              ? () =>
+                  onOpenUpgrade(
+                    'Proyeksi tagihan akhir bulan tersedia eksklusif untuk pelanggan VoltKu Pro.'
+                  )
+              : undefined
+          }
+        >
           <div className="period-row-left">
             <div className="period-icon-chip">
-              <TrendingUp size={16} />
+              {forecastLocked ? <Lock size={16} /> : <TrendingUp size={16} />}
             </div>
             <div>
               <div className="grouped-row-title">Perkiraan Akhir Bulan</div>
               <div className="grouped-row-sub num-tabular">
-                {forecast?.available
-                  ? `${formatNum(forecast.projected_kwh, 1)} kWh (${formatNum(forecast.avg_daily_kwh, 1)} kWh/hari)`
-                  : 'Butuh data minimal 1 hari penuh'}
+                {forecastLocked
+                  ? 'Tersedia pada paket VoltKu Pro (ketuk untuk lihat paket)'
+                  : forecast?.available
+                    ? `${formatNum(forecast.projected_kwh, 1)} kWh (${formatNum(forecast.avg_daily_kwh, 1)} kWh/hari)`
+                    : 'Butuh data minimal 1 hari penuh'}
               </div>
             </div>
           </div>
           <span className="grouped-row-val accent-blue num-tabular">
-            {forecast?.available ? formatRp(forecast.projected_cost_rp) : '-'}
+            {forecastLocked
+              ? 'Pro'
+              : forecast?.available
+                ? formatRp(forecast.projected_cost_rp)
+                : '-'}
           </span>
         </div>
       </section>

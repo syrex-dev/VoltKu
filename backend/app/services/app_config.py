@@ -13,6 +13,7 @@ from app.routers.settings import (
     format_settings_response,
     get_all_settings,
 )
+from app.services.plans import build_public_plans_payload, get_freemium_config
 
 PUBLIC_ACCESS_KEY = "public_dashboard_enabled"
 
@@ -104,6 +105,21 @@ DEFAULT_APP_CONFIG: dict[str, str] = {
     "support_whatsapp": "",
     "support_telegram": "",
     "support_email": "",
+    "freemium_enabled": "true",
+    "free_plan_name": "VoltKu Gratis",
+    "free_max_devices": "1",
+    "free_history_days": "3",
+    "free_forecast_enabled": "false",
+    "free_export_enabled": "false",
+    "pro_plan_name": "VoltKu Pro",
+    "pro_monthly_price_rp": "30000",
+    "pro_yearly_price_rp": "300000",
+    "pro_max_devices": "10",
+    "pro_history_days": "90",
+    "upgrade_instructions": (
+        "Ajukan upgrade dari aplikasi lalu konfirmasi pembayaran via WhatsApp / QRIS "
+        "ke pengelola untuk aktivasi paket VoltKu Pro."
+    ),
 }
 
 _BOOL_CONFIG_KEYS = {
@@ -112,6 +128,9 @@ _BOOL_CONFIG_KEYS = {
     "registration_enabled",
     "google_auth_enabled",
     "require_terms_consent",
+    "freemium_enabled",
+    "free_forecast_enabled",
+    "free_export_enabled",
 }
 
 
@@ -244,6 +263,7 @@ def _build_public_config_payload(session: Session, data: dict[str, str]) -> dict
         "support_whatsapp": data["support_whatsapp"],
         "support_telegram": data["support_telegram"],
         "support_email": data["support_email"],
+        "plans": build_public_plans_payload(data),
     }
 
 
@@ -298,6 +318,7 @@ def get_admin_app_settings(session: Session) -> dict[str, Any]:
         "extra_percent": sys_settings["extra_percent"],
         "report_hour": sys_settings["report_hour"],
         "report_enabled": sys_settings["report_enabled"],
+        **get_freemium_config(data),
     }
 
 
@@ -324,6 +345,25 @@ def _validate_and_store_config_field(session: Session, key: str, value: Any) -> 
         raise ValueError("Judul Kebijakan Privasi harus antara 1 hingga 128 karakter")
     if key in ("terms_content", "privacy_content") and not text_val:
         raise ValueError("Isi dokumen legal tidak boleh kosong")
+    if key == "free_max_devices":
+        if not text_val.isdigit() or not (1 <= int(text_val) <= 100):
+            raise ValueError("Batas panel paket Gratis harus antara 1 hingga 100")
+    if key == "free_history_days":
+        if not text_val.isdigit() or not (1 <= int(text_val) <= 366):
+            raise ValueError("Riwayat hari paket Gratis harus antara 1 hingga 366 hari")
+    if key == "pro_max_devices":
+        try:
+            v = int(text_val)
+            if v < -1 or v > 10000:
+                raise ValueError
+        except ValueError as exc:
+            raise ValueError("Batas panel paket Pro harus -1 (tak terbatas) hingga 10000") from exc
+    if key == "pro_history_days":
+        if not text_val.isdigit() or not (1 <= int(text_val) <= 366):
+            raise ValueError("Riwayat hari paket Pro harus antara 1 hingga 366 hari")
+    if key in ("pro_monthly_price_rp", "pro_yearly_price_rp"):
+        if not text_val.isdigit() or int(text_val) < 0:
+            raise ValueError("Harga paket Pro harus angka Rupiah bulat >= 0")
 
     upsert_app_config(session, key, text_val)
 

@@ -16,7 +16,7 @@ from app.auth import (
     verify_user_password,
 )
 from app.db import get_db
-from app.models import User
+from app.models import UpgradeRequest, User
 from app.services.app_config import (
     get_active_terms_version,
     get_app_config_map,
@@ -25,6 +25,11 @@ from app.services.app_config import (
     record_terms_consent,
 )
 from app.services.google_oauth import GoogleTokenError, verify_google_id_token
+from app.services.plans import (
+    get_freemium_config,
+    resolve_user_plan,
+    serialize_upgrade_request,
+)
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -62,10 +67,19 @@ class UserTermsConsentRequest(BaseModel):
     client_id: Optional[str] = None
 
 
+class UpgradeSubmitRequest(BaseModel):
+    billing_cycle: str = "monthly"
+    user_note: Optional[str] = None
+
+
 def _serialize_user(
     u: User,
     active_terms_version: Optional[str] = None,
     require_terms_consent: bool = True,
+    *,
+    session: Optional[Session] = None,
+    cfg_map: Optional[dict[str, str]] = None,
+    device_count: Optional[int] = None,
 ) -> dict[str, Any]:
     accepted_ver = getattr(u, "terms_version_accepted", None)
     needs_reconsent = bool(
@@ -73,7 +87,7 @@ def _serialize_user(
         and active_terms_version
         and accepted_ver != active_terms_version
     )
-    return {
+    payload: dict[str, Any] = {
         "id": u.id,
         "name": u.name,
         "email": u.email,
@@ -83,10 +97,19 @@ def _serialize_user(
         "terms_version_accepted": accepted_ver,
         "terms_accepted_at": getattr(u, "terms_accepted_at", None),
         "needs_terms_reconsent": needs_reconsent,
+        "plan_tier": getattr(u, "plan_tier", "free") or "free",
+        "plan_expires_at": getattr(u, "plan_expires_at", None),
+        "plan_updated_at": getattr(u, "plan_updated_at", None),
         "is_active": bool(u.is_active),
         "created_at": u.created_at,
         "last_login_at": u.last_login_at,
     }
+    if session is not None:
+        resolved_cfg = cfg_map if cfg_map is not None else get_app_config_map(session)
+        payload["plan"] = resolve_user_plan(
+            session, u, resolved_cfg, device_count=device_count
+        )
+    return payload
 
 
 def _api_error(code: int, message: str) -> HTTPException:
@@ -171,6 +194,9 @@ def register_user(
             user,
             active_terms_version=active_terms_ver,
             require_terms_consent=req_consent,
+            session=session,
+            cfg_map=cfg_map,
+            device_count=0,
         ),
     }
 
@@ -247,6 +273,8 @@ def login_user(
             user,
             active_terms_version=active_terms_ver,
             require_terms_consent=req_consent,
+            session=session,
+            cfg_map=cfg_map,
         ),
     }
 
@@ -379,6 +407,8 @@ def login_with_google(
             user,
             active_terms_version=active_terms_ver,
             require_terms_consent=req_consent,
+            session=session,
+            cfg_map=cfg_map,
         ),
     }
 
@@ -409,7 +439,82 @@ def get_my_profile(
         user,
         active_terms_version=active_terms_ver,
         require_terms_consent=req_consent,
+        session=session,
+        cfg_map=cfg_map,
     )
+
+
+@router.get("/upgrade-request", response_model=list[dict[str, Any]])
+def list_my_upgrade_requests(
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Riwayat pengajuan upgrade paket akun pengguna saat ini."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        return []
+    rows = session.scalars(
+        select(UpgradeRequest)
+        .where(UpgradeRequest.user_id == int(uid))
+        .order_by(UpgradeRequest.created_at.desc())
+        .limit(20)
+    ).all()
+    return [serialize_upgrade_request(r) for r in rows]
+
+
+@router.post("/upgrade-request", status_code=status.HTTP_201_CREATED, response_model=dict[str, Any])
+def submit_upgrade_request(
+    req: UpgradeSubmitRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mengajukan permohonan upgrade ke paket VoltKu Pro."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+
+    user = session.get(User, int(uid))
+    if not user:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "User not found")
+
+    cycle = (req.billing_cycle or "monthly").strip().lower()
+    if cycle not in ("monthly", "yearly"):
+        raise _api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "billing_cycle harus 'monthly' atau 'yearly'.",
+        )
+
+    existing_pending = session.scalar(
+        select(UpgradeRequest).where(
+            UpgradeRequest.user_id == user.id, UpgradeRequest.status == "pending"
+        )
+    )
+    if existing_pending:
+        raise _api_error(
+            status.HTTP_409_CONFLICT,
+            "Permintaan upgrade Anda masih menunggu konfirmasi pengelola.",
+        )
+
+    cfg_map = get_app_config_map(session)
+    fcfg = get_freemium_config(cfg_map)
+    amount_rp = (
+        fcfg["pro_yearly_price_rp"] if cycle == "yearly" else fcfg["pro_monthly_price_rp"]
+    )
+    clean_note = req.user_note.strip()[:255] if req.user_note and req.user_note.strip() else None
+
+    entry = UpgradeRequest(
+        user_id=user.id,
+        requested_tier="pro",
+        billing_cycle=cycle,
+        amount_rp=amount_rp,
+        status="pending",
+        user_note=clean_note,
+        created_at=int(datetime.now(timezone.utc).timestamp()),
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return serialize_upgrade_request(entry, user=user)
 
 
 @router.post("/terms-consent", response_model=dict[str, Any])
@@ -453,5 +558,7 @@ def submit_user_terms_consent(
         user,
         active_terms_version=active_terms_ver,
         require_terms_consent=req_consent,
+        session=session,
+        cfg_map=cfg_map,
     )
 

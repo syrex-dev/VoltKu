@@ -1,9 +1,12 @@
+import csv
+import io
 import re
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -13,6 +16,12 @@ from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import get_db
 from app.models import AlertState, Anomaly, DailyStat, Device, HourlyStat, Reading
 from app.mqtt_ingest import get_device_status
+from app.services.app_config import get_app_config_map
+from app.services.plans import (
+    enforce_device_creation_quota,
+    enforce_series_history_access,
+    enforce_user_feature_access,
+)
 from app.services.reports import calculate_device_forecast, calculate_device_summary
 
 router = APIRouter(
@@ -221,6 +230,8 @@ def create_or_claim_device(
                 status.HTTP_409_CONFLICT,
                 f"Device '{dev_id}' already exists",
             )
+        if actor_uid is not None and existing.owner_user_id is None:
+            enforce_device_creation_quota(session, int(actor_uid), get_app_config_map(session))
         existing.name = clean_name
         existing.location = clean_loc
         existing.mcb_watt = mcb_watt
@@ -230,6 +241,9 @@ def create_or_claim_device(
         session.refresh(existing)
         response.status_code = status.HTTP_200_OK
         return _serialize_device(existing, now_utc=now_utc)
+
+    if actor_uid is not None:
+        enforce_device_creation_quota(session, int(actor_uid), get_app_config_map(session))
 
     device = Device(
         id=dev_id,
@@ -505,6 +519,12 @@ def get_device_series(
 ):
     """Mengambil deret waktu telemetri daya dengan pemilihan resolusi otomatis atau spesifik."""
     _get_device_for_actor(session, device_id, current)
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+    end_time = to_ts if to_ts is not None else now_utc
+    start_time = from_ts if from_ts is not None else (end_time - 86400)
+    enforce_series_history_access(
+        session, current, start_time, end_time, get_app_config_map(session)
+    )
     return get_device_series_data(
         session=session,
         device_id=device_id,
@@ -542,4 +562,64 @@ def get_device_forecast(
 ):
     """Menghitung proyeksi kWh dan biaya akhir bulan kalender berjalan."""
     _get_device_for_actor(session, device_id, current)
+    enforce_user_feature_access(
+        session,
+        current,
+        "forecast_enabled",
+        "forecast",
+        "Proyeksi tagihan akhir bulan tersedia pada paket VoltKu Pro.",
+        get_app_config_map(session),
+    )
     return calculate_device_forecast(session=session, device_id=device_id)
+
+
+@router.get("/{device_id}/export")
+def export_device_daily_csv(
+    device_id: str,
+    days: int = Query(30, ge=1, le=366),
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Ekspor laporan konsumsi harian perangkat ke CSV (khusus paket Pro/admin)."""
+    _get_device_for_actor(session, device_id, current)
+    enforce_user_feature_access(
+        session,
+        current,
+        "export_enabled",
+        "export_csv",
+        "Ekspor laporan CSV tersedia pada paket VoltKu Pro.",
+        get_app_config_map(session),
+    )
+
+    today_wib = datetime.now(TZ_WIB).date()
+    start_day = (today_wib - timedelta(days=days - 1)).isoformat()
+    rows = session.scalars(
+        select(DailyStat)
+        .where(DailyStat.device_id == device_id, DailyStat.day >= start_day)
+        .order_by(DailyStat.day.desc())
+    ).all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        ["tanggal_wib", "energi_kwh", "biaya_rp", "tarif_rp_per_kwh", "daya_puncak_w"]
+    )
+    for r in rows:
+        tariff_rp = f"{(int(r.tariff_sen) / 100):.2f}"
+        writer.writerow(
+            [
+                r.day,
+                f"{float(r.kwh):.3f}",
+                int(r.cost_rp),
+                tariff_rp,
+                round(float(r.p_max), 1),
+            ]
+        )
+
+    buf.seek(0)
+    filename = f"voltku-{device_id}-{days}d.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

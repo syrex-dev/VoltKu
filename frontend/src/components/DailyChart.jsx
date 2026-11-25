@@ -9,7 +9,7 @@ import {
   Legend,
 } from 'chart.js'
 import { Bar } from 'react-chartjs-2'
-import { CalendarDays } from 'lucide-react'
+import { CalendarDays, Download, Lock } from 'lucide-react'
 import { formatDateWIB, formatNum, formatRp } from '../utils/formatters'
 
 ChartJS.register(
@@ -21,7 +21,15 @@ ChartJS.register(
   Legend
 )
 
-export function DailyChart({ points, theme = 'dark', tariff = 1444.7 }) {
+export function DailyChart({
+  points,
+  theme = 'dark',
+  tariff = 1444.7,
+  historyDays = 14,
+  exportEnabled = true,
+  onExportCsv,
+  onOpenUpgrade,
+}) {
   const isLight = theme === 'light'
   const labels = points.map((p) => formatDateWIB(p.ts))
   const dataKwh = points.map((p) => parseFloat(((p.p * 24.0) / 1000.0).toFixed(2)))
@@ -100,12 +108,33 @@ export function DailyChart({ points, theme = 'dark', tariff = 1444.7 }) {
           <CalendarDays size={17} className="brand-blue-text" />
           <span>Pemakaian Harian</span>
         </div>
-        <span className="chart-period-label">14 Hari Terakhir</span>
+        <div className="chart-head-actions">
+          <span className="chart-period-label">{historyDays} Hari Terakhir</span>
+          {(onExportCsv || !exportEnabled) && (
+            <button
+              type="button"
+              className={`chart-export-btn ${!exportEnabled ? 'is-locked' : ''}`}
+              onClick={() => {
+                if (!exportEnabled) {
+                  if (onOpenUpgrade) {
+                    onOpenUpgrade('Ekspor laporan harian CSV tersedia pada paket VoltKu Pro.')
+                  }
+                  return
+                }
+                if (onExportCsv) onExportCsv()
+              }}
+              title={exportEnabled ? 'Unduh Laporan CSV' : 'Fitur VoltKu Pro'}
+            >
+              {exportEnabled ? <Download size={13} /> : <Lock size={12} />}
+              <span>CSV</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {points.length === 0 ? (
         <div className="chart-empty-placeholder">
-          Belum ada catatan pemakaian harian dalam 14 hari terakhir.
+          Belum ada catatan pemakaian harian dalam {historyDays} hari terakhir.
         </div>
       ) : (
         <div className="chart-canvas-wrap">

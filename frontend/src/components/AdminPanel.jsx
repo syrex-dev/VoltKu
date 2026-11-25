@@ -19,9 +19,12 @@ import {
   Save,
   RefreshCw,
   UserPlus,
+  Crown,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
-import { formatNum, formatTimeWIB } from '../utils/formatters'
+import { formatNum, formatRp, formatTimeWIB } from '../utils/formatters'
 import { BrandLogo } from './BrandLogo'
 import { InAppSelect } from './InAppSelect'
 import { AdminAppSettingsTab } from './AdminAppSettingsTab'
@@ -41,6 +44,7 @@ export function AdminPanel({
   const [anomalies, setAnomalies] = useState([])
   const [appSettings, setAppSettings] = useState(null)
   const [consentsData, setConsentsData] = useState(null)
+  const [upgradeRequests, setUpgradeRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState(null)
 
@@ -68,7 +72,10 @@ export function AdminPanel({
   const [uEmail, setUEmail] = useState('')
   const [uPassword, setUPassword] = useState('')
   const [uActive, setUActive] = useState(true)
+  const [uPlanTier, setUPlanTier] = useState('free')
+  const [uPlanDuration, setUPlanDuration] = useState('keep')
   const [savingUser, setSavingUser] = useState(false)
+  const [resolvingUpgradeId, setResolvingUpgradeId] = useState(null)
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState(null)
 
   const [togglingAccess, setTogglingAccess] = useState(false)
@@ -76,13 +83,14 @@ export function AdminPanel({
   const loadAdminData = useCallback(async () => {
     if (!token) return
     try {
-      const [ov, usrs, devs, anoms, appCfg, consents] = await Promise.all([
+      const [ov, usrs, devs, anoms, appCfg, consents, upgReqs] = await Promise.all([
         apiRequest('/api/admin/overview', {}, token, onLogout),
         apiRequest('/api/admin/users', {}, token, onLogout),
         apiRequest('/api/admin/devices', {}, token, onLogout),
         apiRequest('/api/admin/anomalies?limit=100', {}, token, onLogout),
         apiRequest('/api/admin/app-settings', {}, token, onLogout).catch(() => null),
         apiRequest('/api/admin/consents?limit=100', {}, token, onLogout).catch(() => null),
+        apiRequest('/api/admin/upgrade-requests?limit=100', {}, token, onLogout).catch(() => []),
       ])
       setOverview(ov)
       setUsers(usrs || [])
@@ -90,6 +98,7 @@ export function AdminPanel({
       setAnomalies(anoms || [])
       if (appCfg) setAppSettings(appCfg)
       if (consents) setConsentsData(consents)
+      setUpgradeRequests(Array.isArray(upgReqs) ? upgReqs : [])
     } catch (err) {
       setNotice({ type: 'error', text: err.message || 'Gagal memuat data Panel Admin.' })
     } finally {
@@ -188,6 +197,8 @@ export function AdminPanel({
     setUEmail('')
     setUPassword('')
     setUActive(true)
+    setUPlanTier('free')
+    setUPlanDuration('0')
   }
 
   const openEditUser = (u) => {
@@ -197,6 +208,8 @@ export function AdminPanel({
     setUEmail(u.email || '')
     setUPassword('')
     setUActive(Boolean(u.is_active))
+    setUPlanTier(u.plan_tier || 'free')
+    setUPlanDuration('keep')
   }
 
   const handleSaveUser = async (e) => {
@@ -205,19 +218,32 @@ export function AdminPanel({
     setNotice(null)
     try {
       if (userModalMode === 'create') {
+        const body = {
+          name: uName.trim(),
+          email: uEmail.trim(),
+          password: uPassword,
+          plan_tier: uPlanTier,
+        }
+        if (uPlanTier === 'pro' && uPlanDuration !== '0' && Number(uPlanDuration) > 0) {
+          body.plan_duration_days = Number(uPlanDuration)
+        }
         await apiRequest(
           '/api/admin/users',
-          {
-            method: 'POST',
-            body: { name: uName.trim(), email: uEmail.trim(), password: uPassword },
-          },
+          { method: 'POST', body },
           token,
           onLogout
         )
         setNotice({ type: 'success', text: 'Akun pengguna baru berhasil dibuat.' })
       } else if (editingUser) {
-        const payload = { name: uName.trim(), is_active: uActive }
+        const payload = { name: uName.trim(), is_active: uActive, plan_tier: uPlanTier }
         if (uPassword.trim()) payload.password = uPassword
+        if (uPlanTier === 'pro') {
+          if (uPlanDuration === '0') {
+            payload.clear_plan_expiration = true
+          } else if (uPlanDuration !== 'keep' && Number(uPlanDuration) > 0) {
+            payload.plan_duration_days = Number(uPlanDuration)
+          }
+        }
         await apiRequest(
           `/api/admin/users/${editingUser.id}`,
           { method: 'PATCH', body: payload },
@@ -232,6 +258,33 @@ export function AdminPanel({
       setNotice({ type: 'error', text: err.message || 'Gagal menyimpan akun pengguna.' })
     } finally {
       setSavingUser(false)
+    }
+  }
+
+  const handleResolveUpgrade = async (reqId, action, durationDays = null) => {
+    setResolvingUpgradeId(reqId)
+    setNotice(null)
+    try {
+      const body = { action }
+      if (durationDays !== null) body.duration_days = durationDays
+      await apiRequest(
+        `/api/admin/upgrade-requests/${reqId}`,
+        { method: 'PATCH', body },
+        token,
+        onLogout
+      )
+      setNotice({
+        type: 'success',
+        text:
+          action === 'approve'
+            ? 'Permintaan upgrade disetujui dan paket VoltKu Pro langsung aktif.'
+            : 'Permintaan upgrade ditolak.',
+      })
+      await loadAdminData()
+    } catch (err) {
+      setNotice({ type: 'error', text: err.message || 'Gagal memproses permintaan upgrade.' })
+    } finally {
+      setResolvingUpgradeId(null)
     }
   }
 
@@ -289,16 +342,20 @@ export function AdminPanel({
     return map
   }, [devices])
 
+  const pendingUpgradesCount = upgradeRequests.filter((r) => r.status === 'pending').length
+
   const tabs = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
-    { id: 'users', label: 'Pengguna', icon: Users },
+    { id: 'users', label: 'Pengguna', icon: Users, badge: pendingUpgradesCount },
     { id: 'devices', label: 'Perangkat', icon: Cpu },
     { id: 'anomalies', label: 'Anomali', icon: ShieldAlert },
     { id: 'settings', label: 'Pengaturan', icon: Sliders },
   ]
 
+  const hasAdminModal = Boolean(editingDevice || userModalMode)
+
   return (
-    <div className="app-layout admin-shell">
+    <div className={`app-layout admin-shell ${hasAdminModal ? 'has-modal-open' : ''}`}>
       <div className="app-header-wrap clean-header-bar">
         <div className="container">
           <header className="app-header clean-header-inner">
@@ -335,6 +392,9 @@ export function AdminPanel({
                     >
                       <Icon size={15} />
                       <span>{t.label}</span>
+                      {t.badge > 0 && (
+                        <span className="desktop-nav-badge">{t.badge}</span>
+                      )}
                     </button>
                   )
                 })}
@@ -390,7 +450,12 @@ export function AdminPanel({
                   <div className="clean-sheet admin-kpi-card">
                     <span className="admin-kpi-label">Pengguna (Tenant)</span>
                     <strong className="admin-kpi-value num-tabular">{overview.users_total}</strong>
-                    <span className="admin-kpi-sub">{overview.users_active} akun aktif</span>
+                    <span className="admin-kpi-sub">
+                      {overview.users_active} aktif · {overview.users_pro || 0} Pro
+                      {(overview.pending_upgrades || 0) > 0
+                        ? ` · ${overview.pending_upgrades} ajuan upgrade`
+                        : ''}
+                    </span>
                   </div>
                   <div className="clean-sheet admin-kpi-card">
                     <span className="admin-kpi-label">Inventaris Unit</span>
@@ -500,6 +565,84 @@ export function AdminPanel({
                   </button>
                 </div>
 
+                {upgradeRequests.length > 0 && (
+                  <section className="clean-sheet admin-card-block">
+                    <div className="admin-card-head">
+                      <h3>
+                        Permintaan Upgrade Paket{' '}
+                        {pendingUpgradesCount > 0 && (
+                          <span className="admin-pill warn" style={{ marginLeft: 8 }}>
+                            {pendingUpgradesCount} Menunggu
+                          </span>
+                        )}
+                      </h3>
+                    </div>
+                    <div className="admin-upgrade-list">
+                      {upgradeRequests.slice(0, 12).map((req) => (
+                        <div key={req.id} className="admin-upgrade-row">
+                          <div className="admin-upgrade-info">
+                            <div className="admin-dev-name">
+                              {req.user_name || `User #${req.user_id}`}{' '}
+                              <span className="admin-dev-id">({req.user_email || '—'})</span>
+                            </div>
+                            <div className="admin-dev-id num-tabular">
+                              {req.billing_cycle === 'yearly' ? 'Tahunan' : 'Bulanan'} ·{' '}
+                              {formatRp(req.amount_rp)} · {formatTimeWIB(req.created_at)}
+                              {req.user_note ? ` · "${req.user_note}"` : ''}
+                            </div>
+                          </div>
+                          <div className="admin-upgrade-actions">
+                            {req.status === 'pending' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-compact"
+                                  disabled={resolvingUpgradeId === req.id}
+                                  onClick={() =>
+                                    handleResolveUpgrade(
+                                      req.id,
+                                      'approve',
+                                      req.billing_cycle === 'yearly' ? 365 : 30
+                                    )
+                                  }
+                                >
+                                  <CheckCircle2 size={14} />
+                                  <span>
+                                    Setujui ({req.billing_cycle === 'yearly' ? '1 Thn' : '30 Hr'})
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-compact"
+                                  disabled={resolvingUpgradeId === req.id}
+                                  onClick={() => handleResolveUpgrade(req.id, 'approve', 0)}
+                                >
+                                  <span>Permanen</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-danger-ghost btn-compact"
+                                  disabled={resolvingUpgradeId === req.id}
+                                  onClick={() => handleResolveUpgrade(req.id, 'reject')}
+                                >
+                                  <XCircle size={14} />
+                                  <span>Tolak</span>
+                                </button>
+                              </>
+                            ) : (
+                              <span
+                                className={`admin-pill ${req.status === 'approved' ? 'ok' : 'muted'}`}
+                              >
+                                {req.status === 'approved' ? 'Disetujui' : 'Ditolak'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
                 {filteredUsers.length === 0 ? (
                   <div className="clean-sheet admin-empty-box">
                     Belum ada pengguna terdaftar yang cocok.
@@ -511,6 +654,7 @@ export function AdminPanel({
                         <thead>
                           <tr>
                             <th>Nama &amp; Email</th>
+                            <th>Paket</th>
                             <th>Status</th>
                             <th>Jumlah Unit</th>
                             <th>Login Terakhir</th>
@@ -518,82 +662,109 @@ export function AdminPanel({
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredUsers.map((u) => (
-                            <tr key={u.id}>
-                              <td>
-                                <div className="admin-dev-name">{u.name}</div>
-                                <div className="admin-dev-id">{u.email}</div>
-                              </td>
-                              <td>
-                                <span className={`admin-pill ${u.is_active ? 'ok' : 'warn'}`}>
-                                  {u.is_active ? 'Aktif' : 'Nonaktif'}
-                                </span>
-                              </td>
-                              <td className="num-tabular">{u.device_count} unit</td>
-                              <td className="num-tabular">
-                                {u.last_login_at ? formatTimeWIB(u.last_login_at) : 'Belum pernah'}
-                              </td>
-                              <td>
-                                <div className="admin-row-actions">
-                                  <button
-                                    type="button"
-                                    className="admin-icon-action"
-                                    title="Edit Akun"
-                                    onClick={() => openEditUser(u)}
-                                  >
-                                    <Pencil size={15} />
-                                  </button>
-                                  {confirmDeleteUserId === u.id ? (
-                                    <button
-                                      type="button"
-                                      className="btn btn-danger-solid btn-compact"
-                                      onClick={() => handleDeleteUser(u.id)}
-                                    >
-                                      Hapus?
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="admin-icon-action danger"
-                                      title="Hapus Akun"
-                                      onClick={() => setConfirmDeleteUserId(u.id)}
-                                    >
-                                      <Trash2 size={15} />
-                                    </button>
+                          {filteredUsers.map((u) => {
+                            const isPro = Boolean(u.plan?.is_pro)
+                            const planLabel = u.plan?.plan_name || (isPro ? 'VoltKu Pro' : 'Gratis')
+                            return (
+                              <tr key={u.id}>
+                                <td>
+                                  <div className="admin-dev-name">{u.name}</div>
+                                  <div className="admin-dev-id">{u.email}</div>
+                                </td>
+                                <td>
+                                  <span className={`admin-pill ${isPro ? 'pro' : 'muted'}`}>
+                                    {isPro && <Crown size={12} />}
+                                    <span>{planLabel}</span>
+                                  </span>
+                                  {u.plan_tier === 'pro' && (
+                                    <div className="admin-dev-id num-tabular" style={{ marginTop: 3 }}>
+                                      {u.plan_expires_at
+                                        ? `s.d. ${formatTimeWIB(u.plan_expires_at)}`
+                                        : 'Permanen'}
+                                    </div>
                                   )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
+                                </td>
+                                <td>
+                                  <span className={`admin-pill ${u.is_active ? 'ok' : 'warn'}`}>
+                                    {u.is_active ? 'Aktif' : 'Nonaktif'}
+                                  </span>
+                                </td>
+                                <td className="num-tabular">{u.device_count} unit</td>
+                                <td className="num-tabular">
+                                  {u.last_login_at ? formatTimeWIB(u.last_login_at) : 'Belum pernah'}
+                                </td>
+                                <td>
+                                  <div className="admin-row-actions">
+                                    <button
+                                      type="button"
+                                      className="admin-icon-action"
+                                      title="Edit Akun & Paket"
+                                      onClick={() => openEditUser(u)}
+                                    >
+                                      <Pencil size={15} />
+                                    </button>
+                                    {confirmDeleteUserId === u.id ? (
+                                      <button
+                                        type="button"
+                                        className="btn btn-danger-solid btn-compact"
+                                        onClick={() => handleDeleteUser(u.id)}
+                                      >
+                                        Hapus?
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="admin-icon-action danger"
+                                        title="Hapus Akun"
+                                        onClick={() => setConfirmDeleteUserId(u.id)}
+                                      >
+                                        <Trash2 size={15} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
 
                     <div className="admin-cards-mobile">
-                      {filteredUsers.map((u) => (
-                        <div key={u.id} className="clean-sheet admin-device-card-m">
-                          <div className="admin-m-top">
-                            <div className="admin-m-ident">
-                              <div className="admin-dev-name">{u.name}</div>
-                              <div className="admin-dev-id">{u.email}</div>
+                      {filteredUsers.map((u) => {
+                        const isPro = Boolean(u.plan?.is_pro)
+                        const planLabel = u.plan?.plan_name || (isPro ? 'VoltKu Pro' : 'Gratis')
+                        return (
+                          <div key={u.id} className="clean-sheet admin-device-card-m">
+                            <div className="admin-m-top">
+                              <div className="admin-m-ident">
+                                <div className="admin-dev-name">{u.name}</div>
+                                <div className="admin-dev-id">{u.email}</div>
+                              </div>
+                              <span className={`admin-pill ${isPro ? 'pro' : 'muted'}`}>
+                                {isPro && <Crown size={12} />}
+                                <span>{planLabel}</span>
+                              </span>
                             </div>
-                            <span className={`admin-pill ${u.is_active ? 'ok' : 'warn'}`}>
-                              {u.is_active ? 'Aktif' : 'Nonaktif'}
-                            </span>
-                          </div>
-                          <div className="admin-m-metrics admin-m-metrics-2col num-tabular">
-                            <div>
-                              <span>Perangkat</span>
-                              <strong>{u.device_count} unit</strong>
+                            <div className="admin-m-metrics admin-m-metrics-2col num-tabular">
+                              <div>
+                                <span>Status &amp; Unit</span>
+                                <strong>
+                                  {u.is_active ? 'Aktif' : 'Nonaktif'} · {u.device_count} unit
+                                </strong>
+                              </div>
+                              <div>
+                                <span>Masa Aktif / Login</span>
+                                <strong>
+                                  {u.plan_tier === 'pro' && u.plan_expires_at
+                                    ? `s.d. ${formatTimeWIB(u.plan_expires_at)}`
+                                    : u.last_login_at
+                                      ? formatTimeWIB(u.last_login_at)
+                                      : 'Belum pernah'}
+                                </strong>
+                              </div>
                             </div>
-                            <div>
-                              <span>Login Terakhir</span>
-                              <strong>
-                                {u.last_login_at ? formatTimeWIB(u.last_login_at) : 'Belum pernah'}
-                              </strong>
-                            </div>
-                          </div>
-                          <div className="admin-m-actions admin-m-actions-2col">
+                            <div className="admin-m-actions admin-m-actions-2col">
                             <button
                               type="button"
                               className="btn btn-secondary btn-compact"
@@ -620,9 +791,10 @@ export function AdminPanel({
                                 <span>Hapus</span>
                               </button>
                             )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </>
                 )}
@@ -1131,6 +1303,43 @@ export function AdminPanel({
                   required={userModalMode === 'create'}
                 />
               </div>
+              <div className="form-field-group">
+                <label className="field-label" htmlFor="admin-user-plan">
+                  Paket Langganan
+                </label>
+                <InAppSelect
+                  id="admin-user-plan"
+                  value={uPlanTier}
+                  onChange={setUPlanTier}
+                  options={[
+                    { value: 'free', label: appSettings?.free_plan_name || 'VoltKu Gratis' },
+                    { value: 'pro', label: appSettings?.pro_plan_name || 'VoltKu Pro' },
+                  ]}
+                />
+              </div>
+
+              {uPlanTier === 'pro' && (
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="admin-user-duration">
+                    Masa Aktif Pro
+                  </label>
+                  <InAppSelect
+                    id="admin-user-duration"
+                    value={uPlanDuration}
+                    onChange={setUPlanDuration}
+                    options={[
+                      ...(userModalMode === 'edit'
+                        ? [{ value: 'keep', label: 'Pertahankan masa aktif saat ini' }]
+                        : []),
+                      { value: '30', label: '+ 30 Hari (1 Bulan)' },
+                      { value: '90', label: '+ 90 Hari (3 Bulan)' },
+                      { value: '365', label: '+ 365 Hari (1 Tahun)' },
+                      { value: '0', label: 'Permanen (Tanpa Kedaluwarsa)' },
+                    ]}
+                  />
+                </div>
+              )}
+
               {userModalMode === 'edit' && (
                 <label className="admin-checkbox-row">
                   <input

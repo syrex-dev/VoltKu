@@ -40,6 +40,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
+        req_path = request.url.path
+        if req_path in (
+            "/",
+            "/index.html",
+            "/sw.js",
+            "/manifest.webmanifest",
+            "/admin",
+            "/admin/manifest.webmanifest",
+        ) or req_path.startswith("/admin/"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        elif req_path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
 

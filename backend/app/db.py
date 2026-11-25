@@ -69,6 +69,16 @@ def ensure_multi_tenant_columns(target_engine: Engine) -> None:
             )
         if "terms_accepted_at" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN terms_accepted_at INTEGER NULL"))
+        if "plan_tier" not in user_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN plan_tier VARCHAR(16) NOT NULL DEFAULT 'free'"
+                )
+            )
+        if "plan_expires_at" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN plan_expires_at INTEGER NULL"))
+        if "plan_updated_at" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN plan_updated_at INTEGER NULL"))
         user_indexes = {idx["name"] for idx in inspect(conn).get_indexes("users")}
         if "uq_users_google_sub" not in user_indexes:
             conn.execute(
