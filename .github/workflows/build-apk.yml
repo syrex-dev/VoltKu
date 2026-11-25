@@ -39,6 +39,9 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Setup Gradle & Cache
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install dependencies frontend
         working-directory: frontend
         run: npm ci
@@ -58,7 +61,7 @@ jobs:
 
       - name: Build Debug APK (siap instal langsung di HP Android)
         working-directory: frontend/android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Siapkan berkas VoltKu.apk
         run: |

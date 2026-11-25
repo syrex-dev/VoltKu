@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import math
 import os
 import random
 import signal
@@ -54,18 +55,12 @@ DEMO_DEVICES = [
 
 
 def realistic_watt_for_hour(hour_wib: float, scale: float = 1.0) -> float:
-    """Profil beban listrik rumah/warung Indonesia berdasarkan jam WIB."""
-    if 0.0 <= hour_wib < 5.0:
-        base = 145.0
-    elif 5.0 <= hour_wib < 8.0:
-        base = 460.0
-    elif 8.0 <= hour_wib < 17.0:
-        base = 380.0
-    elif 17.0 <= hour_wib < 22.0:
-        base = 860.0
-    else:
-        base = 295.0
-    jitter = random.uniform(-0.08, 0.12) * base
+    """Profil beban listrik rumah/warung Indonesia berbasis gelombang halus 24 jam."""
+    morning_peak = math.exp(-((hour_wib - 7.0) ** 2) / 4.5) * 340.0
+    midday_activity = math.exp(-((hour_wib - 13.0) ** 2) / 14.0) * 260.0
+    evening_peak = math.exp(-((hour_wib - 19.5) ** 2) / 7.5) * 720.0
+    base = 160.0 + morning_peak + midday_activity + evening_peak
+    jitter = random.uniform(-0.06, 0.08) * base
     return max(90.0, min(1950.0, round((base + jitter) * scale, 1)))
 
 
