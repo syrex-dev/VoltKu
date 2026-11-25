@@ -11,18 +11,24 @@ export async function ensureGoogleAuthInitialized(webClientId) {
   if (!cleanId) return false
   if (initializedClientId === cleanId) return true
 
+  const googleInitConfig = {
+    webClientId: cleanId,
+    mode: 'online',
+    skipAuthOnlyAuthorizationAfterSignIn: true,
+  }
+  if (!Capacitor.isNativePlatform() && typeof window !== 'undefined') {
+    googleInitConfig.redirectUrl = `${window.location.origin}/`
+  }
+
   await SocialLogin.initialize({
-    google: {
-      webClientId: cleanId,
-      mode: 'online',
-    },
+    google: googleInitConfig,
   })
   initializedClientId = cleanId
   return true
 }
 
 /**
- * Menjalankan alur Masuk dengan Google (native Credential Manager di APK / GIS di Web)
+ * Menjalankan alur Masuk dengan Google (native Credential Manager di APK / OAuth popup di Web)
  * lalu mengembalikan Google ID Token untuk diverifikasi backend VoltKu.
  */
 export async function signInWithGoogleForIdToken(webClientId) {
@@ -33,8 +39,9 @@ export async function signInWithGoogleForIdToken(webClientId) {
 
   await ensureGoogleAuthInitialized(cleanId)
 
+  // Pada stock BridgeActivity Android, jangan kirim array scopes karena sudah default & akan ditolak
   const loginOptions = Capacitor.isNativePlatform()
-    ? { scopes: ['profile', 'email'], style: 'standard' }
+    ? { style: 'standard' }
     : { scopes: ['profile', 'email'], prompt: 'select_account' }
 
   try {
