@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import {
   X,
-  Settings,
   Crown,
   Gem,
   LogOut,
@@ -72,7 +71,7 @@ export function ProfileModal({
     proCfg.max_devices < 0 ? 'panel tanpa batas' : `hingga ${proCfg.max_devices} panel`
 
   return (
-    <div className="modal-overlay pwa-guide-overlay" onClick={onClose}>
+    <div className="modal-overlay pwa-guide-overlay profile-modal-overlay" onClick={onClose}>
       <div
         className="modal-dialog-modern profile-modal-dialog profile-ref-dialog"
         role="dialog"
@@ -83,23 +82,9 @@ export function ProfileModal({
         {/* Ambient Header Gradient Wash */}
         <div className="profile-ref-header-zone">
           <div className="profile-ref-topbar">
-            <span className="profile-ref-topbar-spacer" aria-hidden="true" />
+            <span aria-hidden="true" />
             <h2 className="profile-ref-page-title">Profil</h2>
             <div className="profile-ref-topbar-actions">
-              {onOpenSettings && (
-                <button
-                  type="button"
-                  className="profile-ref-icon-btn"
-                  title="Setelan Tarif & Peringatan"
-                  aria-label="Setelan Tarif & Peringatan"
-                  onClick={() => {
-                    onClose()
-                    onOpenSettings()
-                  }}
-                >
-                  <Settings size={18} />
-                </button>
-              )}
               <button
                 type="button"
                 className="profile-ref-icon-btn"
@@ -111,7 +96,7 @@ export function ProfileModal({
             </div>
           </div>
 
-          {/* User Identity Header Row (Open Canvas, Clean Typography) */}
+          {/* User Identity Header Row */}
           <div className="profile-ref-identity">
             <div className="profile-ref-identity-left">
               {currentUser?.avatar_url ? (
@@ -133,28 +118,14 @@ export function ProfileModal({
                 </div>
               </div>
             </div>
-
-            {showPlanCard && onOpenPlanModal && (
-              <button
-                type="button"
-                className="profile-ref-link-btn"
-                onClick={() => {
-                  onClose()
-                  onOpenPlanModal('')
-                }}
-              >
-                <span>{isPro ? 'VoltKu Pro' : 'Kelola Paket'}</span>
-                <ChevronRight size={14} />
-              </button>
-            )}
           </div>
 
-          {/* Membership Card (Inspired by Reference Subscription Card) */}
+          {/* Membership Card */}
           {showPlanCard && (
             <div className={`profile-ref-member-card ${isPro ? 'is-pro' : ''}`}>
               <div className="profile-ref-member-main">
                 <div className={`profile-ref-gem-badge ${isPro ? 'is-pro' : ''}`}>
-                  {isPro ? <Crown size={20} /> : <Gem size={20} />}
+                  {isPro ? <Crown size={19} /> : <Gem size={19} />}
                 </div>
                 <div className="profile-ref-member-copy">
                   <div className="profile-ref-member-title">
@@ -217,7 +188,7 @@ export function ProfileModal({
               }}
             >
               <span className="profile-ref-promo-left">
-                <Crown size={15} />
+                <Crown size={14} />
                 <span>
                   {isPro
                     ? plan.expires_at
@@ -226,12 +197,12 @@ export function ProfileModal({
                     : `Coba ${proCfg.name} · Mulai ${formatRp(proCfg.price_monthly_rp)}/bulan`}
                 </span>
               </span>
-              <ChevronRight size={16} />
+              <ChevronRight size={15} />
             </button>
           )}
         </div>
 
-        {/* Grouped Menu Cards (Clean Outline Icons + Inline Pills + Chevrons) */}
+        {/* Grouped Menu Cards */}
         <div className="profile-ref-body">
           <section className="profile-ref-card-group">
             {onOpenSettings && (
@@ -244,31 +215,11 @@ export function ProfileModal({
                 }}
               >
                 <span className="profile-ref-row-icon">
-                  <SlidersHorizontal size={19} />
+                  <SlidersHorizontal size={18} />
                 </span>
                 <span className="profile-ref-row-title">Tarif Listrik &amp; Peringatan</span>
                 <span className="profile-ref-badge is-blue">PLN</span>
-                <ChevronRight size={17} className="profile-ref-chevron" />
-              </button>
-            )}
-
-            {showPlanCard && onOpenPlanModal && (
-              <button
-                type="button"
-                className="profile-ref-row"
-                onClick={() => {
-                  onClose()
-                  onOpenPlanModal('')
-                }}
-              >
-                <span className="profile-ref-row-icon">
-                  <Crown size={19} />
-                </span>
-                <span className="profile-ref-row-title">Paket &amp; Kuota Panel</span>
-                <span className={`profile-ref-badge ${isPro ? 'is-gold' : 'is-neutral'}`}>
-                  {isPro ? 'Pro' : 'Gratis'}
-                </span>
-                <ChevronRight size={17} className="profile-ref-chevron" />
+                <ChevronRight size={16} className="profile-ref-chevron" />
               </button>
             )}
 
@@ -282,23 +233,23 @@ export function ProfileModal({
                 }}
               >
                 <span className="profile-ref-row-icon">
-                  <Compass size={19} />
+                  <Compass size={18} />
                 </span>
                 <span className="profile-ref-row-title">Panduan Awal Aplikasi</span>
-                <ChevronRight size={17} className="profile-ref-chevron" />
+                <ChevronRight size={16} className="profile-ref-chevron" />
               </button>
             )}
 
             {onToggleTheme && (
               <button type="button" className="profile-ref-row" onClick={onToggleTheme}>
                 <span className="profile-ref-row-icon">
-                  {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
+                  {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                 </span>
                 <span className="profile-ref-row-title">Tema Tampilan</span>
                 <span className="profile-ref-badge is-slate">
                   {theme === 'dark' ? 'Gelap' : 'Terang'}
                 </span>
-                <ChevronRight size={17} className="profile-ref-chevron" />
+                <ChevronRight size={16} className="profile-ref-chevron" />
               </button>
             )}
           </section>
@@ -307,11 +258,11 @@ export function ProfileModal({
             {waHref && (
               <a href={waHref} target="_blank" rel="noreferrer" className="profile-ref-row">
                 <span className="profile-ref-row-icon">
-                  <MessageCircle size={19} />
+                  <MessageCircle size={18} />
                 </span>
                 <span className="profile-ref-row-title">Bantuan WhatsApp</span>
                 <span className="profile-ref-badge is-emerald">Chat</span>
-                <ChevronRight size={17} className="profile-ref-chevron" />
+                <ChevronRight size={16} className="profile-ref-chevron" />
               </a>
             )}
 
@@ -323,21 +274,21 @@ export function ProfileModal({
                 className="profile-ref-row"
               >
                 <span className="profile-ref-row-icon">
-                  <Send size={19} />
+                  <Send size={18} />
                 </span>
                 <span className="profile-ref-row-title">Bantuan Telegram</span>
                 <span className="profile-ref-badge is-neutral">@{tgHandle}</span>
-                <ChevronRight size={17} className="profile-ref-chevron" />
+                <ChevronRight size={16} className="profile-ref-chevron" />
               </a>
             )}
 
             {supportEmail && (
               <a href={`mailto:${supportEmail}`} className="profile-ref-row">
                 <span className="profile-ref-row-icon">
-                  <Mail size={19} />
+                  <Mail size={18} />
                 </span>
                 <span className="profile-ref-row-title">Email Dukungan</span>
-                <ChevronRight size={17} className="profile-ref-chevron" />
+                <ChevronRight size={16} className="profile-ref-chevron" />
               </a>
             )}
 
@@ -348,11 +299,11 @@ export function ProfileModal({
                 onClick={() => onOpenTerms('terms')}
               >
                 <span className="profile-ref-row-icon">
-                  <ShieldCheck size={19} />
+                  <ShieldCheck size={18} />
                 </span>
-                <span className="profile-ref-row-title">Syarat &amp; Kebijakan Privasi</span>
+                <span className="profile-ref-row-title">Syarat &amp; Privasi</span>
                 <span className="profile-ref-badge is-neutral">{termsVersion}</span>
-                <ChevronRight size={17} className="profile-ref-chevron" />
+                <ChevronRight size={16} className="profile-ref-chevron" />
               </button>
             )}
 
@@ -362,11 +313,11 @@ export function ProfileModal({
               onClick={() => setShowAboutDetail((prev) => !prev)}
             >
               <span className="profile-ref-row-icon">
-                <Info size={19} />
+                <Info size={18} />
               </span>
               <span className="profile-ref-row-title">Tentang {appName}</span>
               <ChevronRight
-                size={17}
+                size={16}
                 className={`profile-ref-chevron ${showAboutDetail ? 'rotated' : ''}`}
               />
             </button>
@@ -386,7 +337,7 @@ export function ProfileModal({
                 onLogout()
               }}
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
               <span>Keluar dari Akun</span>
             </button>
           )}

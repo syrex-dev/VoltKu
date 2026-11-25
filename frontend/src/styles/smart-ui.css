@@ -5116,17 +5116,22 @@ button,
   overflow-y: auto;
 }
 
+.profile-modal-overlay {
+  padding: max(12px, env(safe-area-inset-top, 12px)) 14px
+    max(12px, env(safe-area-inset-bottom, 12px)) 14px;
+}
+
 .profile-modal-dialog {
-  max-width: 440px;
-  max-height: 90dvh;
+  max-width: 430px;
+  max-height: calc(100dvh - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   background: var(--bg-app) !important;
   padding: 0 !important;
-  border-radius: 24px !important;
+  border-radius: 22px !important;
 }
 
 .profile-ref-header-zone {
-  padding: 16px 18px 14px 18px;
+  padding: 12px 16px 10px 16px;
   background: linear-gradient(
     180deg,
     rgba(22, 119, 255, 0.1) 0%,
@@ -5135,7 +5140,7 @@ button,
   );
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 [data-theme="dark"] .profile-ref-header-zone {
@@ -5149,14 +5154,14 @@ button,
 
 .profile-ref-topbar {
   display: grid;
-  grid-template-columns: 64px 1fr 64px;
+  grid-template-columns: 32px 1fr 32px;
   align-items: center;
 }
 
 .profile-ref-page-title {
   margin: 0;
   text-align: center;
-  font-size: 17px;
+  font-size: 16.5px;
   font-weight: 700;
   color: var(--text-main);
 }
@@ -5165,12 +5170,11 @@ button,
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
 }
 
 .profile-ref-icon-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 10px;
   border: none;
   background: transparent;
@@ -5192,19 +5196,20 @@ button,
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 2px 2px 0 2px;
+  padding: 0 2px;
 }
 
 .profile-ref-identity-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 11px;
   min-width: 0;
+  width: 100%;
 }
 
 .profile-ref-avatar {
-  width: 46px;
-  height: 46px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
@@ -5220,10 +5225,11 @@ button,
 
 .profile-ref-identity-copy {
   min-width: 0;
+  flex: 1;
 }
 
 .profile-ref-name {
-  font-size: 18px;
+  font-size: 16.5px;
   font-weight: 700;
   color: var(--text-main);
   line-height: 1.25;
@@ -5252,31 +5258,9 @@ button,
   flex-shrink: 0;
 }
 
-.profile-ref-link-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 5px 8px;
-  border: none;
-  border-radius: 9999px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: var(--font-sans);
-  font-size: 12.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.profile-ref-link-btn:hover {
-  color: #1677ff;
-  background: rgba(22, 119, 255, 0.08);
-}
-
 .profile-ref-member-card {
-  border-radius: 16px;
-  padding: 14px 15px 12px 15px;
+  border-radius: 14px;
+  padding: 11px 13px 10px 13px;
   background: linear-gradient(135deg, #e7ecf2 0%, #dde4ed 100%);
   border: 1px solid rgba(148, 163, 184, 0.35);
 }
@@ -5299,13 +5283,13 @@ button,
 .profile-ref-member-main {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
 }
 
 .profile-ref-gem-badge {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #cbd5e1, #94a3b8);
   color: #1e293b;
   display: inline-flex;
@@ -5331,27 +5315,27 @@ button,
 }
 
 .profile-ref-member-title {
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-main);
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .profile-ref-member-sub {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-secondary);
   margin-top: 2px;
-  line-height: 1.35;
+  line-height: 1.3;
 }
 
 .profile-ref-member-cta {
-  padding: 8px 14px;
+  padding: 7px 13px;
   border-radius: 9999px;
   border: none;
   background: #23284d;
   color: #ffffff;
   font-family: var(--font-sans);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
@@ -5378,8 +5362,8 @@ button,
 }
 
 .profile-ref-quota-wrap {
-  margin-top: 10px;
-  padding-top: 9px;
+  margin-top: 8px;
+  padding-top: 7px;
   border-top: 1px solid rgba(100, 116, 139, 0.2);
 }
 
@@ -5388,9 +5372,9 @@ button,
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-secondary);
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 
 .profile-ref-quota-meta strong {
@@ -5399,7 +5383,7 @@ button,
 
 .profile-ref-quota-bar {
   width: 100%;
-  height: 5px;
+  height: 4px;
   border-radius: 9999px;
   background: rgba(15, 23, 42, 0.1);
   overflow: hidden;
@@ -5428,14 +5412,14 @@ button,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 11px;
   border: 1px solid rgba(217, 119, 6, 0.22);
   background: #fdf3d7;
   color: #8f6314;
   font-family: var(--font-sans);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   text-align: left;
@@ -5460,21 +5444,21 @@ button,
 .profile-ref-promo-left {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
 }
 
 .profile-ref-body {
-  padding: 2px 18px 18px 18px;
+  padding: 0 16px 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 9px;
 }
 
 .profile-ref-card-group {
   background: var(--surface-card);
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
+  border-radius: 14px;
   overflow: hidden;
   box-shadow: var(--shadow-card);
 }
@@ -5483,14 +5467,14 @@ button,
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 11px;
+  padding: 11px 14px;
   border: none;
   border-bottom: 1px solid var(--border-subtle);
   background: transparent;
   color: var(--text-main);
   font-family: var(--font-sans);
-  font-size: 14.5px;
+  font-size: 13.8px;
   font-weight: 500;
   text-align: left;
   text-decoration: none;
@@ -5518,6 +5502,9 @@ button,
   flex: 1;
   min-width: 0;
   color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .profile-ref-badge {
@@ -5594,8 +5581,8 @@ button,
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 44px;
-  border-radius: 14px;
+  height: 40px;
+  border-radius: 13px;
   border: 1px solid rgba(225, 29, 72, 0.22);
   background: var(--surface-card);
   color: #e11d48;
