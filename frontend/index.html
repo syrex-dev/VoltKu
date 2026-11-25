@@ -6,6 +6,7 @@
     <title>VoltKu</title>
 
     <meta name="theme-color" id="app-theme-color" content="#ffffff" />
+    <meta name="color-scheme" id="app-color-scheme" content="light dark" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta
@@ -13,6 +14,24 @@
       id="apple-status-bar-style"
       content="default"
     />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('theme');
+          if (t === 'dark' || t === 'light') {
+            document.documentElement.setAttribute('data-theme', t);
+            document.documentElement.style.colorScheme = t;
+            document.documentElement.style.backgroundColor = t === 'dark' ? '#0d1117' : '#f4f6f9';
+            var tc = document.getElementById('app-theme-color');
+            if (tc) tc.setAttribute('content', t === 'dark' ? '#0d1117' : '#ffffff');
+            var cs = document.getElementById('app-color-scheme');
+            if (cs) cs.setAttribute('content', t);
+            var sb = document.getElementById('apple-status-bar-style');
+            if (sb) sb.setAttribute('content', t === 'dark' ? 'black-translucent' : 'default');
+          }
+        } catch (e) {}
+      })();
+    </script>
     <meta name="apple-mobile-web-app-title" content="VoltKu" />
     <meta name="application-name" content="VoltKu" />
 

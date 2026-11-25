@@ -100,21 +100,31 @@ function useThemePreference(serverDefaultTheme = 'light') {
   }, [serverDefaultTheme])
 
   useEffect(() => {
+    const isDark = theme === 'dark'
+    const pageBg = isDark ? '#0d1117' : '#f4f6f9'
+    const barBg = isDark ? '#0d1117' : '#ffffff'
     document.documentElement.setAttribute('data-theme', theme)
+    document.documentElement.style.colorScheme = theme
+    document.documentElement.style.backgroundColor = pageBg
+    if (document.body) {
+      document.body.style.backgroundColor = pageBg
+    }
     localStorage.setItem('theme', theme)
     const themeMeta = document.getElementById('app-theme-color')
     if (themeMeta) {
-      themeMeta.setAttribute('content', theme === 'dark' ? '#0d1117' : '#ffffff')
+      themeMeta.setAttribute('content', barBg)
+    }
+    const colorSchemeMeta = document.getElementById('app-color-scheme')
+    if (colorSchemeMeta) {
+      colorSchemeMeta.setAttribute('content', theme)
     }
     const appleStatusMeta = document.getElementById('apple-status-bar-style')
     if (appleStatusMeta) {
-      appleStatusMeta.setAttribute('content', theme === 'dark' ? 'black-translucent' : 'default')
+      appleStatusMeta.setAttribute('content', isDark ? 'black-translucent' : 'default')
     }
     if (Capacitor.isNativePlatform()) {
-      StatusBar.setStyle({ style: theme === 'dark' ? Style.Dark : Style.Light }).catch(() => {})
-      StatusBar.setBackgroundColor({
-        color: theme === 'dark' ? '#0d1117' : '#ffffff',
-      }).catch(() => {})
+      StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light }).catch(() => {})
+      StatusBar.setBackgroundColor({ color: barBg }).catch(() => {})
     }
   }, [theme])
 
