@@ -1,6 +1,6 @@
 import pytest
-from app.models import Base, Device
-from sqlalchemy import create_engine
+from app.models import Device
+from mysql_test_helper import get_clean_mysql_engine
 from sqlalchemy.orm import Session
 
 from scripts.clean_device import check_clean_safety, clean_device
@@ -8,16 +8,14 @@ from scripts.seed_db import check_seed_safety
 
 
 def test_seed_guard_allows_empty_database():
-    test_engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(bind=test_engine)
+    test_engine = get_clean_mysql_engine()
 
     # Database kosong harus boleh tanpa flag
     check_seed_safety(test_engine, confirm_reset=False)
 
 
 def test_seed_guard_allows_only_sim_devices():
-    test_engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(bind=test_engine)
+    test_engine = get_clean_mysql_engine()
 
     with Session(bind=test_engine) as session:
         session.add(Device(id="sim-warung", name="Warung", mcb_watt=2200))
@@ -29,8 +27,7 @@ def test_seed_guard_allows_only_sim_devices():
 
 
 def test_seed_guard_rejects_non_sim_devices_without_flag():
-    test_engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(bind=test_engine)
+    test_engine = get_clean_mysql_engine()
 
     with Session(bind=test_engine) as session:
         session.add(Device(id="sim-warung", name="Warung", mcb_watt=2200))
@@ -43,8 +40,7 @@ def test_seed_guard_rejects_non_sim_devices_without_flag():
 
 
 def test_seed_guard_allows_non_sim_devices_with_flag():
-    test_engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(bind=test_engine)
+    test_engine = get_clean_mysql_engine()
 
     with Session(bind=test_engine) as session:
         session.add(Device(id="esp32_device_1", name="ESP Real", mcb_watt=2200))
@@ -64,8 +60,7 @@ def test_clean_device_guard_rejects_production_device():
 
 
 def test_clean_device_deletes_only_target_demo_device():
-    test_engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(bind=test_engine)
+    test_engine = get_clean_mysql_engine()
 
     from app.models import Reading
 

@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from app.config import Settings
-from app.models import Base, DailyStat, Device, Reading, ScheduledReportsLog, Setting
+from app.models import DailyStat, Device, Reading, ScheduledReportsLog, Setting
 from app.mqtt_ingest import process_telemetry_payload
 from app.services.notifier import set_notification_sender
 from app.services.report_generator import (
@@ -12,17 +12,14 @@ from app.services.report_generator import (
     generate_and_send_weekly_report,
 )
 from app.services.scheduler import init_scheduler_jobs, reschedule_daily_report, scheduler
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from mysql_test_helper import open_clean_test_session
+from sqlalchemy import select
 
 TZ_WIB = ZoneInfo("Asia/Jakarta")
 
 
 def get_test_session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    session = session_factory()
+    engine, session = open_clean_test_session()
     session.add(Setting(key="tariff_sen_per_kwh", value="144470"))
     session.add(Setting(key="extra_percent", value="0.0"))
     session.add(Setting(key="report_hour", value="21"))

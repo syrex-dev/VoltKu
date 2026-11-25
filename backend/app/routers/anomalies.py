@@ -8,28 +8,41 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.models import Anomaly
+from app.models import Anomaly, Device
 
 router = APIRouter(
     prefix="/api/anomalies", tags=["Anomalies"], dependencies=[Depends(get_current_user)]
 )
 
 
-@router.get("", response_model=list[dict[str, Any]])
-def get_anomalies_endpoint(
-    device_id: Optional[str] = Query(None),
-    from_ts: Optional[int] = Query(None, alias="from"),
-    session: Session = Depends(get_db),
-):
-    """Mengembalikan daftar anomali dari tabel anomalies (default 7 hari terakhir, terbaru dulu)."""
+def query_anomalies_list(
+    session: Session,
+    device_id: Optional[str] = None,
+    from_ts: Optional[int] = None,
+    severity: Optional[str] = None,
+    limit: Optional[int] = None,
+    owner_user_id: Optional[int] = None,
+    public_demo_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Query helper riwayat anomali terbaru dengan isolasi tenant / demo publik."""
     now_ts = int(time.time())
-    if from_ts is None:
-        from_ts = now_ts - (7 * 86400)
+    effective_from = from_ts if from_ts is not None else now_ts - (7 * 86400)
 
-    stmt = select(Anomaly).where(Anomaly.ts >= from_ts)
+    stmt = select(Anomaly).where(Anomaly.ts >= effective_from)
+    if public_demo_only:
+        demo_ids = select(Device.id).where(Device.is_public_demo == 1)
+        stmt = stmt.where(Anomaly.device_id.in_(demo_ids))
+    elif owner_user_id is not None:
+        owned_ids = select(Device.id).where(Device.owner_user_id == owner_user_id)
+        stmt = stmt.where(Anomaly.device_id.in_(owned_ids))
+
     if device_id:
         stmt = stmt.where(Anomaly.device_id == device_id)
+    if severity:
+        stmt = stmt.where(Anomaly.severity == severity.strip().lower())
     stmt = stmt.order_by(Anomaly.ts.desc())
+    if limit is not None and limit > 0:
+        stmt = stmt.limit(limit)
 
     anomalies = session.scalars(stmt).all()
     results = []
@@ -39,15 +52,34 @@ def get_anomalies_endpoint(
         except Exception:
             details = {"raw": a.details_json}
 
-        results.append({
-            "id": a.id,
-            "device_id": a.device_id,
-            "ts": a.ts,
-            "type": a.type,
-            "severity": a.severity,
-            "details": details,
-            "message": a.message,
-            "notified": bool(a.notified),
-        })
+        results.append(
+            {
+                "id": a.id,
+                "device_id": a.device_id,
+                "ts": a.ts,
+                "type": a.type,
+                "severity": a.severity,
+                "details": details,
+                "message": a.message,
+                "notified": bool(a.notified),
+            }
+        )
 
     return results
+
+
+@router.get("", response_model=list[dict[str, Any]])
+def get_anomalies_endpoint(
+    device_id: Optional[str] = Query(None),
+    from_ts: Optional[int] = Query(None, alias="from"),
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mengembalikan daftar anomali (terbatas pada perangkat user bila role='user')."""
+    uid = current.get("user_id") if current.get("role") == "user" else None
+    return query_anomalies_list(
+        session=session,
+        device_id=device_id,
+        from_ts=from_ts,
+        owner_user_id=uid,
+    )

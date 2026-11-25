@@ -1,17 +1,14 @@
 import json
 
-from app.models import AlertState, Anomaly, Base, Device, Reading, Setting
+from app.models import AlertState, Anomaly, Device, Reading, Setting
 from app.services.alert import evaluate_all_alerts
 from app.services.notifier import set_notification_sender
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from mysql_test_helper import open_clean_test_session
+from sqlalchemy import select
 
 
 def get_test_session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    session = session_factory()
+    engine, session = open_clean_test_session()
     # Seed default settings
     session.add(Setting(key="power_limit_w", value="2200"))
     session.add(Setting(key="alert_cooldown_min", value="15"))

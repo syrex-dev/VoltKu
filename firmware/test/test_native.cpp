@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstring>
 #include <payload_formatter.hpp>
+#include <provisioning_helper.hpp>
 #include <ring_buffer.hpp>
 
 using namespace energy_core;
@@ -479,6 +480,29 @@ void test_ring_buffer_disconnect_clears_early_acks() {
     TEST_ASSERT_FALSE(rb.has_early_ack(502));
 }
 
+void test_provisioning_device_id_and_ap_ssid_formatting(void) {
+    char dev_id[32];
+    int len = format_device_id_from_mac(0x0000A1B2C3D4E5F6ULL, dev_id, sizeof(dev_id));
+    TEST_ASSERT_EQUAL_INT(9, len);
+    TEST_ASSERT_EQUAL_STRING("ML-C3B2A1", dev_id);
+    TEST_ASSERT_TRUE(is_valid_device_id(dev_id));
+
+    char ap_ssid[48];
+    int ap_len = format_ap_ssid_from_device_id(dev_id, ap_ssid, sizeof(ap_ssid));
+    TEST_ASSERT_GREATER_THAN(0, ap_len);
+    TEST_ASSERT_EQUAL_STRING("VoltKu-C3B2A1", ap_ssid);
+
+    TEST_ASSERT_TRUE(is_placeholder_value(nullptr));
+    TEST_ASSERT_TRUE(is_placeholder_value(""));
+    TEST_ASSERT_TRUE(is_placeholder_value("NAMA_WIFI_ANDA"));
+    TEST_ASSERT_TRUE(is_placeholder_value("auto"));
+    TEST_ASSERT_FALSE(is_placeholder_value("WiFi_Rumah_24G"));
+
+    TEST_ASSERT_FALSE(is_valid_device_id("a"));
+    TEST_ASSERT_FALSE(is_valid_device_id("bad id!"));
+    TEST_ASSERT_TRUE(is_valid_device_id("esp32_device_1"));
+}
+
 int main(int argc, char** argv) {
     UNITY_BEGIN();
     RUN_TEST(test_payload_formatting_and_golden_export);
@@ -497,5 +521,6 @@ int main(int argc, char** argv) {
     RUN_TEST(test_ring_buffer_double_early_ack_and_normal_double_ack);
     RUN_TEST(test_ring_buffer_early_acks_overflow_drops_oldest);
     RUN_TEST(test_ring_buffer_disconnect_clears_early_acks);
+    RUN_TEST(test_provisioning_device_id_and_ap_ssid_formatting);
     return UNITY_END();
 }

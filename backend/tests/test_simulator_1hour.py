@@ -1,10 +1,10 @@
 from decimal import ROUND_HALF_UP, Decimal
 
-from app.models import Base, DailyStat, HourlyStat, Reading, Setting
+from app.models import DailyStat, HourlyStat, Reading, Setting
 from app.mqtt_ingest import process_telemetry_payload
 from app.services.delta import reset_rejection_tracker
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from mysql_test_helper import open_clean_test_session
+from sqlalchemy import select
 
 
 def test_simulation_360_samples_359_intervals():
@@ -15,10 +15,7 @@ def test_simulation_360_samples_359_intervals():
     359 interval * (264 W * 10s / 3.600.000) = 0.263266... kWh -> 0.263 kWh (263.3 Wh).
     Biaya: 0.263 * 1444.70 = 379.9561 -> Rp380.
     """
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    session = session_factory()
+    _, session = open_clean_test_session()
 
     session.add(Setting(key="tariff_sen_per_kwh", value="144470"))
     session.add(Setting(key="extra_percent", value="0.0"))
@@ -87,10 +84,7 @@ def test_simulation_361_samples_exact_1_hour():
     Sampel 1..360: 360 interval * (264 W * 10s / 3.600.000) = 0.264 kWh (264 Wh).
     Biaya: 0.264 * 1444.70 = 381.4008 -> Rp381.
     """
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    session = session_factory()
+    _, session = open_clean_test_session()
 
     session.add(Setting(key="tariff_sen_per_kwh", value="144470"))
     session.add(Setting(key="extra_percent", value="0.0"))

@@ -1,16 +1,22 @@
+import hashlib
 import hmac
+import secrets
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.db import get_db
+from app.models import User
 
 security_bearer = HTTPBearer(auto_error=False)
+PBKDF2_ITERATIONS = 120_000
 
 
 class LoginRateLimiter:
@@ -60,38 +66,77 @@ class LoginRateLimiter:
 
 
 login_limiter = LoginRateLimiter(max_delay=30)
+user_login_limiter = LoginRateLimiter(max_delay=30)
+
+
+def hash_password(plain_password: str) -> str:
+    """Hash password tenant dengan PBKDF2-HMAC-SHA256 dan random salt."""
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        plain_password.encode("utf-8"),
+        bytes.fromhex(salt),
+        PBKDF2_ITERATIONS,
+    ).hex()
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${digest}"
+
+
+def verify_user_password(plain_password: str, stored_hash: str) -> bool:
+    """Verifikasi hash PBKDF2-HMAC-SHA256 secara constant-time."""
+    if not stored_hash or stored_hash.startswith("!"):
+        return False
+    try:
+        scheme, iter_str, salt, digest = stored_hash.split("$", 3)
+        if scheme != "pbkdf2_sha256":
+            return False
+        calc = hashlib.pbkdf2_hmac(
+            "sha256",
+            plain_password.encode("utf-8"),
+            bytes.fromhex(salt),
+            int(iter_str),
+        ).hex()
+        return hmac.compare_digest(calc.encode("utf-8"), digest.encode("utf-8"))
+    except Exception:
+        return False
 
 
 def verify_password(plain_password: str) -> bool:
-    """Verifikasi password dashboard dengan constant-time comparison."""
+    """Verifikasi password admin dengan constant-time comparison."""
     settings = get_settings()
     configured_password = settings.dashboard_password or ""
     return hmac.compare_digest(plain_password.encode("utf-8"), configured_password.encode("utf-8"))
 
 
 def create_access_token(
-    subject: str = "dashboard_user", expires_delta: Optional[timedelta] = None
+    subject: str = "dashboard_user",
+    expires_delta: Optional[timedelta] = None,
+    role: str = "admin",
+    user_id: Optional[int] = None,
 ) -> str:
-    """Membuat token JWT dengan algoritma HS256."""
+    """Membuat token JWT HS256 dengan klaim role (admin/user) dan user_id opsional."""
     settings = get_settings()
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(hours=24))
-    payload = {
+    payload: dict[str, Any] = {
         "sub": subject,
+        "role": role,
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
     }
+    if user_id is not None:
+        payload["uid"] = int(user_id)
     secret = settings.jwt_secret or "dummy_secret_for_testing_purposes_only_32_chars"
-    token = jwt.encode(payload, secret, algorithm="HS256")
-    return token
+    return jwt.encode(payload, secret, algorithm="HS256")
 
 
-def verify_token(token: str) -> dict:
+def verify_token(token: str) -> dict[str, Any]:
     """Memverifikasi token JWT secara ketat menolak algoritma selain HS256."""
     settings = get_settings()
     secret = settings.jwt_secret or "dummy_secret_for_testing_purposes_only_32_chars"
     try:
         payload = jwt.decode(token, secret, algorithms=["HS256"])
+        if "role" not in payload:
+            payload["role"] = "admin"
         return payload
     except jwt.PyJWTError as err:
         raise HTTPException(
@@ -103,12 +148,37 @@ def verify_token(token: str) -> dict:
 
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
-) -> dict:
-    """FastAPI Dependency untuk melindungi rute privat."""
+    session: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """FastAPI Dependency untuk melindungi rute terotentikasi (user atau admin)."""
     if not credentials or not credentials.credentials:
         raise HTTPException(
             status_code=401,
             detail={"error": {"code": 401, "message": "Authentication required"}},
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return verify_token(credentials.credentials)
+    payload = verify_token(credentials.credentials)
+    role = payload.get("role", "admin")
+    if role == "user":
+        uid = payload.get("uid")
+        user = session.get(User, int(uid)) if uid is not None else None
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=401,
+                detail={"error": {"code": 401, "message": "User account inactive or not found"}},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        payload["user_id"] = user.id
+        payload["user_name"] = user.name
+        payload["user_email"] = user.email
+    return payload
+
+
+def get_current_admin(current: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """FastAPI Dependency ketat khusus role admin (tolak akun user biasa dengan 403)."""
+    if current.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": {"code": 403, "message": "Admin privilege required"}},
+        )
+    return current

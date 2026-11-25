@@ -339,7 +339,7 @@ def _get_target_devices(session, args: list[str]) -> tuple[list[Device], Optiona
 @allowlist_only
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = (
-        "⚡ Halo! Saya bot Monitor Listrik Pintar.\n\n"
+        "⚡ Halo! Saya bot VoltKu.\n\n"
         "Perintah yang tersedia:\n"
         "• /now [id] - Cek daya & kondisi listrik saat ini\n"
         "• /today [id] - Ringkasan pemakaian hari ini\n"

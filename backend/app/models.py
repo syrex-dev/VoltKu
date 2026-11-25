@@ -2,10 +2,13 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import (
+    BigInteger,
     Float,
+    ForeignKey,
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -15,6 +18,31 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
+    auth_provider: Mapped[str] = mapped_column(String(32), default="local", nullable=False)
+    google_sub: Mapped[Optional[str]] = mapped_column(String(128), unique=True, nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
+    last_login_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class UserSetting(Base):
+    __tablename__ = "user_settings"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(256), nullable=False)
+
+
 class Device(Base):
     __tablename__ = "devices"
 
@@ -22,6 +50,10 @@ class Device(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     location: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     mcb_watt: Mapped[int] = mapped_column(Integer, default=2200, nullable=False)
+    owner_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
+    is_public_demo: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[int] = mapped_column(
         Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
     )
@@ -49,6 +81,7 @@ class Reading(Base):
     __table_args__ = (
         UniqueConstraint("device_id", "ts", name="uq_device_ts"),
         Index("idx_readings_device_ts", "device_id", "ts"),
+        Index("idx_readings_device_ts_pv", "device_id", "ts", "p", "v"),
     )
 
 
@@ -91,7 +124,7 @@ class Anomaly(Base):
     ts: Mapped[int] = mapped_column(Integer, nullable=False)
     type: Mapped[str] = mapped_column(String(32), nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
-    details_json: Mapped[str] = mapped_column(String, nullable=False)
+    details_json: Mapped[str] = mapped_column(Text, nullable=False)
     message: Mapped[str] = mapped_column(String(256), nullable=False)
     notified: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
@@ -104,7 +137,7 @@ class AlertState(Base):
     state: Mapped[str] = mapped_column(String(16), nullable=False)  # active, cleared
     since: Mapped[int] = mapped_column(Integer, nullable=False)
     last_notified_at: Mapped[int] = mapped_column(Integer, nullable=False)
-    details_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    details_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class ScheduledReportsLog(Base):
@@ -118,7 +151,7 @@ class ScheduledReportsLog(Base):
 class TelegramUser(Base):
     __tablename__ = "telegram_users"
 
-    chat_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
 
 
@@ -126,9 +159,9 @@ class ChatLog(Base):
     __tablename__ = "chat_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    chat_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     ts: Mapped[int] = mapped_column(Integer, nullable=False)
-    question: Mapped[str] = mapped_column(String, nullable=False)
-    tools_used: Mapped[str] = mapped_column(String, nullable=False)
-    answer: Mapped[str] = mapped_column(String, nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    tools_used: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
     tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

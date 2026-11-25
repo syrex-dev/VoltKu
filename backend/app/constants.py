@@ -1,4 +1,4 @@
-"""Konstanta global aplikasi Monitor Listrik Pintar."""
+"""Konstanta global aplikasi VoltKu."""
 
 # Batas waktu perangkat dianggap offline jika tidak ada telemetri baru (dalam detik)
 OFFLINE_THRESHOLD_SECONDS = 120

@@ -1,20 +1,17 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.models import Base, DailyStat, Device, HourlyStat, Reading
+from app.models import DailyStat, Device, HourlyStat, Reading
 from app.mqtt_ingest import validate_telemetry_payload
 from app.services.retention import clean_old_readings, get_retention_cutoff_ts
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from mysql_test_helper import open_clean_test_session
+from sqlalchemy import select
 
 TZ_WIB = ZoneInfo("Asia/Jakarta")
 
 
 def get_test_session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    return engine, session_factory()
+    return open_clean_test_session()
 
 
 def test_retention_cutoff_boundary_wib():

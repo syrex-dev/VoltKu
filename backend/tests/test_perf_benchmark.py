@@ -4,11 +4,10 @@ import pytest
 from app.auth import create_access_token
 from app.db import get_db
 from app.main import app
-from app.models import Base, Device, HourlyStat, Reading
+from app.models import Device, HourlyStat, Reading
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, insert
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from mysql_test_helper import open_clean_test_session
+from sqlalchemy import insert
 
 client = TestClient(app)
 auth_headers = {"Authorization": f"Bearer {create_access_token()}"}
@@ -18,16 +17,9 @@ auth_headers = {"Authorization": f"Bearer {create_access_token()}"}
 def test_benchmark_series_p95_latency():
     """Benchmark performa: Kueri series pada 14 hari raw readings (120.960 baris)
 
-    dan 30 hari hourly stats (720 baris). Target p95 < 500 ms.
+    dan 30 hari hourly stats (720 baris). Target p95 < 200 ms.
     """
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    session = session_factory()
+    _, session = open_clean_test_session()
 
     def override_get_db():
         try:
@@ -65,8 +57,10 @@ def test_benchmark_series_p95_latency():
             }
         )
 
-    # Insert batch dalam transaksi tunggal
-    session.execute(insert(Reading), raw_dicts)
+    # Insert batch per chunk agar optimal di MySQL & SQLAlchemy
+    chunk_size = 10000
+    for start in range(0, len(raw_dicts), chunk_size):
+        session.execute(insert(Reading), raw_dicts[start : start + chunk_size])
     session.commit()
 
     # 3. Buat 30 hari data hourly stats (720 baris)

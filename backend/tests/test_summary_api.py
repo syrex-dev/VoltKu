@@ -4,11 +4,9 @@ from zoneinfo import ZoneInfo
 from app.auth import create_access_token
 from app.db import get_db
 from app.main import app
-from app.models import Base, DailyStat, Device, Reading, Setting
+from app.models import DailyStat, Device, Reading, Setting
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from mysql_test_helper import open_clean_test_session
 
 client = TestClient(app)
 auth_headers = {"Authorization": f"Bearer {create_access_token()}"}
@@ -16,14 +14,7 @@ TZ_WIB = ZoneInfo("Asia/Jakarta")
 
 
 def setup_summary_db():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    session = session_factory()
+    _, session = open_clean_test_session()
 
     session.add_all(
         [

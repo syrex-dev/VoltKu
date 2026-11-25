@@ -19,22 +19,40 @@ Payload telemetry:
 ## 2. REST API
 | Method dan path | Fungsi |
 |---|---|
-| `POST /api/login` | Login form `{"password": "..."}`, mengembalikan token JWT `{"token": "..."}`. Gagal berulang mengembalikan HTTP 429 (`Retry-After: N`). |
-| `GET /api/devices` | Daftar perangkat dan status dinamis (`online`/`offline` berdasarkan `last_seen_at` dan LWT) |
+| `POST /api/login` | Login legacy/admin `{"password": "..."}`, mengembalikan token JWT `{"token": "..."}` (`role="admin"`). Gagal berulang mengembalikan HTTP 429 (`Retry-After: N`). |
+| `POST /api/users/register` | Registrasi akun pembeli multi-tenant (`name`, `email`, `password` min 6 karakter). Mengembalikan HTTP `201` dengan JWT (`role="user"`) dan profil user. |
+| `POST /api/users/login` | Login akun pembeli (`email`, `password`). Mengembalikan JWT (`role="user"`) dan profil user. Gagal berulang mengembalikan HTTP 429. |
+| `POST /api/users/google` | Login atau registrasi otomatis akun pembeli menggunakan Google ID Token (`{"id_token": "..."}`, berlaku untuk Web GIS & Android APK). Mengembalikan JWT (`role="user"`) dan profil user. |
+| `GET /api/users/oauth-config` | Konfigurasi publik otentikasi klien (`google_enabled`, `google_client_id`, `google_android_client_id`, `terms_version`). |
+| `GET /api/users/me` | Profil akun pembeli yang sedang login (`id`, `name`, `email`, `role`, `auth_provider`, `avatar_url`). |
+| `POST /api/admin/login` | Login portal Admin terpisah (`/admin`, `{"password": "..."}`). Mengembalikan JWT khusus Admin (`role="admin"`). |
+| `GET /api/devices` | Daftar perangkat dan status dinamis (`online`/`offline`). Token `user` hanya melihat perangkat dengan `owner_user_id = user.id`; token `admin` melihat semua. Parameter opsional `include_latest=true`. |
+| `POST /api/devices` | Daftarkan atau klaim perangkat (`id`, `name`, `location` opsional, `mcb_watt` 100..25000, `claim` opsional default `false`). Untuk token `user`, mengklaim unit tak bertuan (`owner_user_id = NULL`) ke akun user; menolak (`409`) bila sudah dimiliki akun lain. |
+| `PATCH /api/devices/{id}` | Perbarui metadata perangkat (`name`, `location`, `mcb_watt`). Token `user` dibatasi hanya pada perangkat miliknya (`403` bila bukan pemilik). |
+| `DELETE /api/devices/{id}` | Hapus perangkat beserta data telemetri dan anomali terkait (khusus pemilik atau admin). Mengembalikan `200` `{"deleted": true, "id": "..."}` atau `404` jika tidak ada. |
 | `GET /api/devices/{id}/latest` | Pembacaan terakhir (`ts`, `v`, `i`, `p`, `e`, `f`, `pf`, `rssi`) |
 | `GET /api/devices/{id}/series?from=&to=&resolution=auto\|raw\|5m\|1h\|1d` | Data deret waktu (`ts`, `p`, `p_max`, `p_min`, `v`). Resolusi otomatis: <= 5 jam (raw 10s), > 5 jam s.d. 3 hari (5 menit on-the-fly), > 3 hari s.d. 60 hari (`hourly_stats`, `v: null`), > 60 hari (`daily_stats`, `v: null`). Respons memuat `interval_seconds` dan `truncated: bool` (jika > 2000 titik). Resolusi eksplisit yang menghasilkan > 2000 titik dipotong tepat di 2000 titik dan `truncated: true` (tidak pernah mengembalikan ratusan ribu titik). Validasi: `from > to` atau rentang > 366 hari mengembalikan HTTP 422. |
 | `GET /api/devices/{id}/summary?range=today\|week\|month&from=&to=` | Rangkuman periode (`from`, `to`, `kwh`, `cost_rp`, `avg_power_w`, `peak_w`, `peak_ts`, `tariff_sen`, `cost_estimated: bool`). Mendukung parameter `range=today\|week\|month` (WIB, minggu mulai Senin) ATAU `from`/`to` (epoch UTC). Parameter `range` bersama `from`/`to` menghasilkan HTTP 422. Validasi `from > to` atau rentang > 366 hari menghasilkan HTTP 422. Biaya pas batas hari memakai akumulasi `daily_stats.cost_rp` (tarif beku, `cost_estimated: false`); sub-hari memakai kWh per jam x tarif hari itu (`cost_estimated: true`). |
 | `GET /api/devices/{id}/forecast` | Proyeksi kWh dan biaya akhir bulan berdasarkan rata-rata 7 hari penuh terakhir (`samples >= 90% x 8640`). Respons: `available: bool`, `basis_days`, `low_confidence: bool`, `avg_daily_kwh`, `month_so_far_kwh`, `month_so_far_cost_rp`, `projected_kwh`, `projected_cost_rp`. |
-| `GET /api/anomalies?device_id=&from=` | Daftar anomali (mengembalikan `[]` sebelum M3) |
-| `GET /api/settings` | Pengambilan pengaturan aktif |
-| `PATCH /api/settings` | Pembaruan pengaturan: `tariff_rp` string desimal (maks 2 desimal, tolak NaN/Inf, limit 0..100.000), `power_limit_w` (100..25000), `alert_cooldown_min` (5..1440), `extra_percent` (>=0), `report_hour` (0..23) |
+| `GET /api/anomalies?device_id=&from=` | Daftar anomali (token `user` hanya melihat anomali dari perangkat miliknya). |
+| `GET /api/settings` | Pengambilan pengaturan aktif (untuk `user`, memadukan preferensi `user_settings` dengan default global). |
+| `PATCH /api/settings` | Pembaruan pengaturan (`tariff_rp`, `power_limit_w`, `alert_cooldown_min`, `extra_percent`, `report_hour`). Untuk `user`, disimpan per tenant di `user_settings`. |
+| `GET /api/public/access` | Status publik `{"public_read_enabled": bool}` untuk mode Tanpa Login. |
+| `GET /api/public/*` | Endpoint pantau *read-only* tanpa login hanya untuk perangkat bertanda `is_public_demo = 1` (`/devices`, `/devices/{id}/latest`, `/series`, `/summary`, `/forecast`, `/anomalies`, `/settings`) saat `public_read_enabled = true`; mengembalikan `401` bila dinonaktifkan Admin atau `404` untuk perangkat privat. |
+| `GET /api/admin/overview` | Ringkasan sistem Panel Admin (total/online/offline unit, tenant/user aktif, anomali 7 hari, status MQTT/worker/scheduler/bot, flag akses publik). Wajib `role="admin"`. |
+| `GET/POST /api/admin/users`, `PATCH/DELETE /api/admin/users/{id}` | Manajemen akun tenant/pembeli dari Panel Admin (`role="admin"`). |
+| `GET /api/admin/devices`, `PATCH /api/admin/devices/{id}` | Inventaris semua perangkat beserta pemilik, toggle `is_public_demo`, dan pengalihan `owner_user_id`. Wajib `role="admin"`. |
+| `GET /api/admin/anomalies` | Log anomali lintas semua perangkat dengan filter `device_id`, `severity`, `from`, `limit`. Wajib `role="admin"`. |
+| `GET /api/admin/access`, `PATCH /api/admin/access` | Membaca dan mengubah kebijakan `public_read_enabled`. Wajib `role="admin"`. |
 | `GET /healthz` | Health check (publik) |
 
-Format error: objek `error` berisi `code` dan `message`. Semua endpoint kecuali `/healthz` dan `/api/login` butuh token Bearer JWT.
+Format error: objek `error` berisi `code` dan `message`. Seluruh endpoint `/api/admin/*` (kecuali `/api/admin/login`) wajib Bearer JWT `role="admin"` (`403` untuk token `user`). Seluruh mutasi (`POST`, `PATCH`, `DELETE`) dan rute `/api/devices*`, `/api/anomalies`, `/api/settings` wajib Bearer JWT. Rute `/api/public/*` hanya mengizinkan `GET` pada unit `is_public_demo = 1` saat `public_read_enabled = true`.
 
 ## 3. Model data
 ```
-devices(id PK, name, location, mcb_watt, created_at, last_seen_at, last_data_ts, status)
+users(id PK, email UNIQUE, name, password_hash, auth_provider, google_sub UNIQUE NULL, avatar_url NULL, is_active, created_at, last_login_at)
+user_settings(user_id PK, key PK, value)
+devices(id PK, name, location, mcb_watt, owner_user_id FK->users.id NULL, is_public_demo DEFAULT 0, created_at, last_seen_at, last_data_ts, status)
 readings(id PK, device_id, ts, v, i, p, e_kwh, delta_kwh, f, pf, rssi, is_gap)
    index dan unique (device_id, ts)
 hourly_stats(device_id, hour_start, kwh, p_avg, p_max, p_min, samples)   PK (device_id, hour_start)

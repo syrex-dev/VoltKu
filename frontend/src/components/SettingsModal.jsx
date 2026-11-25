@@ -7,6 +7,7 @@ export function SettingsModal({
   settings,
   activeDevice,
   onSave,
+  onLogout,
 }) {
   const [tariff, setTariff] = useState('')
   const [powerLimit, setPowerLimit] = useState(2200)
@@ -78,7 +79,7 @@ export function SettingsModal({
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="modal-fields-2col">
             <div className="form-field-group">
               <label className="field-label" htmlFor="input-tariff">
                 Tarif Listrik PLN
@@ -133,7 +134,7 @@ export function SettingsModal({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="modal-fields-2col">
             <div className="form-field-group">
               <label className="field-label" htmlFor="input-cooldown">
                 Jeda Peringatan Ulang
@@ -192,13 +193,29 @@ export function SettingsModal({
             </div>
           </div>
 
-          <div className="modal-actions-row">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Batal
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Menyimpan...' : 'Terapkan Konfigurasi'}
-            </button>
+          <div className="modal-actions-row" style={{ justifyContent: 'space-between' }}>
+            {onLogout ? (
+              <button
+                type="button"
+                className="btn btn-danger-ghost"
+                onClick={() => {
+                  onClose()
+                  onLogout()
+                }}
+              >
+                Keluar Akun
+              </button>
+            ) : (
+              <span />
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Batal
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Menyimpan...' : 'Simpan'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

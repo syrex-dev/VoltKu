@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Koneksi Terputus - VoltKu</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --text: #181c20;
+      --sub: #525b66;
+      --border: #e6e9ef;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --card: #161b22;
+        --text: #f0f3f6;
+        --sub: #a1aab8;
+        --border: #262c36;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      text-align: center;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px 24px;
+      max-width: 380px;
+      width: 100%;
+    }
+    .badge {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      background: rgba(22, 119, 255, 0.12);
+      color: #1677ff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      font-size: 26px;
+    }
+    h1 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    p { font-size: 14px; color: var(--sub); line-height: 1.5; margin-bottom: 20px; }
+    button {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      background: #1677ff;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">&#9889;</div>
+    <h1>Koneksi Terputus</h1>
+    <p>Periksa jaringan Wi-Fi atau paket data Anda, lalu muat ulang halaman untuk memantau listrik.</p>
+    <button onclick="window.location.reload()">Coba Lagi</button>
+  </div>
+</body>
+</html>

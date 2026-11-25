@@ -3,7 +3,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.models import AlertState, Anomaly, Base, Device, Reading, Setting
+from app.models import AlertState, Anomaly, Device, Reading, Setting
 from app.services.bot import (
     cmd_anomali,
     cmd_batas,
@@ -19,17 +19,8 @@ from app.services.bot import (
     send_message_rate_limited,
     send_telegram_broadcast_sync,
 )
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
-test_engine = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-Base.metadata.create_all(test_engine)
-TestSessionLocal = sessionmaker(bind=test_engine)
+from mysql_test_helper import TestSessionLocal, get_clean_mysql_engine
+from sqlalchemy import select
 
 
 def get_test_db():
@@ -42,6 +33,7 @@ def get_test_db():
 
 @pytest.fixture(autouse=True)
 def setup_db(monkeypatch):
+    get_clean_mysql_engine()
     monkeypatch.setattr("app.services.bot.SessionLocal", TestSessionLocal)
     with TestSessionLocal() as session:
         session.query(Anomaly).delete()
@@ -126,7 +118,7 @@ async def test_cmd_start_authorized():
 
     context.bot.send_message.assert_called_once()
     sent_text = context.bot.send_message.call_args.kwargs["text"]
-    assert "Monitor Listrik Pintar" in sent_text
+    assert "VoltKu" in sent_text
     assert "/now" in sent_text
     assert "/tarif" in sent_text
 

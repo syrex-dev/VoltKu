@@ -5,14 +5,14 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings, validate_startup_credentials
 from app.db import init_db
 from app.mqtt_ingest import ingest_service
-from app.routers import anomalies, auth, devices
+from app.routers import admin, anomalies, auth, devices, public, users
 from app.routers import settings as settings_router
 from app.services.bot import init_and_start_bot, stop_bot
 from app.services.scheduler import start_scheduler, stop_scheduler
@@ -29,13 +29,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "connect-src 'self' http://localhost:5173 http://127.0.0.1:5173 "
-            "http://localhost:8000 http://127.0.0.1:8000; "
-            "img-src 'self' data:; "
-            "font-src 'self' data:;"
+            "default-src 'self' data: blob:; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com; "
+            "style-src 'self' 'unsafe-inline' "
+            "https://fonts.googleapis.com https://accounts.google.com; "
+            "frame-src 'self' https://accounts.google.com; "
+            "connect-src 'self' http: https: ws: wss:; "
+            "img-src 'self' data: blob: https:; "
+            "font-src 'self' data: https://fonts.gstatic.com;"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -76,7 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title=settings.app_name,
-    description="Backend API Monitor Listrik Pintar (IoT + AI)",
+    description="Backend API VoltKu (IoT + AI)",
     version="0.2.0",
     lifespan=lifespan,
 )
@@ -84,15 +85,11 @@ app = FastAPI(
 # Pasang Security Headers
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Pasang CORS Middleware untuk mendukung Vite dev server & dashboard
+# Pasang CORS Middleware untuk mendukung Vite dev server,
+# dashboard, & remote tunnel akses luar jaringan
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -115,6 +112,10 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 
 # Registrasi Endpoint API
 app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(public.router)
+app.include_router(admin.auth_router)
+app.include_router(admin.router)
 app.include_router(devices.router)
 app.include_router(settings_router.router)
 app.include_router(anomalies.router)
@@ -124,6 +125,37 @@ app.include_router(anomalies.router)
 async def health_check() -> dict[str, str]:
     """Health check endpoint publik."""
     return {"status": "ok"}
+
+
+@app.get("/admin/manifest.webmanifest", include_in_schema=False)
+async def get_admin_pwa_manifest():
+    """Manifest PWA terpisah khusus Portal Admin (/admin), terinspirasi DigiPoint."""
+    return JSONResponse(
+        content={
+            "id": "/admin",
+            "name": "VoltKu - Admin",
+            "short_name": "VoltKu Admin",
+            "description": "Portal Pengelolaan Tenant, Perangkat IoT, dan Sistem",
+            "start_url": "/admin",
+            "scope": "/admin",
+            "display": "standalone",
+            "orientation": "portrait-primary",
+            "background_color": "#f4f6f9",
+            "theme_color": "#ffffff",
+            "categories": ["business", "utilities"],
+            "icons": [
+                {"src": "/pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+                {"src": "/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+                {
+                    "src": "/pwa-512-maskable.png",
+                    "sizes": "512x512",
+                    "type": "image/png",
+                    "purpose": "maskable",
+                },
+            ],
+        },
+        media_type="application/manifest+json",
+    )
 
 
 # Mount Dashboard Web UI
@@ -139,4 +171,9 @@ for p in candidates:
         break
 
 if dashboard_path:
+    @app.get("/admin", include_in_schema=False)
+    @app.get("/admin/{subpath:path}", include_in_schema=False)
+    async def serve_admin_spa(subpath: str = ""):
+        return FileResponse(dashboard_path / "index.html")
+
     app.mount("/", StaticFiles(directory=str(dashboard_path), html=True), name="dashboard")

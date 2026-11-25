@@ -10,8 +10,14 @@
 
 Sisi AC: terminal tegangan PZEM ke fasa dan netral; CT coil dijepit di kabel fasa.
 
-## Perilaku
-- `setup()`: WiFi, sinkronisasi NTP, MQTT client (dengan Last Will & Testament retained), PZEM Serial, watchdog timer hardware (WDT).
+## Perilaku & Provisioning Wi-Fi (Produk Jual Lepas)
+- **Penyimpanan Kredensial Non-Volatil (NVS `Preferences`)**:
+  - SSID Wi-Fi, password Wi-Fi, serta opsional alamat host/port MQTT & Device ID disimpan di memori flash internal ESP32 (namespace `energy_cfg`) agar bertahan saat mati listrik tanpa edit kode.
+  - Jika belum ada Wi-Fi tersimpan (unit baru) atau tombol pairing fisik (`GPIO0` / tombol BOOT, active-low) ditahan >= 3 detik saat menyala:
+    - ESP32 mengaktifkan mode **SoftAP Captive Portal** (SSID: `MonitorListrik-XXXX`, IP `192.168.4.1`) dan `DNSServer` agar halaman konfigurasi otomatis muncul di layar HP pembeli.
+    - Halaman portal melakukan scan Wi-Fi **2,4 GHz** sekitar, menerima SSID & password rumah, menyimpannya ke NVS, lalu me-restart ESP32 ke mode Station normal.
+  - Jika `DEVICE_ID` di konfigurasi kosong atau memakai nilai placeholder bawaan, firmware otomatis membentuk ID unik berbasis chip MAC (`ML-XXXXXX`).
+- `setup()`: Inisialisasi NVS & WiFi (atau masuk mode Captive Portal jika belum dikonfigurasi), sinkronisasi NTP, MQTT client (dengan Last Will & Testament retained), PZEM Serial, watchdog timer hardware (WDT).
 - `loop()` non-blocking dengan timer `millis()`, tanpa `delay()` panjang. WDT di-reset tiap siklus loop sehat.
 - Alur baca & publish:
   - Baca sensor PZEM tiap 1 detik (rolling buffer / filter derau).

@@ -1,0 +1,19 @@
+{
+  "appId": "com.voltku.energy",
+  "appName": "VoltKu",
+  "webDir": "../dashboard",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "StatusBar": {
+      "overlaysWebView": false,
+      "backgroundColor": "#ffffff",
+      "style": "LIGHT"
+    }
+  }
+}

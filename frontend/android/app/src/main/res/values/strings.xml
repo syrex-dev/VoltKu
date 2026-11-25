@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VoltKu</string>
+    <string name="title_activity_main">VoltKu</string>
+    <string name="package_name">com.voltku.energy</string>
+    <string name="custom_url_scheme">com.voltku.energy</string>
+</resources>

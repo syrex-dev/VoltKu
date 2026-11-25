@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.models import Setting
+from app.models import Setting, UserSetting
 from app.services.scheduler import reschedule_daily_report
 
 router = APIRouter(
@@ -35,10 +35,16 @@ class SettingsUpdateRequest(BaseModel):
     report_enabled: Optional[bool] = None
 
 
-def get_all_settings(session: Session) -> dict[str, str]:
-    stmt = select(Setting)
-    rows = session.scalars(stmt).all()
-    return {r.key: r.value for r in rows}
+def get_all_settings(session: Session, user_id: Optional[int] = None) -> dict[str, str]:
+    rows = session.scalars(select(Setting)).all()
+    merged = {r.key: r.value for r in rows}
+    if user_id is not None:
+        user_rows = session.scalars(
+            select(UserSetting).where(UserSetting.user_id == user_id)
+        ).all()
+        for ur in user_rows:
+            merged[ur.key] = ur.value
+    return merged
 
 
 def format_settings_response(settings_map: dict[str, str]) -> dict[str, Any]:
@@ -55,16 +61,46 @@ def format_settings_response(settings_map: dict[str, str]) -> dict[str, Any]:
     }
 
 
+def _upsert_setting(
+    session: Session, key: str, value: str, user_id: Optional[int] = None
+) -> None:
+    if user_id is not None:
+        existing_user = session.scalar(
+            select(UserSetting).where(UserSetting.user_id == user_id, UserSetting.key == key)
+        )
+        if not existing_user:
+            session.add(UserSetting(user_id=user_id, key=key, value=value))
+        else:
+            existing_user.value = value
+        return
+
+    existing_global = session.scalar(select(Setting).where(Setting.key == key))
+    if not existing_global:
+        session.add(Setting(key=key, value=value))
+    else:
+        existing_global.value = value
+
+
 @router.get("", response_model=SettingsResponse)
-def get_settings_endpoint(session: Session = Depends(get_db)):
-    """Mengambil seluruh pengaturan aktif sistem."""
-    settings_map = get_all_settings(session)
+def get_settings_endpoint(
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mengambil pengaturan aktif (per tenant bila role=user, global bila admin)."""
+    uid = current.get("user_id") if current.get("role") == "user" else None
+    settings_map = get_all_settings(session, user_id=uid)
     return format_settings_response(settings_map)
 
 
 @router.patch("", response_model=SettingsResponse)
-def update_settings_endpoint(req: SettingsUpdateRequest, session: Session = Depends(get_db)):
-    """Pembaruan konfigurasi dengan validasi ketat batas nilai dan presisi desimal."""
+def update_settings_endpoint(
+    req: SettingsUpdateRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Pembaruan konfigurasi (per tenant bila user, global bila admin)."""
+    uid = current.get("user_id") if current.get("role") == "user" else None
+
     if req.tariff_rp is not None:
         clean_str = req.tariff_rp.strip().replace(",", ".")
         try:
@@ -99,11 +135,7 @@ def update_settings_endpoint(req: SettingsUpdateRequest, session: Session = Depe
             )
 
         tariff_sen = int((dec * Decimal(100)).quantize(Decimal("1")))
-        setting_sen = session.scalar(select(Setting).where(Setting.key == "tariff_sen_per_kwh"))
-        if not setting_sen:
-            session.add(Setting(key="tariff_sen_per_kwh", value=str(tariff_sen)))
-        else:
-            setting_sen.value = str(tariff_sen)
+        _upsert_setting(session, "tariff_sen_per_kwh", str(tariff_sen), user_id=uid)
 
     if req.power_limit_w is not None:
         if not (100 <= req.power_limit_w <= 25000):
@@ -113,11 +145,7 @@ def update_settings_endpoint(req: SettingsUpdateRequest, session: Session = Depe
                     "error": {"code": 422, "message": "Power limit must be between 100 and 25000 W"}
                 },
             )
-        setting_p = session.scalar(select(Setting).where(Setting.key == "power_limit_w"))
-        if not setting_p:
-            session.add(Setting(key="power_limit_w", value=str(req.power_limit_w)))
-        else:
-            setting_p.value = str(req.power_limit_w)
+        _upsert_setting(session, "power_limit_w", str(req.power_limit_w), user_id=uid)
 
     if req.alert_cooldown_min is not None:
         if not (5 <= req.alert_cooldown_min <= 1440):
@@ -130,11 +158,7 @@ def update_settings_endpoint(req: SettingsUpdateRequest, session: Session = Depe
                     }
                 },
             )
-        setting_c = session.scalar(select(Setting).where(Setting.key == "alert_cooldown_min"))
-        if not setting_c:
-            session.add(Setting(key="alert_cooldown_min", value=str(req.alert_cooldown_min)))
-        else:
-            setting_c.value = str(req.alert_cooldown_min)
+        _upsert_setting(session, "alert_cooldown_min", str(req.alert_cooldown_min), user_id=uid)
 
     if req.extra_percent is not None:
         if req.extra_percent < 0.0:
@@ -142,11 +166,7 @@ def update_settings_endpoint(req: SettingsUpdateRequest, session: Session = Depe
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={"error": {"code": 422, "message": "Extra percent must be >= 0.0"}},
             )
-        setting_e = session.scalar(select(Setting).where(Setting.key == "extra_percent"))
-        if not setting_e:
-            session.add(Setting(key="extra_percent", value=str(req.extra_percent)))
-        else:
-            setting_e.value = str(req.extra_percent)
+        _upsert_setting(session, "extra_percent", str(req.extra_percent), user_id=uid)
 
     if req.report_hour is not None:
         if not (0 <= req.report_hour <= 23):
@@ -154,21 +174,14 @@ def update_settings_endpoint(req: SettingsUpdateRequest, session: Session = Depe
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={"error": {"code": 422, "message": "Report hour must be between 0 and 23"}},
             )
-        setting_r = session.scalar(select(Setting).where(Setting.key == "report_hour"))
-        if not setting_r:
-            session.add(Setting(key="report_hour", value=str(req.report_hour)))
-        else:
-            setting_r.value = str(req.report_hour)
-        reschedule_daily_report(req.report_hour)
+        _upsert_setting(session, "report_hour", str(req.report_hour), user_id=uid)
+        if uid is None:
+            reschedule_daily_report(req.report_hour)
 
     if req.report_enabled is not None:
         val_str = "true" if req.report_enabled else "false"
-        setting_re = session.scalar(select(Setting).where(Setting.key == "report_enabled"))
-        if not setting_re:
-            session.add(Setting(key="report_enabled", value=val_str))
-        else:
-            setting_re.value = val_str
+        _upsert_setting(session, "report_enabled", val_str, user_id=uid)
 
     session.commit()
-    settings_map = get_all_settings(session)
+    settings_map = get_all_settings(session, user_id=uid)
     return format_settings_response(settings_map)

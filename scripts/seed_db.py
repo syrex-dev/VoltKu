@@ -205,10 +205,15 @@ def main() -> None:
         session.commit()
         print(f"  Inserted {len(bench_records)} hourly_stats for sim-bench.")
 
-        # 5. Jalankan PRAGMA integrity_check
+        # 5. Pemeriksaan integritas / koneksi DB
         print("[5/5] Memeriksa integritas database...")
-        res = session.execute(text("PRAGMA integrity_check")).fetchall()
-        print(f"  PRAGMA integrity_check: {res}")
+        dialect_name = session.get_bind().dialect.name
+        if dialect_name == "sqlite":
+            res = session.execute(text("PRAGMA integrity_check")).fetchall()
+            print(f"  PRAGMA integrity_check: {res}")
+        else:
+            res = session.execute(text("SELECT 1")).scalar()
+            print(f"  DB connection check ({dialect_name}): OK ({res})")
 
         # Summary
         r_cnt = session.scalar(select(text("count(*)")).select_from(Reading))

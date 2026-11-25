@@ -1,16 +1,12 @@
 from datetime import datetime, timezone
 
-from app.models import Base, DailyStat, Reading, Setting
+from app.models import DailyStat, Reading, Setting
 from app.services.aggregation import get_wib_day, update_daily_stat, update_hourly_stat
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from mysql_test_helper import open_clean_test_session
 
 
 def get_test_session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    session = session_factory()
+    _, session = open_clean_test_session()
     # Seed default settings
     session.add(Setting(key="tariff_sen_per_kwh", value="144470"))
     session.add(Setting(key="extra_percent", value="0.0"))

@@ -13,8 +13,8 @@ def test_health_check() -> None:
 
 def test_settings_load_defaults() -> None:
     settings = get_settings()
-    assert settings.app_name == "Monitor Listrik Pintar"
+    assert settings.app_name == "VoltKu"
     assert settings.tz == "Asia/Jakarta"
-    # Verifikasi default field di model Settings adalah sqlite:///./data/energy.db
-    assert Settings.model_fields["database_url"].default == "sqlite:///./data/energy.db"
-    assert settings.database_url in ("sqlite:///./data/energy.db", "sqlite:///:memory:")
+    expected_default = "mysql+pymysql://root@127.0.0.1:3306/energy_monitor?charset=utf8mb4"
+    assert Settings.model_fields["database_url"].default == expected_default
+    assert settings.database_url.startswith("mysql+pymysql://")

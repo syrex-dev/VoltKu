@@ -1,5 +1,6 @@
 import logging
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,14 +10,14 @@ logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     # App Settings
-    app_name: str = "Monitor Listrik Pintar"
+    app_name: str = "VoltKu"
     app_env: str = "production"
     host: str = "0.0.0.0"
     port: int = 8000
     tz: str = "Asia/Jakarta"
 
     # Database & Perangkat
-    database_url: str = "sqlite:///./data/energy.db"
+    database_url: str = "mysql+pymysql://root@127.0.0.1:3306/energy_monitor?charset=utf8mb4"
     default_mcb_watt: int = 2200
 
     # MQTT Broker (Default non-rahasia untuk local testing)
@@ -34,12 +35,18 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-1.5-flash"
     llm_api_key: Optional[str] = None
 
+    # Google Sign-In & App Terms Config (Opsional)
+    google_client_id: Optional[str] = None
+    google_android_client_id: Optional[str] = None
+    terms_version: str = "2026-11-v1"
+
     # M3 Flags & Konfigurasi
     scheduler_enabled: bool = True
     bot_enabled: bool = True
     notifier: str = ""
     recording_notifier: bool = False
     alert_exclude_device_prefixes: str = "sim-"
+    public_dashboard_enabled: bool = True
 
     # Konstanta Tegangan (Bukan di DB settings)
     voltage_min_v: float = 200.0
@@ -62,6 +69,16 @@ class Settings(BaseSettings):
         )
 
     @property
+    def allowed_google_client_ids(self) -> list[str]:
+        ids: list[str] = []
+        for raw in (self.google_client_id, self.google_android_client_id):
+            if raw and raw.strip():
+                val = raw.strip()
+                if val not in ids:
+                    ids.append(val)
+        return ids
+
+    @property
     def allowed_chat_id_list(self) -> list[int]:
         res: list[int] = []
         for x in self.telegram_allowed_chat_ids.split(","):
@@ -74,7 +91,7 @@ class Settings(BaseSettings):
         return res
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(str(Path(__file__).resolve().parent.parent.parent / ".env"), ".env", "../.env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

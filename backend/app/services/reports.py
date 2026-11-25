@@ -7,31 +7,42 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import DailyStat, Device, HourlyStat, Reading, Setting
+from app.models import DailyStat, Device, HourlyStat, Reading, Setting, UserSetting
 from app.services.cost import calculate_cost_rp
 
 TZ_WIB = ZoneInfo("Asia/Jakarta")
 
 
-def get_current_tariff_sen(session: Session) -> int:
+def _get_effective_setting_value(
+    session: Session, key: str, user_id: Optional[int] = None
+) -> Optional[str]:
+    if user_id is not None:
+        u_row = session.scalar(
+            select(UserSetting).where(UserSetting.user_id == user_id, UserSetting.key == key)
+        )
+        if u_row and u_row.value:
+            return u_row.value
+    g_row = session.scalar(select(Setting).where(Setting.key == key))
+    return g_row.value if g_row else None
+
+
+def get_current_tariff_sen(session: Session, user_id: Optional[int] = None) -> int:
     """Mengambil tarif aktif saat ini dalam satuan sen (integer)."""
-    tariff_setting = session.scalar(
-        select(Setting).where(Setting.key == "tariff_sen_per_kwh")
-    )
-    if tariff_setting and tariff_setting.value:
+    val = _get_effective_setting_value(session, "tariff_sen_per_kwh", user_id=user_id)
+    if val:
         try:
-            return int(tariff_setting.value)
+            return int(val)
         except ValueError:
             pass
     return 144470
 
 
-def get_extra_percent(session: Session) -> float:
+def get_extra_percent(session: Session, user_id: Optional[int] = None) -> float:
     """Mengambil persentase biaya tambahan/pajak aktif."""
-    extra_setting = session.scalar(select(Setting).where(Setting.key == "extra_percent"))
-    if extra_setting and extra_setting.value:
+    val = _get_effective_setting_value(session, "extra_percent", user_id=user_id)
+    if val:
         try:
-            return float(extra_setting.value)
+            return float(val)
         except ValueError:
             pass
     return 0.0
@@ -54,8 +65,8 @@ def calculate_device_summary(
         )
 
     now_wib = now_dt.astimezone(TZ_WIB) if now_dt else datetime.now(tz=TZ_WIB)
-    active_tariff_sen = get_current_tariff_sen(session)
-    extra_percent = get_extra_percent(session)
+    active_tariff_sen = get_current_tariff_sen(session, user_id=device.owner_user_id)
+    extra_percent = get_extra_percent(session, user_id=device.owner_user_id)
 
     if range:
         if from_ts is not None or to_ts is not None:
@@ -329,8 +340,8 @@ def calculate_device_forecast(
     remaining_today_kwh = max(avg_daily_kwh - today_kwh, 0.0)
     projected_kwh = round(month_so_far_kwh + remaining_today_kwh + (sisa_hari * avg_daily_kwh), 3)
 
-    active_tariff_sen = get_current_tariff_sen(session)
-    extra_percent = get_extra_percent(session)
+    active_tariff_sen = get_current_tariff_sen(session, user_id=device.owner_user_id)
+    extra_percent = get_extra_percent(session, user_id=device.owner_user_id)
     projected_cost_rp = calculate_cost_rp(projected_kwh, active_tariff_sen, extra_percent)
 
     return {

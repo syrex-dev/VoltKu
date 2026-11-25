@@ -1,17 +1,15 @@
 import time
 
-from app.models import Base, Device, HourlyStat, Reading
+from app.models import Device, HourlyStat, Reading
 from app.mqtt_ingest import IngestService, get_device_status, process_telemetry_payload
 from app.services.delta import reset_rejection_tracker
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from mysql_test_helper import open_clean_test_session
+from sqlalchemy import select
 
 
 def get_test_session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    return session_factory()
+    _, session = open_clean_test_session()
+    return session
 
 
 def test_ingest_auto_registers_unknown_device():

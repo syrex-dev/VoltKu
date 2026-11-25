@@ -1,9 +1,10 @@
 import os
 
 import pytest
+from mysql_test_helper import TEST_MYSQL_URL, close_active_test_sessions, get_clean_mysql_engine
 
-# Pastikan seluruh tes berjalan di database in-memory sementara, bukan di data/energy.db
-os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+# Pastikan seluruh tes berjalan di database MySQL khusus uji, bukan DB produksi
+os.environ["DATABASE_URL"] = TEST_MYSQL_URL
 os.environ["APP_ENV"] = "test"
 os.environ["JWT_SECRET"] = "test_jwt_secret_at_least_32_chars_1234567890"  # gitleaks:allow
 os.environ["DASHBOARD_PASSWORD"] = "test_password_12chars"
@@ -16,12 +17,14 @@ def isolate_db(monkeypatch):
     from app.main import app
 
     get_settings.cache_clear()
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("DATABASE_URL", TEST_MYSQL_URL)
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv(
         "JWT_SECRET", "test_jwt_secret_at_least_32_chars_1234567890"  # gitleaks:allow
     )
     monkeypatch.setenv("DASHBOARD_PASSWORD", "test_password_12chars")
+    get_clean_mysql_engine()
     init_db()
     yield
+    close_active_test_sessions()
     app.dependency_overrides.clear()

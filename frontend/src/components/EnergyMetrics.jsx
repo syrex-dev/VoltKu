@@ -1,106 +1,112 @@
 import React from 'react'
-import { TrendingUp, Calendar, Clock, Sparkles } from 'lucide-react'
-import { formatRp, formatNum, formatTimeWIB } from '../utils/formatters'
+import { Calendar, TrendingUp, Clock } from 'lucide-react'
+import { formatRp, formatNum } from '../utils/formatters'
 
-export function EnergyMetrics({ today, week, month, forecast }) {
+export function EnergyMetrics({ today, week, month, forecast, settings }) {
+  const currentMonthYear = new Date().toLocaleDateString('id-ID', {
+    month: 'long',
+    year: 'numeric',
+  })
+
+  const tariffRp = settings?.tariff_sen_per_kwh
+    ? parseInt(settings.tariff_sen_per_kwh, 10) / 100
+    : settings?.tariff_sen
+    ? parseInt(settings.tariff_sen, 10) / 100
+    : 1444.7
+
   return (
-    <section className="section-block">
-      <div className="section-header">
-        <h2 className="section-title">
-          <TrendingUp size={14} className="text-primary" /> Akumulasi Energi & Biaya
-        </h2>
-        <div className="section-title-line"></div>
-      </div>
-
-      <div className="energy-grid-modern">
-        {/* Hari Ini */}
-        <div className="card cost-card">
-          <div className="card-top-row">
-            <span className="card-label">
-              <Clock size={13} /> Hari Ini
-            </span>
-            {today?.cost_estimated && (
-              <span className="badge-forecast badge-warning-soft">Estimasi</span>
-            )}
+    <div className="consumption-clean-stack">
+      {/* Ringkasan Bulan Berjalan */}
+      <section className="clean-sheet consumption-hero-sheet">
+        <div className="consumption-top-row">
+          <div>
+            <div className="consumption-sub-kicker">Ringkasan Bulan Ini</div>
+            <div className="consumption-month-label">{currentMonthYear}</div>
           </div>
-          <div className="cost-primary num-tabular">{formatRp(today?.cost_rp)}</div>
-          <div className="cost-kwh num-tabular">
-            {today ? `${formatNum(today.kwh, 3)} kWh` : '- kWh'}
-          </div>
-          <div className="cost-meta num-tabular">
-            {today?.peak_w > 0 && today?.peak_ts
-              ? `Puncak: ${formatNum(today.peak_w, 1)} W (${formatTimeWIB(today.peak_ts)})`
-              : 'Puncak: - W'}
-          </div>
+          <span className="consumption-tariff-pill num-tabular">
+            Tarif {formatRp(tariffRp)}/kWh
+          </span>
         </div>
 
-        {/* Minggu Ini */}
-        <div className="card cost-card">
-          <div className="card-top-row">
-            <span className="card-label">
-              <Calendar size={13} /> Minggu Ini
-            </span>
+        <div className="consumption-split-pair">
+          <div className="split-pair-col">
+            <div className="split-pair-label">Total Terpakai</div>
+            <div className="split-pair-val num-tabular">
+              {month ? formatNum(month.kwh, 2) : '0,00'}
+              <span className="split-pair-unit"> kWh</span>
+            </div>
+            <div className="split-pair-foot num-tabular">
+              Hari ini {today ? `${formatNum(today.kwh, 2)} kWh` : '0 kWh'}
+            </div>
           </div>
-          <div className="cost-primary num-tabular">{formatRp(week?.cost_rp)}</div>
-          <div className="cost-kwh num-tabular">
-            {week ? `${formatNum(week.kwh, 3)} kWh` : '- kWh'}
+
+          <div className="split-pair-divider" />
+
+          <div className="split-pair-col">
+            <div className="split-pair-label">Estimasi Tagihan</div>
+            <div className="split-pair-val accent-blue num-tabular">
+              {month ? formatRp(month.cost_rp) : 'Rp 0'}
+            </div>
+            <div className="split-pair-foot num-tabular">
+              Hari ini {today ? formatRp(today.cost_rp) : 'Rp 0'}
+            </div>
           </div>
-          <div className="cost-meta num-tabular">
-            Rata-rata: {week ? `${formatNum(week.avg_power_w, 1)} W` : '- W'}
+        </div>
+      </section>
+
+      {/* Rincian per Periode */}
+      <section className="clean-sheet grouped-list-sheet">
+        <div className="grouped-row">
+          <div className="period-row-left">
+            <div className="period-icon-chip">
+              <Clock size={16} />
+            </div>
+            <div>
+              <div className="grouped-row-title">Hari Ini</div>
+              <div className="grouped-row-sub num-tabular">
+                {today ? `${formatNum(today.kwh, 3)} kWh` : '0 kWh'}
+                {today?.peak_w > 0 ? ` · Puncak ${formatNum(today.peak_w, 0)} W` : ''}
+              </div>
+            </div>
           </div>
+          <span className="grouped-row-val num-tabular">{formatRp(today?.cost_rp)}</span>
         </div>
 
-        {/* Bulan Ini */}
-        <div className="card cost-card">
-          <div className="card-top-row">
-            <span className="card-label">
-              <Calendar size={13} /> Bulan Ini (Berjalan)
-            </span>
+        <div className="grouped-row">
+          <div className="period-row-left">
+            <div className="period-icon-chip">
+              <Calendar size={16} />
+            </div>
+            <div>
+              <div className="grouped-row-title">Minggu Ini</div>
+              <div className="grouped-row-sub num-tabular">
+                {week ? `${formatNum(week.kwh, 3)} kWh` : '0 kWh'}
+                {week ? ` · Rata-rata ${formatNum(week.avg_power_w, 0)} W` : ''}
+              </div>
+            </div>
           </div>
-          <div className="cost-primary num-tabular">{formatRp(month?.cost_rp)}</div>
-          <div className="cost-kwh num-tabular">
-            {month ? `${formatNum(month.kwh, 3)} kWh` : '- kWh'}
-          </div>
-          <div className="cost-meta num-tabular">
-            Puncak: {month ? `${formatNum(month.peak_w, 1)} W` : '- W'}
-          </div>
+          <span className="grouped-row-val num-tabular">{formatRp(week?.cost_rp)}</span>
         </div>
 
-        {/* Proyeksi Akhir Bulan */}
-        <div className="card cost-card forecast-card-modern forecast-span-mobile">
-          <div className="card-top-row">
-            <span className="card-label" style={{ color: '#c084fc' }}>
-              <Sparkles size={13} /> Proyeksi Akhir Bulan
-            </span>
-            {forecast?.available ? (
-              <span
-                className={`badge-forecast ${
-                  forecast.low_confidence ? 'badge-warning-soft' : ''
-                }`}
-              >
-                {forecast.low_confidence ? 'Kasar' : `Basis ${forecast.basis_days} Hari`}
-              </span>
-            ) : (
-              <span className="badge-forecast" style={{ opacity: 0.6 }}>
-                Belum Siap
-              </span>
-            )}
+        <div className="grouped-row">
+          <div className="period-row-left">
+            <div className="period-icon-chip">
+              <TrendingUp size={16} />
+            </div>
+            <div>
+              <div className="grouped-row-title">Perkiraan Akhir Bulan</div>
+              <div className="grouped-row-sub num-tabular">
+                {forecast?.available
+                  ? `${formatNum(forecast.projected_kwh, 1)} kWh (${formatNum(forecast.avg_daily_kwh, 1)} kWh/hari)`
+                  : 'Butuh data minimal 1 hari penuh'}
+              </div>
+            </div>
           </div>
-          <div className="cost-primary num-tabular" style={{ color: '#f3e8ff' }}>
-            {forecast?.available ? formatRp(forecast.projected_cost_rp) : 'Belum Tersedia'}
-          </div>
-          <div className="cost-kwh num-tabular" style={{ color: '#c084fc' }}>
-            {forecast?.available ? `${formatNum(forecast.projected_kwh, 2)} kWh` : '-'}
-          </div>
-          <div className="cost-meta num-tabular" style={{ borderColor: 'rgba(168, 85, 247, 0.2)' }}>
-            {!forecast || !forecast.available
-              ? 'Butuh data minimal 24 jam penuh'
-              : forecast.low_confidence
-              ? `Akurasi kasar (${forecast.basis_days} hari data)`
-              : `Rata-rata harian: ${formatNum(forecast.avg_daily_kwh, 2)} kWh/hari`}
-          </div>
+          <span className="grouped-row-val accent-blue num-tabular">
+            {forecast?.available ? formatRp(forecast.projected_cost_rp) : '-'}
+          </span>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   )
 }

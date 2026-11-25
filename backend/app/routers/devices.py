@@ -1,15 +1,17 @@
+import re
 from datetime import datetime, time, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import Integer, cast, func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import get_db
-from app.models import DailyStat, Device, HourlyStat, Reading
+from app.models import AlertState, Anomaly, DailyStat, Device, HourlyStat, Reading
 from app.mqtt_ingest import get_device_status
 from app.services.reports import calculate_device_forecast, calculate_device_summary
 
@@ -18,56 +20,54 @@ router = APIRouter(
 )
 
 TZ_WIB = ZoneInfo("Asia/Jakarta")
+DEVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{2,64}$")
 
 
-@router.get("", response_model=list[dict[str, Any]])
-def list_devices(session: Session = Depends(get_db)):
-    """Mengambil daftar perangkat terdaftar beserta status dinamis online/offline."""
-    devices = session.scalars(select(Device).order_by(Device.id.asc())).all()
-    now_utc = int(datetime.now(timezone.utc).timestamp())
-    return [
-        {
-            "id": d.id,
-            "name": d.name,
-            "location": d.location,
-            "mcb_watt": d.mcb_watt,
-            "created_at": d.created_at,
-            "last_seen_at": d.last_seen_at,
-            "last_data_ts": d.last_data_ts,
-            "status": get_device_status(
-                d, now_utc=now_utc, threshold_seconds=OFFLINE_THRESHOLD_SECONDS
-            ),
-        }
-        for d in devices
-    ]
+class DeviceCreateRequest(BaseModel):
+    id: str
+    name: str
+    location: Optional[str] = None
+    mcb_watt: int = 2200
+    claim: bool = False
 
 
-@router.get("/{device_id}/latest")
-def get_latest_reading(device_id: str, session: Session = Depends(get_db)):
-    """Mengambil data telemetri terbaru dari perangkat tertentu."""
-    device = session.scalar(select(Device).where(Device.id == device_id))
-    if not device:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": {"code": 404, "message": f"Device '{device_id}' not found"}},
-        )
+class DeviceUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
+    mcb_watt: Optional[int] = None
 
-    reading = session.scalar(
-        select(Reading).where(Reading.device_id == device_id).order_by(Reading.ts.desc()).limit(1)
+
+def _raise_api_error(status_code: int, message: str) -> None:
+    raise HTTPException(
+        status_code=status_code,
+        detail={"error": {"code": status_code, "message": message}},
     )
-    if not reading:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": {
-                    "code": 404,
-                    "message": f"No telemetry readings found for device '{device_id}'",
-                }
-            },
-        )
 
+
+def _validate_mcb_watt(mcb_watt: int) -> int:
+    if not (100 <= mcb_watt <= 25000):
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "mcb_watt must be between 100 and 25000",
+        )
+    return mcb_watt
+
+
+def _normalize_location(location: Optional[str]) -> Optional[str]:
+    if location is None:
+        return None
+    cleaned = location.strip()
+    if len(cleaned) > 128:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "location must not exceed 128 characters",
+        )
+    return cleaned or None
+
+
+def _serialize_reading(reading: Reading) -> dict[str, Any]:
     return {
-        "device_id": device_id,
+        "device_id": reading.device_id,
         "ts": int(reading.ts),
         "v": reading.v,
         "i": reading.i,
@@ -81,15 +81,256 @@ def get_latest_reading(device_id: str, session: Session = Depends(get_db)):
     }
 
 
-@router.get("/{device_id}/series")
-def get_device_series(
-    device_id: str,
-    from_ts: Optional[int] = Query(None, alias="from"),
-    to_ts: Optional[int] = Query(None, alias="to"),
-    resolution: Optional[str] = Query("auto"),
+def _serialize_device(
+    device: Device,
+    now_utc: Optional[int] = None,
+    latest: Optional[Reading] = None,
+    include_latest: bool = False,
+) -> dict[str, Any]:
+    if now_utc is None:
+        now_utc = int(datetime.now(timezone.utc).timestamp())
+    data: dict[str, Any] = {
+        "id": device.id,
+        "name": device.name,
+        "location": device.location,
+        "mcb_watt": device.mcb_watt,
+        "owner_user_id": device.owner_user_id,
+        "is_public_demo": bool(device.is_public_demo),
+        "created_at": device.created_at,
+        "last_seen_at": device.last_seen_at,
+        "last_data_ts": device.last_data_ts,
+        "status": get_device_status(
+            device, now_utc=now_utc, threshold_seconds=OFFLINE_THRESHOLD_SECONDS
+        ),
+    }
+    if include_latest:
+        data["latest"] = _serialize_reading(latest) if latest else None
+    return data
+
+
+def _get_device_for_actor(
+    session: Session, device_id: str, current: dict[str, Any]
+) -> Device:
+    """Memastikan perangkat ada dan dimiliki oleh actor bila role='user'."""
+    device = session.scalar(select(Device).where(Device.id == device_id))
+    if not device:
+        _raise_api_error(status.HTTP_404_NOT_FOUND, f"Device '{device_id}' not found")
+    if current.get("role") == "user" and device.owner_user_id != current.get("user_id"):
+        _raise_api_error(
+            status.HTTP_403_FORBIDDEN,
+            "Anda tidak memiliki akses ke perangkat ini",
+        )
+    return device
+
+
+def list_devices_data(
+    session: Session,
+    include_latest: bool = False,
+    owner_user_id: Optional[int] = None,
+    public_demo_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Query helper daftar perangkat dengan filter kepemilikan / mode demo publik."""
+    stmt = select(Device)
+    if public_demo_only:
+        stmt = stmt.where(Device.is_public_demo == 1)
+    elif owner_user_id is not None:
+        stmt = stmt.where(Device.owner_user_id == owner_user_id)
+    devices = session.scalars(stmt.order_by(Device.id.asc())).all()
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+
+    latest_by_device: dict[str, Reading] = {}
+    if include_latest and devices:
+        dev_ids = [d.id for d in devices]
+        subq = (
+            select(Reading.device_id, func.max(Reading.ts).label("max_ts"))
+            .where(Reading.device_id.in_(dev_ids))
+            .group_by(Reading.device_id)
+            .subquery()
+        )
+        rows = session.scalars(
+            select(Reading).join(
+                subq,
+                (Reading.device_id == subq.c.device_id) & (Reading.ts == subq.c.max_ts),
+            )
+        ).all()
+        latest_by_device = {r.device_id: r for r in rows}
+
+    return [
+        _serialize_device(
+            d,
+            now_utc=now_utc,
+            latest=latest_by_device.get(d.id),
+            include_latest=include_latest,
+        )
+        for d in devices
+    ]
+
+
+@router.get("", response_model=list[dict[str, Any]])
+def list_devices(
+    include_latest: bool = Query(False),
+    current: dict[str, Any] = Depends(get_current_user),
     session: Session = Depends(get_db),
 ):
-    """Mengambil deret waktu telemetri daya dengan pemilihan resolusi otomatis atau spesifik."""
+    """Mengambil daftar perangkat terdaftar (terisolasi per user bila role=user)."""
+    uid = current.get("user_id") if current.get("role") == "user" else None
+    return list_devices_data(session, include_latest=include_latest, owner_user_id=uid)
+
+
+@router.post("", response_model=dict[str, Any])
+def create_or_claim_device(
+    req: DeviceCreateRequest,
+    response: Response,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mendaftarkan perangkat baru atau mengklaim perangkat tak bertuan."""
+    dev_id = req.id.strip()
+    if not DEVICE_ID_RE.match(dev_id):
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "id must be 2-64 characters using letters, numbers, '-' or '_'",
+        )
+
+    clean_name = req.name.strip()
+    if not clean_name or len(clean_name) > 128:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "name must be between 1 and 128 characters",
+        )
+
+    clean_loc = _normalize_location(req.location)
+    mcb_watt = _validate_mcb_watt(req.mcb_watt)
+    actor_uid = current.get("user_id") if current.get("role") == "user" else None
+
+    existing = session.scalar(select(Device).where(Device.id == dev_id))
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+
+    if existing:
+        if (
+            actor_uid is not None
+            and existing.owner_user_id is not None
+            and existing.owner_user_id != actor_uid
+        ):
+            _raise_api_error(
+                status.HTTP_409_CONFLICT,
+                "Perangkat ini sudah diklaim oleh akun lain",
+            )
+        if not req.claim:
+            _raise_api_error(
+                status.HTTP_409_CONFLICT,
+                f"Device '{dev_id}' already exists",
+            )
+        existing.name = clean_name
+        existing.location = clean_loc
+        existing.mcb_watt = mcb_watt
+        if actor_uid is not None:
+            existing.owner_user_id = actor_uid
+        session.commit()
+        session.refresh(existing)
+        response.status_code = status.HTTP_200_OK
+        return _serialize_device(existing, now_utc=now_utc)
+
+    device = Device(
+        id=dev_id,
+        name=clean_name,
+        location=clean_loc,
+        mcb_watt=mcb_watt,
+        owner_user_id=actor_uid,
+        is_public_demo=0,
+        created_at=now_utc,
+        status="offline",
+    )
+    session.add(device)
+    session.commit()
+    session.refresh(device)
+    response.status_code = status.HTTP_201_CREATED
+    return _serialize_device(device, now_utc=now_utc)
+
+
+@router.patch("/{device_id}", response_model=dict[str, Any])
+def update_device(
+    device_id: str,
+    req: DeviceUpdateRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Memperbarui nama, ruangan/lokasi, atau batas MCB perangkat milik sendiri/admin."""
+    device = _get_device_for_actor(session, device_id, current)
+
+    if req.name is not None:
+        clean_name = req.name.strip()
+        if not clean_name or len(clean_name) > 128:
+            _raise_api_error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "name must be between 1 and 128 characters",
+            )
+        device.name = clean_name
+
+    if req.location is not None:
+        device.location = _normalize_location(req.location)
+
+    if req.mcb_watt is not None:
+        device.mcb_watt = _validate_mcb_watt(req.mcb_watt)
+
+    session.commit()
+    session.refresh(device)
+    return _serialize_device(device)
+
+
+@router.delete("/{device_id}", response_model=dict[str, Any])
+def delete_device(
+    device_id: str,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Menghapus perangkat beserta seluruh data telemetri dan anomali terkait."""
+    device = _get_device_for_actor(session, device_id, current)
+
+    for model in (Reading, HourlyStat, DailyStat, Anomaly, AlertState):
+        session.execute(delete(model).where(model.device_id == device_id))
+    session.delete(device)
+    session.commit()
+    return {"deleted": True, "id": device_id}
+
+
+def get_latest_reading_data(session: Session, device_id: str) -> dict[str, Any]:
+    """Helper pembacaan telemetri terbaru perangkat."""
+    device = session.scalar(select(Device).where(Device.id == device_id))
+    if not device:
+        _raise_api_error(status.HTTP_404_NOT_FOUND, f"Device '{device_id}' not found")
+
+    reading = session.scalar(
+        select(Reading).where(Reading.device_id == device_id).order_by(Reading.ts.desc()).limit(1)
+    )
+    if not reading:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            f"No telemetry readings found for device '{device_id}'",
+        )
+
+    return _serialize_reading(reading)
+
+
+@router.get("/{device_id}/latest")
+def get_latest_reading(
+    device_id: str,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mengambil data telemetri terbaru dari perangkat tertentu."""
+    _get_device_for_actor(session, device_id, current)
+    return get_latest_reading_data(session, device_id)
+
+
+def get_device_series_data(
+    session: Session,
+    device_id: str,
+    from_ts: Optional[int] = None,
+    to_ts: Optional[int] = None,
+    resolution: Optional[str] = "auto",
+) -> dict[str, Any]:
+    """Helper deret waktu telemetri daya dengan resolusi otomatis atau spesifik."""
     device = session.scalar(select(Device).where(Device.id == device_id))
     if not device:
         raise HTTPException(
@@ -155,7 +396,7 @@ def get_device_series(
 
     elif res == "5m":
         interval_seconds = 300
-        bucket_expr = cast(Reading.ts / 300, Integer) * 300
+        bucket_expr = Reading.ts - (Reading.ts % 300)
         stmt = (
             select(
                 bucket_expr.label("bucket_ts"),
@@ -253,15 +494,37 @@ def get_device_series(
     }
 
 
+@router.get("/{device_id}/series")
+def get_device_series(
+    device_id: str,
+    from_ts: Optional[int] = Query(None, alias="from"),
+    to_ts: Optional[int] = Query(None, alias="to"),
+    resolution: Optional[str] = Query("auto"),
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mengambil deret waktu telemetri daya dengan pemilihan resolusi otomatis atau spesifik."""
+    _get_device_for_actor(session, device_id, current)
+    return get_device_series_data(
+        session=session,
+        device_id=device_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        resolution=resolution,
+    )
+
+
 @router.get("/{device_id}/summary")
 def get_device_summary(
     device_id: str,
     range: Optional[str] = Query(None),
     from_ts: Optional[int] = Query(None, alias="from"),
     to_ts: Optional[int] = Query(None, alias="to"),
+    current: dict[str, Any] = Depends(get_current_user),
     session: Session = Depends(get_db),
 ):
     """Rangkuman konsumsi kWh, biaya, rata-rata, dan beban puncak untuk periode tertentu."""
+    _get_device_for_actor(session, device_id, current)
     return calculate_device_summary(
         session=session,
         device_id=device_id,
@@ -272,6 +535,11 @@ def get_device_summary(
 
 
 @router.get("/{device_id}/forecast")
-def get_device_forecast(device_id: str, session: Session = Depends(get_db)):
+def get_device_forecast(
+    device_id: str,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
     """Menghitung proyeksi kWh dan biaya akhir bulan kalender berjalan."""
+    _get_device_for_actor(session, device_id, current)
     return calculate_device_forecast(session=session, device_id=device_id)

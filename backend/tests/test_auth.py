@@ -188,8 +188,26 @@ def test_jwt_token_validation_and_tampering():
 
 
 def test_route_audit_security_lockdown():
-    """Audit keamanan: /healthz, /api/login, statis publik; /api/* lain harus 401 tanpa token."""
-    public_paths = {"/healthz", "/api/login"}
+    """Audit keamanan: endpoint privat dan seluruh mutasi wajib 401 tanpa token."""
+    public_post_paths = {
+        "/api/login",
+        "/api/users/register",
+        "/api/users/login",
+        "/api/users/google",
+        "/api/admin/login",
+    }
+    public_get_paths = {
+        "/healthz",
+        "/api/users/oauth-config",
+        "/api/public/access",
+        "/api/public/devices",
+        "/api/public/devices/{device_id}/latest",
+        "/api/public/devices/{device_id}/series",
+        "/api/public/devices/{device_id}/summary",
+        "/api/public/devices/{device_id}/forecast",
+        "/api/public/anomalies",
+        "/api/public/settings",
+    }
 
     for route in app.routes:
         path = getattr(route, "path", None)
@@ -197,10 +215,12 @@ def test_route_audit_security_lockdown():
         if not path or not path.startswith("/api"):
             continue
 
-        if path in public_paths:
+        if path in public_post_paths:
             continue
 
         for method in methods:
+            if path in public_get_paths and method == "GET":
+                continue
             if method in ("GET", "POST", "PATCH", "PUT", "DELETE"):
                 res = client.request(method, path)
                 assert res.status_code == 401, (
