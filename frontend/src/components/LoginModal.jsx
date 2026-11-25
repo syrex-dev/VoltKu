@@ -282,8 +282,8 @@ export function LoginModal({
                   ? 'Mendaftarkan...'
                   : 'Memverifikasi...'
                 : authTab === 'register' && registrationEnabled
-                ? 'Buat Akun Sekarang'
-                : 'Masuk'}
+                  ? 'Buat Akun Sekarang'
+                  : 'Masuk'}
             </span>
             {!submitting && <ArrowRight size={17} />}
           </button>

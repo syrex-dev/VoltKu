@@ -51,8 +51,10 @@ export function DailyChart({ points, theme = 'dark', tariff = 1444.7 }) {
       x: {
         ticks: {
           color: tickColor,
-          font: { family: "'Plus Jakarta Sans', system-ui, sans-serif", size: 11 },
+          maxTicksLimit: 5,
           maxRotation: 0,
+          autoSkip: true,
+          font: { family: "'Plus Jakarta Sans', system-ui, sans-serif", size: 11 },
         },
         grid: { display: false },
         border: { display: false },

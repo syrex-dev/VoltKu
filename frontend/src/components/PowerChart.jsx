@@ -75,7 +75,13 @@ export function PowerChart({ points, range, onRangeChange, loading, theme = 'dar
     },
     scales: {
       x: {
-        ticks: { color: tickColor, maxTicksLimit: 6, font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 } },
+        ticks: {
+          color: tickColor,
+          maxTicksLimit: 5,
+          maxRotation: 0,
+          autoSkip: true,
+          font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 },
+        },
         grid: { display: false },
         border: { display: false },
       },
