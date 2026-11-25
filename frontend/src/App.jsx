@@ -1266,6 +1266,7 @@ function CustomerPortalRoot() {
           }}
           onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
           onOpenPlanModal={openPlanModal}
+          onOpenSettings={() => handleTabChange('settings')}
           appConfig={publicAppConfig}
         />
       )}

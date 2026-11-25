@@ -1,9 +1,12 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
   X,
+  Settings,
   Crown,
+  Gem,
   LogOut,
   ChevronRight,
+  SlidersHorizontal,
   Compass,
   ShieldCheck,
   Sun,
@@ -12,9 +15,8 @@ import {
   Send,
   Mail,
   Info,
-  Sparkles,
 } from 'lucide-react'
-import { formatTimeWIB } from '../utils/formatters'
+import { formatRp, formatTimeWIB } from '../utils/formatters'
 
 function normalizeWaHref(raw = '') {
   const digits = String(raw || '').replace(/[^0-9]/g, '')
@@ -33,8 +35,11 @@ export function ProfileModal({
   onReplayTour,
   onOpenTerms,
   onOpenPlanModal,
+  onOpenSettings,
   appConfig = {},
 }) {
+  const [showAboutDetail, setShowAboutDetail] = useState(false)
+
   if (!isOpen) return null
 
   const appName = appConfig.app_name || 'VoltKu'
@@ -49,184 +54,264 @@ export function ProfileModal({
   const initialLetter = displayName.trim().charAt(0).toUpperCase() || 'V'
   const isGoogleAuth =
     currentUser?.auth_provider === 'google' || currentUser?.auth_provider === 'both'
+
   const plan = currentUser?.plan
+  const proCfg = appConfig.plans?.pro || {
+    name: 'VoltKu Pro',
+    price_monthly_rp: 30000,
+    max_devices: 10,
+    history_days: 90,
+  }
   const showPlanCard = Boolean(plan && plan.freemium_enabled !== false)
+  const isPro = Boolean(plan?.is_pro)
   const usedDevices = plan?.usage?.device_count ?? 0
   const maxDevices = plan?.limits?.max_devices ?? 1
   const quotaPct =
     maxDevices > 0 ? Math.min(100, Math.round((usedDevices / maxDevices) * 100)) : 25
+  const proMaxText =
+    proCfg.max_devices < 0 ? 'panel tanpa batas' : `hingga ${proCfg.max_devices} panel`
 
   return (
     <div className="modal-overlay pwa-guide-overlay" onClick={onClose}>
       <div
-        className="modal-dialog-modern profile-modal-dialog"
+        className="modal-dialog-modern profile-modal-dialog profile-ref-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Profil & Akun"
+        aria-label="Profil Akun"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="profile-modal-top">
-          <span className="profile-modal-kicker">Akun Saya</span>
-          <button type="button" className="btn-icon-close" onClick={onClose} aria-label="Tutup">
-            <X size={18} />
-          </button>
-        </div>
+        {/* Ambient Header Gradient Wash */}
+        <div className="profile-ref-header-zone">
+          <div className="profile-ref-topbar">
+            <span className="profile-ref-topbar-spacer" aria-hidden="true" />
+            <h2 className="profile-ref-page-title">Profil</h2>
+            <div className="profile-ref-topbar-actions">
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  className="profile-ref-icon-btn"
+                  title="Setelan Tarif & Peringatan"
+                  aria-label="Setelan Tarif & Peringatan"
+                  onClick={() => {
+                    onClose()
+                    onOpenSettings()
+                  }}
+                >
+                  <Settings size={18} />
+                </button>
+              )}
+              <button
+                type="button"
+                className="profile-ref-icon-btn"
+                onClick={onClose}
+                aria-label="Tutup"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
 
-        <div className="settings-stack-clean">
-          {/* Identitas Akun */}
-          <section className="clean-sheet profile-hero-card">
-            <div className="profile-hero-left">
+          {/* User Identity Header Row (Open Canvas, Clean Typography) */}
+          <div className="profile-ref-identity">
+            <div className="profile-ref-identity-left">
               {currentUser?.avatar_url ? (
                 <img
                   src={currentUser.avatar_url}
                   alt={displayName}
-                  className="profile-avatar-img"
+                  className="profile-ref-avatar"
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="profile-avatar-fallback profile-avatar-initial">
-                  {initialLetter}
-                </div>
+                <div className="profile-ref-avatar profile-avatar-initial">{initialLetter}</div>
               )}
-              <div className="profile-hero-copy">
-                <div className="profile-name-row">
-                  <h2 className="profile-hero-name">{displayName}</h2>
-                  <span className="profile-auth-tag">
-                    {isGoogleAuth ? 'Google' : 'Email'}
-                  </span>
+              <div className="profile-ref-identity-copy">
+                <div className="profile-ref-name">{displayName}</div>
+                <div className="profile-ref-subline">
+                  <span>{currentUser?.email || 'Akun Terdaftar'}</span>
+                  <span className="profile-ref-dot">·</span>
+                  <span>{isGoogleAuth ? 'Google' : 'Email'}</span>
                 </div>
-                <p className="profile-hero-sub">{currentUser?.email || ''}</p>
               </div>
             </div>
-          </section>
 
-          {/* Ringkasan Paket & Kuota (Freemium) */}
+            {showPlanCard && onOpenPlanModal && (
+              <button
+                type="button"
+                className="profile-ref-link-btn"
+                onClick={() => {
+                  onClose()
+                  onOpenPlanModal('')
+                }}
+              >
+                <span>{isPro ? 'VoltKu Pro' : 'Kelola Paket'}</span>
+                <ChevronRight size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Membership Card (Inspired by Reference Subscription Card) */}
           {showPlanCard && (
-            <section className={`clean-sheet plan-summary-sheet ${plan.is_pro ? 'is-pro' : ''}`}>
-              <div className="plan-summary-head">
-                <div className="plan-summary-title-group">
-                  <span className={`plan-badge-chip ${plan.is_pro ? 'is-pro' : ''}`}>
-                    <Crown size={14} />
-                    <span>{plan.plan_name}</span>
-                  </span>
-                  {plan.pending_upgrade && !plan.is_pro && (
-                    <span className="admin-pill warn">Menunggu Aktivasi</span>
-                  )}
+            <div className={`profile-ref-member-card ${isPro ? 'is-pro' : ''}`}>
+              <div className="profile-ref-member-main">
+                <div className={`profile-ref-gem-badge ${isPro ? 'is-pro' : ''}`}>
+                  {isPro ? <Crown size={20} /> : <Gem size={20} />}
+                </div>
+                <div className="profile-ref-member-copy">
+                  <div className="profile-ref-member-title">
+                    {isPro ? `${plan.plan_name} Aktif` : `Gabung ${proCfg.name}`}
+                  </div>
+                  <div className="profile-ref-member-sub">
+                    {isPro
+                      ? `Kuota ${usedDevices}/${maxDevices < 0 ? '∞' : maxDevices} panel · Riwayat ${plan.limits?.history_days ?? 90} hari`
+                      : `Buka ${proMaxText} & riwayat ${proCfg.history_days} hari`}
+                  </div>
                 </div>
                 {onOpenPlanModal && (
                   <button
                     type="button"
-                    className={`btn btn-compact ${plan.is_pro ? 'btn-secondary' : 'btn-primary'}`}
+                    className={`profile-ref-member-cta ${isPro ? 'is-pro' : ''}`}
                     onClick={() => {
                       onClose()
                       onOpenPlanModal('')
                     }}
                   >
-                    {!plan.is_pro && <Sparkles size={13} />}
-                    <span>{plan.is_pro ? 'Detail Paket' : 'Upgrade Pro'}</span>
+                    {isPro ? 'Detail' : 'Upgrade'}
                   </button>
                 )}
               </div>
 
-              <div className="plan-quota-block">
-                <div className="plan-quota-labels num-tabular">
+              <div className="profile-ref-quota-wrap">
+                <div className="profile-ref-quota-meta num-tabular">
                   <span>
-                    Kuota Panel:{' '}
+                    Panel terpakai{' '}
                     <strong>
-                      {usedDevices} / {maxDevices < 0 ? 'Tak terbatas' : maxDevices}
+                      {usedDevices}/{maxDevices < 0 ? 'Tak terbatas' : maxDevices}
                     </strong>
                   </span>
                   <span>
-                    Riwayat <strong>{plan.limits?.history_days ?? 3} hari</strong>
+                    {plan.pending_upgrade && !isPro
+                      ? 'Menunggu aktivasi admin'
+                      : `Riwayat ${plan.limits?.history_days ?? 3} hari`}
                   </span>
                 </div>
                 {maxDevices > 0 && (
-                  <div className="plan-quota-track" aria-hidden="true">
+                  <div className="profile-ref-quota-bar" aria-hidden="true">
                     <div
-                      className={`plan-quota-fill ${plan.is_pro ? 'is-pro' : ''}`}
+                      className={`profile-ref-quota-fill ${isPro ? 'is-pro' : ''}`}
                       style={{ width: `${Math.max(8, quotaPct)}%` }}
                     />
                   </div>
                 )}
               </div>
-
-              {plan.is_pro && (
-                <div className="plan-summary-meta num-tabular">
-                  <span>
-                    {plan.expires_at
-                      ? `Masa aktif hingga ${formatTimeWIB(plan.expires_at)}`
-                      : 'Aktif Permanen'}
-                  </span>
-                </div>
-              )}
-            </section>
+            </div>
           )}
 
-          {/* Menu Aplikasi, Legal & Dukungan */}
-          <section className="clean-sheet app-menu-group">
+          {/* Warm Gold Promo Strip (or Active Pro Validity Strip) */}
+          {showPlanCard && onOpenPlanModal && (
+            <button
+              type="button"
+              className={`profile-ref-promo-strip ${isPro ? 'is-pro' : ''}`}
+              onClick={() => {
+                onClose()
+                onOpenPlanModal('')
+              }}
+            >
+              <span className="profile-ref-promo-left">
+                <Crown size={15} />
+                <span>
+                  {isPro
+                    ? plan.expires_at
+                      ? `VoltKu Pro aktif hingga ${formatTimeWIB(plan.expires_at)}`
+                      : 'VoltKu Pro aktif permanen'
+                    : `Coba ${proCfg.name} · Mulai ${formatRp(proCfg.price_monthly_rp)}/bulan`}
+                </span>
+              </span>
+              <ChevronRight size={16} />
+            </button>
+          )}
+        </div>
+
+        {/* Grouped Menu Cards (Clean Outline Icons + Inline Pills + Chevrons) */}
+        <div className="profile-ref-body">
+          <section className="profile-ref-card-group">
+            {onOpenSettings && (
+              <button
+                type="button"
+                className="profile-ref-row"
+                onClick={() => {
+                  onClose()
+                  onOpenSettings()
+                }}
+              >
+                <span className="profile-ref-row-icon">
+                  <SlidersHorizontal size={19} />
+                </span>
+                <span className="profile-ref-row-title">Tarif Listrik &amp; Peringatan</span>
+                <span className="profile-ref-badge is-blue">PLN</span>
+                <ChevronRight size={17} className="profile-ref-chevron" />
+              </button>
+            )}
+
+            {showPlanCard && onOpenPlanModal && (
+              <button
+                type="button"
+                className="profile-ref-row"
+                onClick={() => {
+                  onClose()
+                  onOpenPlanModal('')
+                }}
+              >
+                <span className="profile-ref-row-icon">
+                  <Crown size={19} />
+                </span>
+                <span className="profile-ref-row-title">Paket &amp; Kuota Panel</span>
+                <span className={`profile-ref-badge ${isPro ? 'is-gold' : 'is-neutral'}`}>
+                  {isPro ? 'Pro' : 'Gratis'}
+                </span>
+                <ChevronRight size={17} className="profile-ref-chevron" />
+              </button>
+            )}
+
             {showOnboardingRow && (
               <button
                 type="button"
-                className="app-menu-row"
+                className="profile-ref-row"
                 onClick={() => {
                   onClose()
                   onReplayTour()
                 }}
               >
-                <span className="app-menu-icon is-blue">
-                  <Compass size={17} />
+                <span className="profile-ref-row-icon">
+                  <Compass size={19} />
                 </span>
-                <span className="app-menu-copy">
-                  <strong>Panduan Awal Aplikasi</strong>
-                  <span>Pengenalan singkat fitur &amp; cara pasang panel</span>
-                </span>
-                <ChevronRight size={17} className="app-menu-chevron" />
-              </button>
-            )}
-
-            {onOpenTerms && (
-              <button
-                type="button"
-                className="app-menu-row"
-                onClick={() => onOpenTerms('terms')}
-              >
-                <span className="app-menu-icon is-emerald">
-                  <ShieldCheck size={17} />
-                </span>
-                <span className="app-menu-copy">
-                  <strong>Syarat &amp; Kebijakan Privasi</strong>
-                  <span>
-                    Versi {termsVersion}
-                    {currentUser?.terms_version_accepted ? ' · Sudah disetujui' : ''}
-                  </span>
-                </span>
-                <ChevronRight size={17} className="app-menu-chevron" />
+                <span className="profile-ref-row-title">Panduan Awal Aplikasi</span>
+                <ChevronRight size={17} className="profile-ref-chevron" />
               </button>
             )}
 
             {onToggleTheme && (
-              <button type="button" className="app-menu-row" onClick={onToggleTheme}>
-                <span className="app-menu-icon is-slate">
-                  {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+              <button type="button" className="profile-ref-row" onClick={onToggleTheme}>
+                <span className="profile-ref-row-icon">
+                  {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
                 </span>
-                <span className="app-menu-copy">
-                  <strong>Tema Tampilan</strong>
-                  <span>{theme === 'dark' ? 'Mode Gelap aktif' : 'Mode Terang aktif'}</span>
+                <span className="profile-ref-row-title">Tema Tampilan</span>
+                <span className="profile-ref-badge is-slate">
+                  {theme === 'dark' ? 'Gelap' : 'Terang'}
                 </span>
-                <ChevronRight size={17} className="app-menu-chevron" />
+                <ChevronRight size={17} className="profile-ref-chevron" />
               </button>
             )}
+          </section>
 
+          <section className="profile-ref-card-group">
             {waHref && (
-              <a href={waHref} target="_blank" rel="noreferrer" className="app-menu-row">
-                <span className="app-menu-icon is-emerald">
-                  <MessageCircle size={17} />
+              <a href={waHref} target="_blank" rel="noreferrer" className="profile-ref-row">
+                <span className="profile-ref-row-icon">
+                  <MessageCircle size={19} />
                 </span>
-                <span className="app-menu-copy">
-                  <strong>Bantuan WhatsApp</strong>
-                  <span>Hubungi dukungan teknis {appName}</span>
-                </span>
-                <ChevronRight size={17} className="app-menu-chevron" />
+                <span className="profile-ref-row-title">Bantuan WhatsApp</span>
+                <span className="profile-ref-badge is-emerald">Chat</span>
+                <ChevronRight size={17} className="profile-ref-chevron" />
               </a>
             )}
 
@@ -235,41 +320,61 @@ export function ProfileModal({
                 href={`https://t.me/${tgHandle}`}
                 target="_blank"
                 rel="noreferrer"
-                className="app-menu-row"
+                className="profile-ref-row"
               >
-                <span className="app-menu-icon is-blue">
-                  <Send size={17} />
+                <span className="profile-ref-row-icon">
+                  <Send size={19} />
                 </span>
-                <span className="app-menu-copy">
-                  <strong>Bantuan Telegram</strong>
-                  <span>@{tgHandle}</span>
-                </span>
-                <ChevronRight size={17} className="app-menu-chevron" />
+                <span className="profile-ref-row-title">Bantuan Telegram</span>
+                <span className="profile-ref-badge is-neutral">@{tgHandle}</span>
+                <ChevronRight size={17} className="profile-ref-chevron" />
               </a>
             )}
 
             {supportEmail && (
-              <a href={`mailto:${supportEmail}`} className="app-menu-row">
-                <span className="app-menu-icon is-amber">
-                  <Mail size={17} />
+              <a href={`mailto:${supportEmail}`} className="profile-ref-row">
+                <span className="profile-ref-row-icon">
+                  <Mail size={19} />
                 </span>
-                <span className="app-menu-copy">
-                  <strong>Email Dukungan</strong>
-                  <span>{supportEmail}</span>
-                </span>
-                <ChevronRight size={17} className="app-menu-chevron" />
+                <span className="profile-ref-row-title">Email Dukungan</span>
+                <ChevronRight size={17} className="profile-ref-chevron" />
               </a>
             )}
 
-            <div className="app-menu-row is-static">
-              <span className="app-menu-icon is-slate">
-                <Info size={17} />
+            {onOpenTerms && (
+              <button
+                type="button"
+                className="profile-ref-row"
+                onClick={() => onOpenTerms('terms')}
+              >
+                <span className="profile-ref-row-icon">
+                  <ShieldCheck size={19} />
+                </span>
+                <span className="profile-ref-row-title">Syarat &amp; Kebijakan Privasi</span>
+                <span className="profile-ref-badge is-neutral">{termsVersion}</span>
+                <ChevronRight size={17} className="profile-ref-chevron" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="profile-ref-row"
+              onClick={() => setShowAboutDetail((prev) => !prev)}
+            >
+              <span className="profile-ref-row-icon">
+                <Info size={19} />
               </span>
-              <span className="app-menu-copy">
-                <strong>Tentang {appName}</strong>
-                <span>{appTagline}</span>
-              </span>
-            </div>
+              <span className="profile-ref-row-title">Tentang {appName}</span>
+              <ChevronRight
+                size={17}
+                className={`profile-ref-chevron ${showAboutDetail ? 'rotated' : ''}`}
+              />
+            </button>
+            {showAboutDetail && (
+              <div className="profile-ref-about-detail">
+                <strong>{appName}</strong> — {appTagline}
+              </div>
+            )}
           </section>
 
           {onLogout && (
