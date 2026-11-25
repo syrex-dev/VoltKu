@@ -49,7 +49,7 @@ export function HomeDevicesView({
               ? 'Masuk atau daftar akun untuk memasang serta mengelola meteran listrik Anda.'
               : devices.length === 0
                 ? 'Tambahkan perangkat VoltKu pertama Anda dan sambungkan ke Wi-Fi rumah.'
-                : 'Pilih tab "Semua" atau tekan Tambah di atas untuk memasang alat baru.'}
+                : 'Pilih "Semua Ruangan" atau tekan + Tambah Panel di atas untuk memasang alat baru.'}
           </p>
           {!isAuthenticated && devices.length === 0 && onOpenLogin && (
             <button type="button" className="btn btn-primary" onClick={onOpenLogin}>
