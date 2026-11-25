@@ -53,7 +53,7 @@ export function RoomFilterBar({
           <LayoutGrid size={15} className="room-dropdown-lead-ico" />
           <span className="room-dropdown-label">{activeLabel}</span>
           <span className="room-dropdown-count num-tabular">{getRoomCount(activeRoom)}</span>
-          <span className="header-panel-chevron" aria-hidden="true">
+          <span className="header-panel-caret" aria-hidden="true">
             <ChevronDown size={14} />
           </span>
         </button>
@@ -61,10 +61,10 @@ export function RoomFilterBar({
         {isOpen && (
           <div className="room-dropdown-popover" role="listbox" aria-label="Daftar Ruangan">
             <div className="header-panel-popover-head">
-              <span>RUANGAN</span>
+              <span>Ruangan</span>
               <span className="header-panel-count">{rooms.length}</span>
             </div>
-            <div className="header-panel-popover-list">
+            <div className="header-panel-list">
               {rooms.map((room) => {
                 const isSelected = activeRoom === room
                 const label = room === 'Semua' ? 'Semua Ruangan' : room
@@ -75,19 +75,19 @@ export function RoomFilterBar({
                     type="button"
                     role="option"
                     aria-selected={isSelected}
-                    className={`header-panel-option ${isSelected ? 'active' : ''}`}
+                    className={`header-panel-item ${isSelected ? 'selected' : ''}`}
                     onClick={() => {
                       onSelectRoom(room)
                       setIsOpen(false)
                     }}
                   >
-                    <div className="header-panel-option-info">
-                      <span className="header-panel-option-name">{label}</span>
-                    </div>
-                    <div className="header-panel-option-right">
-                      <span className="header-panel-option-watt num-tabular">{count} panel</span>
+                    <span className="header-panel-item-copy">
+                      <span className="header-panel-item-title">{label}</span>
+                    </span>
+                    <span className="header-panel-item-right">
+                      <span className="header-panel-item-watt num-tabular">{count} panel</span>
                       {isSelected && <Check size={15} className="header-panel-check" />}
-                    </div>
+                    </span>
                   </button>
                 )
               })}
