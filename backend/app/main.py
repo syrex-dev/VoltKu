@@ -64,6 +64,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"] = (
             "camera=(self), microphone=(), geolocation=(), payment=()"
         )
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
         proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "").lower()
         if proto == "https":

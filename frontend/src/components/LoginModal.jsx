@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { ArrowRight, X, UserCheck } from 'lucide-react'
 import { BrandLogo } from './BrandLogo'
+import { loadGoogleGsiScript } from '../utils/googleAuth'
 
 function GoogleIconSvg() {
   return (
@@ -30,6 +32,7 @@ export function LoginModal({
   onRegister,
   onGoogleLogin,
   googleEnabled = false,
+  googleClientId = '',
   registrationEnabled = true,
   termsAccepted = true,
   onOpenTerms,
@@ -50,6 +53,19 @@ export function LoginModal({
   const [localError, setLocalError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [gsiReady, setGsiReady] = useState(false)
+
+  const gsiBtnWrapRef = useRef(null)
+  const agreedRef = useRef(localAgreed)
+  const onGoogleLoginRef = useRef(onGoogleLogin)
+
+  useEffect(() => {
+    agreedRef.current = localAgreed
+  }, [localAgreed])
+
+  useEffect(() => {
+    onGoogleLoginRef.current = onGoogleLogin
+  }, [onGoogleLogin])
 
   useEffect(() => {
     setLocalAgreed(termsAccepted)
@@ -60,6 +76,67 @@ export function LoginModal({
       setAuthTab('login')
     }
   }, [registrationEnabled, authTab])
+
+  useEffect(() => {
+    const cleanCid = String(googleClientId || '').trim()
+    if (!googleEnabled || !cleanCid || !onGoogleLoginRef.current || Capacitor.isNativePlatform()) {
+      setGsiReady(false)
+      return undefined
+    }
+
+    let cancelled = false
+    loadGoogleGsiScript()
+      .then((gsiId) => {
+        if (cancelled || !gsiId || !gsiBtnWrapRef.current) return
+        gsiId.initialize({
+          client_id: cleanCid,
+          ux_mode: 'popup',
+          callback: async (resp) => {
+            if (!agreedRef.current) {
+              setLocalError(
+                'Centang persetujuan Syarat Penggunaan & Kebijakan Privasi terlebih dahulu.'
+              )
+              return
+            }
+            const idToken = resp?.credential
+            if (!idToken) {
+              setLocalError('Google tidak mengembalikan ID Token yang valid.')
+              return
+            }
+            setLocalError(null)
+            setGoogleLoading(true)
+            try {
+              await onGoogleLoginRef.current(true, idToken)
+            } catch (err) {
+              setLocalError(err?.message || 'Gagal masuk menggunakan Google.')
+            } finally {
+              if (!cancelled) setGoogleLoading(false)
+            }
+          },
+        })
+        const container = gsiBtnWrapRef.current
+        container.innerHTML = ''
+        const targetWidth = Math.max(240, Math.min(360, container.clientWidth || 320))
+        gsiId.renderButton(container, {
+          type: 'standard',
+          theme: theme === 'dark' ? 'filled_black' : 'outline',
+          size: 'large',
+          text: 'continue_with',
+          shape: 'pill',
+          logo_alignment: 'left',
+          width: targetWidth,
+          locale: 'id',
+        })
+        setGsiReady(true)
+      })
+      .catch(() => {
+        if (!cancelled) setGsiReady(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [googleEnabled, googleClientId, theme])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -109,6 +186,7 @@ export function LoginModal({
   }
 
   const displayError = localError || error
+  const useWebGsi = !Capacitor.isNativePlatform() && googleEnabled && Boolean(googleClientId)
 
   return (
     <div
@@ -285,17 +363,37 @@ export function LoginModal({
               <span>atau</span>
             </div>
 
-            <button
-              type="button"
-              className="google-auth-btn"
-              onClick={handleGoogleClick}
-              disabled={submitting || googleLoading}
-            >
-              <GoogleIconSvg />
-              <span>
-                {googleLoading ? 'Menghubungkan ke Google...' : 'Lanjutkan dengan Google'}
-              </span>
-            </button>
+            {useWebGsi && (
+              <div className={`google-gsi-wrap ${gsiReady ? 'is-ready' : 'is-hidden'}`}>
+                <div ref={gsiBtnWrapRef} className="google-gsi-slot" />
+                {!localAgreed && (
+                  <button
+                    type="button"
+                    className="google-gsi-gate-overlay"
+                    aria-label="Setujui ketentuan sebelum masuk dengan Google"
+                    onClick={() =>
+                      setLocalError(
+                        'Centang persetujuan Syarat Penggunaan & Kebijakan Privasi terlebih dahulu.'
+                      )
+                    }
+                  />
+                )}
+              </div>
+            )}
+
+            {(!useWebGsi || !gsiReady) && (
+              <button
+                type="button"
+                className="google-auth-btn"
+                onClick={handleGoogleClick}
+                disabled={submitting || googleLoading}
+              >
+                <GoogleIconSvg />
+                <span>
+                  {googleLoading ? 'Menghubungkan ke Google...' : 'Lanjutkan dengan Google'}
+                </span>
+              </button>
+            )}
           </>
         )}
 

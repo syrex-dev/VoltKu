@@ -6245,6 +6245,39 @@ button,
   color: var(--text-muted);
 }
 
+.google-gsi-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+}
+
+.google-gsi-wrap.is-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.google-gsi-slot {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.google-gsi-gate-overlay {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 2;
+}
+
 @media (max-width: 560px) {
   .settings-save-bar {
     flex-direction: column;

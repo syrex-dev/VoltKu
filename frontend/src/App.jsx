@@ -11,6 +11,8 @@ import {
   isNativeApp,
 } from './api/client'
 import {
+  consumeGoogleRedirectFromHash,
+  ensureGoogleAuthInitialized,
   signInWithGoogleForIdToken,
   signOutGoogleIfInitialized,
 } from './utils/googleAuth'
@@ -443,31 +445,73 @@ function CustomerPortalRoot() {
     }
   }
 
-  const handleGoogleLogin = async (acceptTerms = true) => {
-    setLoginError(null)
-    const cid =
-      publicAppConfig.google_client_id || publicAppConfig.google_android_client_id
-    if (!cid || !publicAppConfig.google_enabled) {
-      throw new Error('Masuk dengan Google sedang tidak tersedia saat ini.')
+  const handleGoogleLogin = useCallback(
+    async (acceptTerms = true, preObtainedIdToken = null) => {
+      setLoginError(null)
+      const cid =
+        publicAppConfig.google_client_id || publicAppConfig.google_android_client_id
+      if (!preObtainedIdToken && (!cid || !publicAppConfig.google_enabled)) {
+        throw new Error('Masuk dengan Google sedang tidak tersedia saat ini.')
+      }
+      const idToken = preObtainedIdToken || (await signInWithGoogleForIdToken(cid))
+      if (!idToken) {
+        // Sedang dialihkan ke halaman OAuth same-tab (redirect fallback)
+        return
+      }
+      const data = await apiRequest('/api/users/google', {
+        method: 'POST',
+        body: {
+          id_token: idToken,
+          accept_terms: Boolean(acceptTerms),
+          accepted_terms_version: activeTermsVersion,
+          client_id: getOrCreateClientId(),
+        },
+      })
+      completeOnboardingSession(data.token, data.user)
+      if (pendingAddDevice) {
+        setPendingAddDevice(false)
+        setIsAddDeviceOpen(true)
+      } else {
+        maybeTriggerOnboarding()
+      }
+    },
+    [
+      activeTermsVersion,
+      completeOnboardingSession,
+      maybeTriggerOnboarding,
+      pendingAddDevice,
+      publicAppConfig.google_android_client_id,
+      publicAppConfig.google_client_id,
+      publicAppConfig.google_enabled,
+    ]
+  )
+
+  useEffect(() => {
+    const cid = publicAppConfig.google_client_id || publicAppConfig.google_android_client_id
+    if (publicAppConfig.google_enabled && cid) {
+      ensureGoogleAuthInitialized(cid).catch(() => {})
     }
-    const idToken = await signInWithGoogleForIdToken(cid)
-    const data = await apiRequest('/api/users/google', {
-      method: 'POST',
-      body: {
-        id_token: idToken,
-        accept_terms: Boolean(acceptTerms),
-        accepted_terms_version: activeTermsVersion,
-        client_id: getOrCreateClientId(),
-      },
-    })
-    completeOnboardingSession(data.token, data.user)
-    if (pendingAddDevice) {
-      setPendingAddDevice(false)
-      setIsAddDeviceOpen(true)
-    } else {
-      maybeTriggerOnboarding()
+  }, [
+    publicAppConfig.google_enabled,
+    publicAppConfig.google_client_id,
+    publicAppConfig.google_android_client_id,
+  ])
+
+  useEffect(() => {
+    const redirectResult = consumeGoogleRedirectFromHash()
+    if (!redirectResult) return
+    if (redirectResult.error) {
+      setLoginError(redirectResult.error)
+      setShowLoginModal(true)
+      return
     }
-  }
+    if (redirectResult.idToken) {
+      handleGoogleLogin(true, redirectResult.idToken).catch((err) => {
+        setLoginError(err?.message || 'Gagal masuk menggunakan Google.')
+        setShowLoginModal(true)
+      })
+    }
+  }, [handleGoogleLogin])
 
   const handleAgreeTerms = async () => {
     setSubmittingConsent(true)
@@ -1001,6 +1045,7 @@ function CustomerPortalRoot() {
           onRegister={handleUserRegister}
           onGoogleLogin={handleGoogleLogin}
           googleEnabled={publicAppConfig.google_enabled}
+          googleClientId={publicAppConfig.google_client_id || publicAppConfig.google_android_client_id}
           registrationEnabled={publicAppConfig.registration_enabled !== false}
           termsAccepted={!needsTermsAgreement}
           onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
@@ -1277,6 +1322,7 @@ function CustomerPortalRoot() {
           onRegister={handleUserRegister}
           onGoogleLogin={handleGoogleLogin}
           googleEnabled={publicAppConfig.google_enabled}
+          googleClientId={publicAppConfig.google_client_id || publicAppConfig.google_android_client_id}
           registrationEnabled={publicAppConfig.registration_enabled !== false}
           termsAccepted={!needsTermsAgreement}
           onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
