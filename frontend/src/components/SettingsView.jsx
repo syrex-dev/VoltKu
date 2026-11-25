@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Save,
   Trash2,
@@ -7,6 +7,7 @@ import {
   LogIn,
   Lock,
   ChevronRight,
+  ChevronDown,
   Compass,
   ShieldCheck,
   Zap,
@@ -33,6 +34,78 @@ const REPORT_HOUR_QUICK = [7, 12, 20, 21]
 function formatHourLabel(hour) {
   const h = Math.max(0, Math.min(23, Number(hour) || 0))
   return `${String(h).padStart(2, '0')}:00 WIB`
+}
+
+function HourPickerDropdown({ value, disabled, onChange }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const handleOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setIsOpen(false)
+      }
+    }
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') setIsOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [isOpen])
+
+  return (
+    <div className="settings-hour-dropdown" ref={wrapRef}>
+      <button
+        id="settings-view-report-hour"
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        className={`settings-hour-trigger ${isOpen ? 'open' : ''}`}
+        onClick={() => !disabled && setIsOpen((prev) => !prev)}
+      >
+        <span className="settings-hour-trigger-left">
+          <Clock size={15} />
+          <span className="num-tabular">{formatHourLabel(value)}</span>
+        </span>
+        <ChevronDown size={15} className="settings-hour-caret" />
+      </button>
+
+      {isOpen && (
+        <div className="settings-hour-popover" role="listbox" aria-label="Pilih jam laporan harian">
+          <div className="header-panel-popover-head">
+            <span>Pilih Jam Kirim</span>
+            <span className="header-panel-count">WIB</span>
+          </div>
+          <div className="settings-hour-grid">
+            {Array.from({ length: 24 }, (_, hour) => {
+              const isSelected = Number(value) === hour
+              return (
+                <button
+                  key={hour}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`settings-hour-cell num-tabular ${isSelected ? 'selected' : ''}`}
+                  onClick={() => {
+                    onChange(hour)
+                    setIsOpen(false)
+                  }}
+                >
+                  {String(hour).padStart(2, '0')}:00
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function SettingsView({
@@ -631,24 +704,11 @@ export function SettingsView({
                     </button>
                   ))}
                 </div>
-                <div className="input-affix-wrap">
-                  <span className="input-affix-prefix">
-                    <Clock size={14} />
-                  </span>
-                  <select
-                    id="settings-view-report-hour"
-                    className="modern-input has-prefix num-tabular"
-                    value={reportHour}
-                    onChange={(e) => setReportHour(Number(e.target.value))}
-                    disabled={!isAuthenticated}
-                  >
-                    {Array.from({ length: 24 }, (_, hour) => (
-                      <option key={hour} value={hour}>
-                        {formatHourLabel(hour)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <HourPickerDropdown
+                  value={reportHour}
+                  disabled={!isAuthenticated}
+                  onChange={(hour) => setReportHour(hour)}
+                />
               </div>
             )}
           </div>

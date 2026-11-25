@@ -6038,9 +6038,104 @@ button,
   border-top: 1px solid var(--border-subtle);
 }
 
-.modern-input option {
+.settings-hour-dropdown {
+  position: relative;
+}
+
+.settings-hour-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
   background: var(--surface-card);
   color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.settings-hour-trigger:hover:not(:disabled),
+.settings-hour-trigger.open {
+  border-color: #1677ff;
+}
+
+.settings-hour-trigger.open {
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.14);
+}
+
+.settings-hour-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.settings-hour-trigger-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-hour-trigger-left svg {
+  color: var(--text-muted);
+}
+
+.settings-hour-caret {
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.settings-hour-trigger.open .settings-hour-caret {
+  transform: rotate(180deg);
+  color: #1677ff;
+}
+
+.settings-hour-popover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 40;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+.settings-hour-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  padding: 8px;
+}
+
+.settings-hour-cell {
+  padding: 7px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.settings-hour-cell:hover {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+
+.settings-hour-cell.selected {
+  background: #1677ff;
+  border-color: #1677ff;
+  color: #ffffff;
 }
 
 .settings-save-bar {
