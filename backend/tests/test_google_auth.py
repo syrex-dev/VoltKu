@@ -65,8 +65,8 @@ def _sign_google_token(
 
 
 def test_oauth_config_endpoint(monkeypatch):
-    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
-    monkeypatch.delenv("GOOGLE_ANDROID_CLIENT_ID", raising=False)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "")
+    monkeypatch.setenv("GOOGLE_ANDROID_CLIENT_ID", "")
     get_settings.cache_clear()
 
     res = client.get("/api/users/oauth-config")
@@ -89,8 +89,8 @@ def test_oauth_config_endpoint(monkeypatch):
 
 
 def test_google_login_unconfigured_returns_503(monkeypatch):
-    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
-    monkeypatch.delenv("GOOGLE_ANDROID_CLIENT_ID", raising=False)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "")
+    monkeypatch.setenv("GOOGLE_ANDROID_CLIENT_ID", "")
     get_settings.cache_clear()
     user_login_limiter.reset()
 
@@ -105,6 +105,7 @@ def test_google_login_creates_and_authenticates_user(monkeypatch):
     client_id = "test-web-client.apps.googleusercontent.com"
 
     monkeypatch.setenv("GOOGLE_CLIENT_ID", client_id)
+    monkeypatch.setenv("GOOGLE_ANDROID_CLIENT_ID", "")
     get_settings.cache_clear()
     monkeypatch.setattr(google_oauth, "_fetch_google_jwks", lambda force_refresh=False: jwks)
 
@@ -149,6 +150,7 @@ def test_google_login_links_existing_local_user_and_blocks_inactive(monkeypatch)
     session.add(existing)
     session.commit()
 
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "")
     monkeypatch.setenv("GOOGLE_ANDROID_CLIENT_ID", client_id)
     get_settings.cache_clear()
     monkeypatch.setattr(google_oauth, "_fetch_google_jwks", lambda force_refresh=False: jwks)
@@ -187,6 +189,7 @@ def test_google_login_rejects_unverified_or_wrong_audience(monkeypatch):
     client_id = "expected-cid.apps.googleusercontent.com"
 
     monkeypatch.setenv("GOOGLE_CLIENT_ID", client_id)
+    monkeypatch.setenv("GOOGLE_ANDROID_CLIENT_ID", "")
     get_settings.cache_clear()
     monkeypatch.setattr(google_oauth, "_fetch_google_jwks", lambda force_refresh=False: jwks)
 
