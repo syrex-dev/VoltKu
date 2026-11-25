@@ -182,8 +182,6 @@ function AdminPortalRoot() {
         onLogout={handleAdminLogout}
         onDeviceAdded={() => setRefreshKey((k) => k + 1)}
       />
-
-      <PwaInstallPrompt hasBottomNav />
     </>
   )
 }

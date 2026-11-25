@@ -1928,7 +1928,7 @@ body {
    ========================================================================== */
 .pwa-banner-float {
   position: fixed;
-  z-index: 1100;
+  z-index: 95;
   right: 24px;
   bottom: 24px;
   width: min(376px, calc(100vw - 32px));
@@ -3064,9 +3064,11 @@ button,
 
 .app-dialog-links-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 12px;
+  justify-content: center;
+  gap: 6px 10px;
+  margin-top: 14px;
   font-size: 13.5px;
 }
 
@@ -3787,18 +3789,14 @@ button,
   font-size: 16px;
   font-weight: 700;
   color: var(--text-main);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.25;
 }
 
 .profile-hero-sub {
-  margin: 2px 0 0 0;
+  margin: 3px 0 0 0;
   font-size: 12.5px;
+  line-height: 1.4;
   color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .app-menu-group {

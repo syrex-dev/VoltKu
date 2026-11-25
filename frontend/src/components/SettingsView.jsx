@@ -330,9 +330,7 @@ export function SettingsView({
           )}
           <div className="profile-hero-copy">
             <h2 className="profile-hero-name">
-              {isAuthenticated
-                ? currentUser?.name || `Pengguna ${appName}`
-                : 'Pengguna Tamu (Guest)'}
+              {isAuthenticated ? currentUser?.name || `Pengguna ${appName}` : 'Mode Tamu'}
             </h2>
             <p className="profile-hero-sub">
               {isAuthenticated
@@ -342,7 +340,7 @@ export function SettingsView({
                       ? ' · Akun Google'
                       : ''
                   }`
-                : 'Masuk dengan Google atau Email untuk mengelola panel'}
+                : 'Masuk untuk mengelola panel pribadi Anda'}
             </p>
           </div>
         </div>
