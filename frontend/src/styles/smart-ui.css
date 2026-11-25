@@ -437,30 +437,84 @@ html {
 
 .clean-room-bar-row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  margin: 0 -2px;
+  gap: 10px;
 }
 
-.clean-room-tabs-scroll {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 2px 16px;
-  overflow: visible;
-  padding: 0 2px;
-  flex: 1 1 210px;
+.room-dropdown-wrap {
+  position: relative;
   min-width: 0;
+}
+
+.room-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  max-width: 100%;
+  padding: 0 8px 0 11px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.room-dropdown-trigger:hover,
+.room-dropdown-trigger.open {
+  border-color: rgba(22, 119, 255, 0.4);
+}
+
+.room-dropdown-trigger.open .header-panel-chevron svg {
+  transform: rotate(180deg);
+}
+
+.room-dropdown-lead-ico {
+  color: #1677ff;
+  flex-shrink: 0;
+}
+
+.room-dropdown-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-dropdown-count {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--surface-inset);
+  border-radius: 9999px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}
+
+.room-dropdown-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(290px, calc(100vw - 24px));
+  background: var(--surface-popover);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.18);
+  padding: 6px;
+  z-index: 120;
+  animation: fadeSlideUp 0.14s ease-out;
 }
 
 .content-add-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 34px;
+  height: 36px;
   padding: 0 13px;
   border-radius: 9999px;
   border: none;
@@ -471,8 +525,6 @@ html {
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
-  margin-left: auto;
-  margin-bottom: 6px;
   transition: background-color 0.15s ease;
 }
 

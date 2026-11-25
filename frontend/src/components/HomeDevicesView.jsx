@@ -22,12 +22,13 @@ export function HomeDevicesView({
 
   return (
     <div className="home-view-clean tab-pane-fade">
-      {/* Bar Ruangan & Satu Tombol Tambah di Main Content */}
+      {/* Bar Dropdown Ruangan & Satu Tombol Tambah di Main Content */}
       <RoomFilterBar
         rooms={rooms}
         activeRoom={activeRoom}
         onSelectRoom={onSelectRoom}
         onOpenAddDevice={onOpenAddDevice}
+        devices={devices}
       />
 
       {/* Grid Kartu Perangkat */}
