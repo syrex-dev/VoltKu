@@ -467,7 +467,11 @@ export function AdminAppSettingsTab({
                     onChange={(e) => updateField('google_client_id', e.target.value)}
                   />
                   <small className="field-hint">
-                    Kosongkan untuk memakai Client ID dari environment server.
+                    Kosongkan untuk memakai Client ID dari environment server. Di Google Cloud
+                    Console (Web client), wajib isi{' '}
+                    <strong>Authorized redirect URIs</strong> dengan{' '}
+                    <code>{typeof window !== 'undefined' ? `${window.location.origin}/` : 'https://voltku.synemax.web.id/'}</code>
+                    {' '}agar login Web tidak terkena <code>redirect_uri_mismatch</code>.
                   </small>
                 </div>
 

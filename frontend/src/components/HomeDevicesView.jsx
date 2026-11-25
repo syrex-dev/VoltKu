@@ -1,5 +1,5 @@
 import React from 'react'
-import { Zap, Wifi, WifiOff, Plus, LogIn, CheckCircle2, ShieldCheck, Compass } from 'lucide-react'
+import { Zap, Wifi, WifiOff, Plus, LogIn } from 'lucide-react'
 import { RoomFilterBar } from './RoomFilterBar'
 import { formatNum } from '../utils/formatters'
 
@@ -13,11 +13,7 @@ export function HomeDevicesView({
   isDeviceOnlineFn,
   isAuthenticated = false,
   onOpenLogin,
-  onReplayTour,
-  appConfig = {},
 }) {
-  const showOnboardingCard = Boolean(onReplayTour && appConfig.onboarding_enabled !== false)
-  const appName = appConfig.app_name || 'VoltKu'
   const filteredDevices = devices.filter((dev) => {
     if (activeRoom === 'Semua') return true
     if (activeRoom === 'Lainnya') return !dev.location || !dev.location.trim()
@@ -26,55 +22,6 @@ export function HomeDevicesView({
 
   return (
     <div className="home-view-clean tab-pane-fade">
-      {/* Banner Tips Geser Horizontal ala Native App */}
-      <div className="home-tips-strip" aria-label="Pintasan & Panduan Cepat">
-        <button type="button" className="home-tip-card is-blue" onClick={onOpenAddDevice}>
-          <span className="home-tip-icon">
-            <Plus size={16} />
-          </span>
-          <span className="home-tip-copy">
-            <strong>Pasang Panel Wi-Fi 2.4 GHz</strong>
-            <span>Sambungkan sensor {appName} baru dalam 3 langkah</span>
-          </span>
-        </button>
-
-        {showOnboardingCard && (
-          <button type="button" className="home-tip-card is-teal" onClick={onReplayTour}>
-            <span className="home-tip-icon">
-              <Compass size={16} />
-            </span>
-            <span className="home-tip-copy">
-              <strong>Panduan Aplikasi</strong>
-              <span>Lihat pengenalan singkat cara memantau daya &amp; biaya</span>
-            </span>
-          </button>
-        )}
-
-        {!isAuthenticated && onOpenLogin && (
-          <button type="button" className="home-tip-card is-amber" onClick={onOpenLogin}>
-            <span className="home-tip-icon">
-              <ShieldCheck size={16} />
-            </span>
-            <span className="home-tip-copy">
-              <strong>Masuk dengan Google / Email</strong>
-              <span>Sinkronkan data panel yang sama di Web &amp; Aplikasi</span>
-            </span>
-          </button>
-        )}
-
-        {isAuthenticated && (
-          <div className="home-tip-card is-amber is-static">
-            <span className="home-tip-icon">
-              <CheckCircle2 size={16} />
-            </span>
-            <span className="home-tip-copy">
-              <strong>Sinkronisasi Cloud Aktif</strong>
-              <span>Web &amp; Aplikasi terhubung langsung ke panel Anda</span>
-            </span>
-          </div>
-        )}
-      </div>
-
       {/* Bar Ruangan & Satu Tombol Tambah di Main Content */}
       <RoomFilterBar
         rooms={rooms}

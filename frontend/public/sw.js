@@ -1,11 +1,14 @@
-const CACHE_NAME = 'voltku-pwa-v1';
+const CACHE_NAME = 'voltku-pwa-v3';
 const PRECACHE_ASSETS = [
   '/offline.html',
-  '/manifest.webmanifest',
-  '/pwa-192.png',
-  '/pwa-512.png',
-  '/apple-touch-icon.png',
-  '/favicon.svg',
+  '/manifest.webmanifest?v=3',
+  '/pwa-192.png?v=3',
+  '/pwa-512.png?v=3',
+  '/apple-touch-icon.png?v=3',
+  '/favicon.svg?v=3',
+  '/brand/voltku-icon.svg?v=3',
+  '/brand/voltku-logo-light.svg?v=3',
+  '/brand/voltku-logo-dark.svg?v=3',
 ];
 
 self.addEventListener('install', (event) => {
@@ -64,12 +67,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Aset statis (/assets/*, gambar, ikon): Stale-While-Revalidate
+  // Aset ikon/logo/manifest: Network-first agar perubahan logo/ikon langsung muncul
   if (
-    url.pathname.startsWith('/assets/') ||
     url.pathname.endsWith('.png') ||
     url.pathname.endsWith('.svg') ||
-    url.pathname.endsWith('.webmanifest') ||
+    url.pathname.endsWith('.webmanifest')
+  ) {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(request, { ignoreSearch: true }))
+    );
+    return;
+  }
+
+  // Aset JS/CSS hash Vite (/assets/*) & font: Stale-While-Revalidate
+  if (
+    url.pathname.startsWith('/assets/') ||
     url.pathname.endsWith('.woff2')
   ) {
     event.respondWith(

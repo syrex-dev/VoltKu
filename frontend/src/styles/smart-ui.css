@@ -1946,9 +1946,9 @@ body {
 .pwa-banner-icon {
   width: 38px;
   height: 38px;
-  border-radius: 9px;
+  border-radius: 10px;
+  padding: 6px;
   flex-shrink: 0;
-  object-fit: cover;
 }
 
 .pwa-banner-copy {
@@ -2074,10 +2074,33 @@ body {
   }
 }
 
+.modal-overlay {
+  z-index: 1400;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+[data-theme="dark"] .modal-overlay {
+  background: rgba(4, 8, 18, 0.68);
+}
+
+.app-layout.has-modal-open > .clean-header-bar,
+.app-layout.has-modal-open > .main-content-wrap,
+.app-layout.has-modal-open > .mobile-bottom-nav {
+  filter: blur(5px);
+  transition: filter 0.16s ease;
+}
+
 .pwa-guide-overlay {
-  background: rgba(15, 23, 42, 0.42);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  z-index: 1400;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+[data-theme="dark"] .pwa-guide-overlay {
+  background: rgba(4, 8, 18, 0.68);
 }
 
 .pwa-guide-sheet {
@@ -2100,11 +2123,11 @@ body {
 }
 
 .pwa-guide-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  padding: 6px;
   flex-shrink: 0;
-  object-fit: cover;
 }
 
 .pwa-guide-title {
@@ -3017,7 +3040,7 @@ button,
 }
 
 .app-terms-overlay {
-  z-index: 1200;
+  z-index: 1500;
   padding: 20px;
 }
 
@@ -3431,10 +3454,15 @@ button,
 
 /* Calm Product Walkthrough Sheet (Non-AI Onboarding) */
 .guide-sheet-overlay {
-  background: rgba(15, 23, 42, 0.54);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  z-index: 1400;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
   padding: 16px;
+}
+
+[data-theme="dark"] .guide-sheet-overlay {
+  background: rgba(4, 8, 18, 0.68);
 }
 
 .guide-sheet-card {

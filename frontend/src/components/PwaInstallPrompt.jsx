@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { Smartphone, Share, PlusSquare, Laptop, MoreVertical, X, Check } from 'lucide-react'
 import { usePwaInstall } from '../hooks/usePwaInstall'
 import { isNativeApp } from '../api/client'
+import { BrandLogo } from './BrandLogo'
 
 const DISMISS_SESSION_KEY = 'ml_pwa_banner_dismissed'
 
 export function PwaInstallPrompt({
   hasBottomNav = false,
   appName = 'VoltKu',
+  hidden = false,
 }) {
   const { canInstall, isInstalled, platform, install } = usePwaInstall()
   const [showBanner, setShowBanner] = useState(false)
@@ -87,16 +89,12 @@ export function PwaInstallPrompt({
         </div>
       )}
 
-      {showBanner && !isInstalled && !showGuide && (
+      {showBanner && !isInstalled && !showGuide && !hidden && (
         <aside
           aria-label={`Pasang ${appName}`}
           className={`pwa-banner-float ${hasBottomNav ? 'has-bottom' : ''}`}
         >
-          <img
-            src="/pwa-192.png"
-            alt={appName}
-            className="pwa-banner-icon"
-          />
+          <BrandLogo variant="icon" appName={appName} className="pwa-banner-icon" />
           <div className="pwa-banner-copy">
             <div className="pwa-banner-title">{appName}</div>
             <div className="pwa-banner-sub">Pasang ke layar utama</div>
@@ -129,11 +127,7 @@ export function PwaInstallPrompt({
           >
             <div className="pwa-guide-head">
               <div className="pwa-guide-brand">
-                <img
-                  src="/pwa-192.png"
-                  alt="VoltKu"
-                  className="pwa-guide-icon"
-                />
+                <BrandLogo variant="icon" appName={appName} className="pwa-guide-icon" />
                 <div>
                   <h3 className="pwa-guide-title">Pasang di Layar Utama</h3>
                   <p className="pwa-guide-sub">Ikuti 3 langkah singkat berikut</p>

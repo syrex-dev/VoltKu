@@ -927,8 +927,14 @@ function CustomerPortalRoot() {
     )
   }
 
+  const hasForegroundOverlay =
+    (showLoginModal && !userToken) ||
+    (isAuthenticated && isAddDeviceOpen) ||
+    Boolean(termsReaderDoc) ||
+    (showTour && !isDeviceScope && activeTab === 'home')
+
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${hasForegroundOverlay ? 'has-modal-open' : ''}`}>
       <Header
         activeTab={activeTab}
         onTabChange={handleTabChange}
@@ -965,14 +971,12 @@ function CustomerPortalRoot() {
             onOpenAddDevice={handleRequestAddDevice}
             isDeviceOnlineFn={(d) => isDeviceOnlineHelper(d)}
             isAuthenticated={isAuthenticated}
-            onReplayTour={() => setShowTour(true)}
             onOpenLogin={() => {
               setPendingAddDevice(false)
               setLoginError(null)
               setLoginModalSubtitle('')
               setShowLoginModal(true)
             }}
-            appConfig={publicAppConfig}
           />
         )}
 
@@ -1154,7 +1158,7 @@ function CustomerPortalRoot() {
         onSkip={finishTour}
       />
 
-      <PwaInstallPrompt hasBottomNav appName={appName} />
+      <PwaInstallPrompt hasBottomNav appName={appName} hidden={hasForegroundOverlay} />
     </div>
   )
 }
