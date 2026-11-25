@@ -11,9 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       api_base_url:
-        description: 'Opsional: URL default server backend VoltKu untuk .apk (contoh: https://voltku.domain.com)'
+        description: 'Opsional: URL default server backend VoltKu untuk .apk (contoh: https://voltku.synemax.web.id)'
         required: false
-        default: ''
+        default: 'https://voltku.synemax.web.id'
 
 jobs:
   build-apk:
@@ -43,7 +43,7 @@ jobs:
       - name: Lint & build frontend VoltKu
         working-directory: frontend
         env:
-          VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || '' }}
+          VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://voltku.synemax.web.id' }}
         run: |
           npm run lint
           npm run build

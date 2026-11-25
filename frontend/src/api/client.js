@@ -1,4 +1,5 @@
 const API_BASE_STORAGE_KEY = 'voltku_api_base_url'
+const DEFAULT_NATIVE_API_BASE_URL = 'https://voltku.synemax.web.id'
 
 export function isNativeApp() {
   if (typeof window === 'undefined') return false
@@ -21,7 +22,13 @@ export function getApiBaseUrl() {
     return normalizeServerUrl(custom)
   }
   const envBase = import.meta.env?.VITE_API_BASE_URL || ''
-  return normalizeServerUrl(envBase)
+  if (envBase.trim()) {
+    return normalizeServerUrl(envBase)
+  }
+  if (isNativeApp()) {
+    return DEFAULT_NATIVE_API_BASE_URL
+  }
+  return ''
 }
 
 export function setApiBaseUrl(rawUrl) {
