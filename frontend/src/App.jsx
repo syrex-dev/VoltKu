@@ -32,6 +32,7 @@ import { AdminPanel } from './components/AdminPanel'
 import { TermsAgreementModal } from './components/TermsAgreementModal'
 import { OnboardingTour } from './components/OnboardingTour'
 import { PlanUpgradeModal } from './components/PlanUpgradeModal'
+import { ProfileModal } from './components/ProfileModal'
 
 const DEFAULT_LOGIN_SUBTITLE = 'Pantau listrik rumah lebih tenang dan akurat'
 const DEFAULT_TERMS_VERSION = '2026-11-v1'
@@ -247,6 +248,7 @@ function CustomerPortalRoot() {
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false)
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false)
   const [planModalReason, setPlanModalReason] = useState('')
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
 
   const homePollRef = useRef(null)
   const pollTimerRef = useRef(null)
@@ -897,6 +899,8 @@ function CustomerPortalRoot() {
         setTermsReaderDoc(null)
       } else if (isPlanModalOpen) {
         setIsPlanModalOpen(false)
+      } else if (isProfileModalOpen) {
+        setIsProfileModalOpen(false)
       } else if (showTour) {
         finishTour()
       } else if (isAddDeviceOpen) {
@@ -923,6 +927,7 @@ function CustomerPortalRoot() {
   }, [
     termsReaderDoc,
     isPlanModalOpen,
+    isProfileModalOpen,
     showTour,
     isAddDeviceOpen,
     showLoginModal,
@@ -1019,6 +1024,7 @@ function CustomerPortalRoot() {
     (showLoginModal && !userToken) ||
     (isAuthenticated && isAddDeviceOpen) ||
     isPlanModalOpen ||
+    (isAuthenticated && isProfileModalOpen) ||
     Boolean(termsReaderDoc) ||
     (showTour && !isDeviceScope && activeTab === 'home')
 
@@ -1045,7 +1051,7 @@ function CustomerPortalRoot() {
           setLoginModalSubtitle('')
           setShowLoginModal(true)
         }}
-        onLogout={handleLogout}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
         appConfig={publicAppConfig}
       />
 
@@ -1232,6 +1238,25 @@ function CustomerPortalRoot() {
           onLogout={handleLogout}
           onUpgradeSubmitted={refreshCurrentUser}
           lockedReason={planModalReason}
+        />
+      )}
+
+      {isAuthenticated && (
+        <ProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          currentUser={currentUser}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onLogout={handleLogout}
+          onReplayTour={() => {
+            setActiveDeviceId('')
+            setActiveTab('home')
+            setShowTour(true)
+          }}
+          onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
+          onOpenPlanModal={openPlanModal}
+          appConfig={publicAppConfig}
         />
       )}
 

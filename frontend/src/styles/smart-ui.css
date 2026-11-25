@@ -4523,7 +4523,8 @@ button,
   color: var(--text-main);
 }
 
-.plan-modal-dialog {
+.plan-modal-dialog,
+.profile-modal-dialog {
   max-width: 620px;
   max-height: 90vh;
   overflow-y: auto;

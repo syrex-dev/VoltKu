@@ -13,7 +13,6 @@ import {
   ChevronDown,
   Check,
   Plus,
-  LogOut,
   Megaphone,
 } from 'lucide-react'
 import { formatNum } from '../utils/formatters'
@@ -142,34 +141,13 @@ function AccountAvatarButton({
   isAuthenticated,
   currentUser,
   onOpenLogin,
-  onOpenSettings,
-  onLogout,
+  onOpenProfile,
 }) {
-  const [menuOpen, setMenuOpen] = useState(false)
   const [imgBroken, setImgBroken] = useState(false)
-  const menuRef = useRef(null)
 
   useEffect(() => {
     setImgBroken(false)
   }, [currentUser?.avatar_url])
-
-  useEffect(() => {
-    if (!menuOpen) return undefined
-    const handleOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuOpen(false)
-      }
-    }
-    const handleEsc = (e) => {
-      if (e.key === 'Escape') setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', handleOutside)
-    document.addEventListener('keydown', handleEsc)
-    return () => {
-      document.removeEventListener('mousedown', handleOutside)
-      document.removeEventListener('keydown', handleEsc)
-    }
-  }, [menuOpen])
 
   if (!isAuthenticated) {
     return (
@@ -189,15 +167,13 @@ function AccountAvatarButton({
   const hasPhoto = Boolean(currentUser?.avatar_url && !imgBroken)
 
   return (
-    <div className="header-account-wrap" ref={menuRef}>
+    <div className="header-account-wrap">
       <button
         type="button"
         className="header-avatar-btn is-authenticated"
-        onClick={() => setMenuOpen((prev) => !prev)}
-        aria-label={`Menu Akun ${currentUser?.name || ''}`}
-        aria-expanded={menuOpen}
-        aria-haspopup="menu"
-        title={currentUser?.name || currentUser?.email || 'Akun Saya'}
+        onClick={onOpenProfile}
+        aria-label={`Profil Akun ${currentUser?.name || ''}`}
+        title={currentUser?.name || currentUser?.email || 'Profil Saya'}
         data-testid="header-account-btn"
       >
         {hasPhoto ? (
@@ -213,43 +189,6 @@ function AccountAvatarButton({
         )}
         <span className="header-avatar-dot" aria-hidden="true" />
       </button>
-
-      {menuOpen && (
-        <div className="header-account-popover" role="menu" aria-label="Menu Profil">
-          <div className="header-account-pop-head">
-            <div className="header-account-pop-name">{currentUser?.name || 'Pengguna VoltKu'}</div>
-            <div className="header-account-pop-email">{currentUser?.email || ''}</div>
-          </div>
-
-          <button
-            type="button"
-            role="menuitem"
-            className="header-account-pop-item"
-            onClick={() => {
-              setMenuOpen(false)
-              if (onOpenSettings) onOpenSettings()
-            }}
-          >
-            <Sliders size={15} />
-            <span>Setelan &amp; Tarif</span>
-          </button>
-
-          {onLogout && (
-            <button
-              type="button"
-              role="menuitem"
-              className="header-account-pop-item is-danger"
-              onClick={() => {
-                setMenuOpen(false)
-                onLogout()
-              }}
-            >
-              <LogOut size={15} />
-              <span>Keluar</span>
-            </button>
-          )}
-        </div>
-      )}
     </div>
   )
 }
@@ -270,7 +209,7 @@ export function Header({
   isAuthenticated = false,
   currentUser = null,
   onOpenLogin,
-  onLogout,
+  onOpenProfile,
   appConfig = {},
 }) {
   const appName = appConfig.app_name || 'VoltKu'
@@ -416,8 +355,7 @@ export function Header({
                 isAuthenticated={isAuthenticated}
                 currentUser={currentUser}
                 onOpenLogin={onOpenLogin}
-                onOpenSettings={() => onTabChange('settings')}
-                onLogout={onLogout}
+                onOpenProfile={onOpenProfile}
               />
             </div>
           </div>
