@@ -1,7 +1,6 @@
 import React from 'react'
 import {
   X,
-  User,
   Crown,
   LogOut,
   ChevronRight,
@@ -13,6 +12,7 @@ import {
   Send,
   Mail,
   Info,
+  Sparkles,
 } from 'lucide-react'
 import { formatTimeWIB } from '../utils/formatters'
 
@@ -45,20 +45,28 @@ export function ProfileModal({
   const supportEmail = (appConfig.support_email || '').trim()
   const showOnboardingRow = Boolean(onReplayTour && appConfig.onboarding_enabled !== false)
 
+  const displayName = currentUser?.name || `Pengguna ${appName}`
+  const initialLetter = displayName.trim().charAt(0).toUpperCase() || 'V'
+  const isGoogleAuth =
+    currentUser?.auth_provider === 'google' || currentUser?.auth_provider === 'both'
+  const plan = currentUser?.plan
+  const showPlanCard = Boolean(plan && plan.freemium_enabled !== false)
+  const usedDevices = plan?.usage?.device_count ?? 0
+  const maxDevices = plan?.limits?.max_devices ?? 1
+  const quotaPct =
+    maxDevices > 0 ? Math.min(100, Math.round((usedDevices / maxDevices) * 100)) : 25
+
   return (
     <div className="modal-overlay pwa-guide-overlay" onClick={onClose}>
       <div
         className="modal-dialog-modern profile-modal-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Profil Akun"
+        aria-label="Profil & Akun"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="pwa-guide-head" style={{ marginBottom: 14 }}>
-          <div>
-            <h3 className="pwa-guide-title">Profil &amp; Akun</h3>
-            <p className="pwa-guide-sub">Kelola akun, paket langganan, dan bantuan</p>
-          </div>
+        <div className="profile-modal-top">
+          <span className="profile-modal-kicker">Akun Saya</span>
           <button type="button" className="btn-icon-close" onClick={onClose} aria-label="Tutup">
             <X size={18} />
           </button>
@@ -66,97 +74,91 @@ export function ProfileModal({
 
         <div className="settings-stack-clean">
           {/* Identitas Akun */}
-          <section className="clean-sheet profile-hero-sheet">
+          <section className="clean-sheet profile-hero-card">
             <div className="profile-hero-left">
               {currentUser?.avatar_url ? (
                 <img
                   src={currentUser.avatar_url}
-                  alt={currentUser.name || 'Profil'}
+                  alt={displayName}
                   className="profile-avatar-img"
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="profile-avatar-fallback">
-                  <User size={24} />
+                <div className="profile-avatar-fallback profile-avatar-initial">
+                  {initialLetter}
                 </div>
               )}
               <div className="profile-hero-copy">
-                <h2 className="profile-hero-name">
-                  {currentUser?.name || `Pengguna ${appName}`}
-                </h2>
-                <p className="profile-hero-sub">
-                  {`${currentUser?.email || ''}${
-                    currentUser?.auth_provider === 'google' ||
-                    currentUser?.auth_provider === 'both'
-                      ? ' · Akun Google'
-                      : ''
-                  }`}
-                </p>
+                <div className="profile-name-row">
+                  <h2 className="profile-hero-name">{displayName}</h2>
+                  <span className="profile-auth-tag">
+                    {isGoogleAuth ? 'Google' : 'Email'}
+                  </span>
+                </div>
+                <p className="profile-hero-sub">{currentUser?.email || ''}</p>
               </div>
             </div>
-
-            {onLogout && (
-              <button
-                type="button"
-                className="btn btn-danger-ghost btn-compact"
-                onClick={() => {
-                  onClose()
-                  onLogout()
-                }}
-              >
-                <LogOut size={14} />
-                <span>Keluar</span>
-              </button>
-            )}
           </section>
 
           {/* Ringkasan Paket & Kuota (Freemium) */}
-          {currentUser?.plan && currentUser.plan.freemium_enabled !== false && (
-            <section className="clean-sheet plan-summary-sheet">
+          {showPlanCard && (
+            <section className={`clean-sheet plan-summary-sheet ${plan.is_pro ? 'is-pro' : ''}`}>
               <div className="plan-summary-head">
                 <div className="plan-summary-title-group">
-                  <span className={`plan-badge-chip ${currentUser.plan.is_pro ? 'is-pro' : ''}`}>
+                  <span className={`plan-badge-chip ${plan.is_pro ? 'is-pro' : ''}`}>
                     <Crown size={14} />
-                    <span>{currentUser.plan.plan_name}</span>
+                    <span>{plan.plan_name}</span>
                   </span>
-                  {currentUser.plan.pending_upgrade && !currentUser.plan.is_pro && (
+                  {plan.pending_upgrade && !plan.is_pro && (
                     <span className="admin-pill warn">Menunggu Aktivasi</span>
                   )}
                 </div>
                 {onOpenPlanModal && (
                   <button
                     type="button"
-                    className={`btn btn-compact ${currentUser.plan.is_pro ? 'btn-secondary' : 'btn-primary'}`}
+                    className={`btn btn-compact ${plan.is_pro ? 'btn-secondary' : 'btn-primary'}`}
                     onClick={() => {
                       onClose()
                       onOpenPlanModal('')
                     }}
                   >
-                    {currentUser.plan.is_pro ? 'Detail Paket' : 'Upgrade Pro'}
+                    {!plan.is_pro && <Sparkles size={13} />}
+                    <span>{plan.is_pro ? 'Detail Paket' : 'Upgrade Pro'}</span>
                   </button>
                 )}
               </div>
-              <div className="plan-summary-meta num-tabular">
-                <span>
-                  Panel:{' '}
-                  <strong>
-                    {currentUser.plan.usage?.device_count ?? 0} /{' '}
-                    {currentUser.plan.limits?.max_devices < 0
-                      ? 'Tak terbatas'
-                      : currentUser.plan.limits?.max_devices ?? 1}
-                  </strong>
-                </span>
-                <span>
-                  Riwayat: <strong>{currentUser.plan.limits?.history_days ?? 3} hari</strong>
-                </span>
-                {currentUser.plan.is_pro && (
+
+              <div className="plan-quota-block">
+                <div className="plan-quota-labels num-tabular">
                   <span>
-                    {currentUser.plan.expires_at
-                      ? `Aktif s.d. ${formatTimeWIB(currentUser.plan.expires_at)}`
-                      : 'Aktif Permanen'}
+                    Kuota Panel:{' '}
+                    <strong>
+                      {usedDevices} / {maxDevices < 0 ? 'Tak terbatas' : maxDevices}
+                    </strong>
                   </span>
+                  <span>
+                    Riwayat <strong>{plan.limits?.history_days ?? 3} hari</strong>
+                  </span>
+                </div>
+                {maxDevices > 0 && (
+                  <div className="plan-quota-track" aria-hidden="true">
+                    <div
+                      className={`plan-quota-fill ${plan.is_pro ? 'is-pro' : ''}`}
+                      style={{ width: `${Math.max(8, quotaPct)}%` }}
+                    />
+                  </div>
                 )}
               </div>
+
+              {plan.is_pro && (
+                <div className="plan-summary-meta num-tabular">
+                  <span>
+                    {plan.expires_at
+                      ? `Masa aktif hingga ${formatTimeWIB(plan.expires_at)}`
+                      : 'Aktif Permanen'}
+                  </span>
+                </div>
+              )}
             </section>
           )}
 
@@ -176,7 +178,7 @@ export function ProfileModal({
                 </span>
                 <span className="app-menu-copy">
                   <strong>Panduan Awal Aplikasi</strong>
-                  <span>Putar ulang pengenalan fitur &amp; cara tambah panel</span>
+                  <span>Pengenalan singkat fitur &amp; cara pasang panel</span>
                 </span>
                 <ChevronRight size={17} className="app-menu-chevron" />
               </button>
@@ -192,12 +194,10 @@ export function ProfileModal({
                   <ShieldCheck size={17} />
                 </span>
                 <span className="app-menu-copy">
-                  <strong>Syarat Penggunaan &amp; Kebijakan Privasi</strong>
+                  <strong>Syarat &amp; Kebijakan Privasi</strong>
                   <span>
                     Versi {termsVersion}
-                    {currentUser?.terms_version_accepted
-                      ? ` · Disetujui (${currentUser.terms_version_accepted})`
-                      : ''}
+                    {currentUser?.terms_version_accepted ? ' · Sudah disetujui' : ''}
                   </span>
                 </span>
                 <ChevronRight size={17} className="app-menu-chevron" />
@@ -210,7 +210,7 @@ export function ProfileModal({
                   {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
                 </span>
                 <span className="app-menu-copy">
-                  <strong>Tema Tampilan Aplikasi</strong>
+                  <strong>Tema Tampilan</strong>
                   <span>{theme === 'dark' ? 'Mode Gelap aktif' : 'Mode Terang aktif'}</span>
                 </span>
                 <ChevronRight size={17} className="app-menu-chevron" />
@@ -271,9 +271,22 @@ export function ProfileModal({
               </span>
             </div>
           </section>
+
+          {onLogout && (
+            <button
+              type="button"
+              className="profile-logout-btn"
+              onClick={() => {
+                onClose()
+                onLogout()
+              }}
+            >
+              <LogOut size={16} />
+              <span>Keluar dari Akun</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
   )
 }
-

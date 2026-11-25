@@ -3970,10 +3970,8 @@ button,
 
 .app-menu-copy span {
   font-size: 12px;
+  line-height: 1.38;
   color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .app-menu-chevron {
@@ -4575,11 +4573,121 @@ button,
   color: var(--text-main);
 }
 
-.plan-modal-dialog,
-.profile-modal-dialog {
+.plan-modal-dialog {
   max-width: 620px;
   max-height: 90vh;
   overflow-y: auto;
+}
+
+.profile-modal-dialog {
+  max-width: 440px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--bg-app) !important;
+  padding: 18px !important;
+  border-radius: 22px !important;
+}
+
+.profile-modal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.profile-modal-kicker {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.profile-avatar-initial {
+  font-size: 19px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #1677ff, #38bdf8);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.25);
+}
+
+.profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-auth-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.plan-summary-sheet.is-pro {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.plan-quota-block {
+  margin-top: 12px;
+}
+
+.plan-quota-labels {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.plan-quota-labels strong {
+  color: var(--text-main);
+}
+
+.plan-quota-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+.plan-quota-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: #1677ff;
+  transition: width 0.2s ease;
+}
+
+.plan-quota-fill.is-pro {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.profile-logout-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(225, 29, 72, 0.22);
+  background: var(--surface-card);
+  color: #e11d48;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.profile-logout-btn:hover {
+  background: rgba(225, 29, 72, 0.08);
+  border-color: rgba(225, 29, 72, 0.4);
 }
 
 .plan-modal-crown {
