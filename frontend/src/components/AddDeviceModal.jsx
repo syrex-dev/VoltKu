@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   X,
   Wifi,
@@ -7,28 +7,30 @@ import {
   Radio,
   CheckCircle2,
   QrCode,
+  ScanBarcode,
   ArrowLeft,
   ArrowRight,
   Zap,
   Sparkles,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
+import { BarcodeScannerBox } from './BarcodeScannerBox'
 
 const DEFAULT_ROOMS = ['Panel Utama', 'Ruang Tamu', 'Kamar Tidur', 'Dapur', 'Lantai 2', 'Warung']
 const MCB_OPTIONS = [900, 1300, 2200, 3500, 4400, 5500]
 const DEVICE_ID_RE = /^[A-Za-z0-9_-]{2,64}$/
 
 const WIZARD_STEPS = [
-  { num: 1, label: 'Siapkan' },
+  { num: 1, label: 'Mulai' },
   { num: 2, label: 'Wi-Fi' },
-  { num: 3, label: 'Kode Alat' },
-  { num: 4, label: 'Simpan' },
+  { num: 3, label: 'Kode' },
+  { num: 4, label: 'Nama' },
 ]
 
 const STEP_SUBTITLES = {
   1: 'Langkah 1 dari 4 · Pilih kondisi alat',
   2: 'Langkah 2 dari 4 · Hubungkan ke Wi-Fi rumah',
-  3: 'Langkah 3 dari 4 · Masukkan kode perangkat',
+  3: 'Langkah 3 dari 4 · Scan barcode atau isi kode',
   4: 'Langkah 4 dari 4 · Beri nama & batas daya',
   5: 'Panel baru siap dipantau',
 }
@@ -41,9 +43,11 @@ export function AddDeviceModal({
   onPlanLimitReached,
   onLogout,
 }) {
-  // Step 1: Persiapan & Kondisi Alat, Step 2: Wi-Fi Alat, Step 3: Kode Alat, Step 4: Nama & MCB, Step 5: Selesai
+  // Step 1: Persiapan & Kondisi Alat, Step 2: Wi-Fi Alat, Step 3: Kode Alat / Scan Barcode, Step 4: Nama & MCB, Step 5: Selesai
   const [step, setStep] = useState(1)
   const [cameFromWifiStep, setCameFromWifiStep] = useState(false)
+  const [showScanner, setShowScanner] = useState(false)
+  const [scanBadgeMsg, setScanBadgeMsg] = useState('')
   const [deviceId, setDeviceId] = useState('')
   const [deviceName, setDeviceName] = useState('Panel Utama Rumah')
   const [selectedRoom, setSelectedRoom] = useState('Panel Utama')
@@ -57,6 +61,8 @@ export function AddDeviceModal({
     if (!isOpen) {
       setStep(1)
       setCameFromWifiStep(false)
+      setShowScanner(false)
+      setScanBadgeMsg('')
       setDeviceId('')
       setDeviceName('Panel Utama Rumah')
       setSelectedRoom('Panel Utama')
@@ -66,6 +72,13 @@ export function AddDeviceModal({
       setErrorMsg(null)
     }
   }, [isOpen])
+
+  const handleBarcodeDetected = useCallback((extractedId) => {
+    setDeviceId(extractedId)
+    setShowScanner(false)
+    setErrorMsg(null)
+    setScanBadgeMsg(`Barcode terbaca: ${extractedId}`)
+  }, [])
 
   if (!isOpen) return null
 
@@ -319,48 +332,91 @@ export function AddDeviceModal({
           </div>
         )}
 
-        {/* STEP 3: Masukkan Kode Perangkat */}
+        {/* STEP 3: Scan Barcode / QR atau Masukkan Kode Perangkat */}
         {step === 3 && (
           <form className="wizard-body" onSubmit={handleGoToStep4}>
-            <div className="wizard-helper-card">
-              <div className="wizard-helper-icon">
-                <QrCode size={18} />
-              </div>
-              <div>
-                <div className="wizard-helper-title">Dimana melihat Kode Perangkat?</div>
-                <div className="wizard-helper-desc">
-                  Cek <strong>stiker di bodi alat</strong> atau layar HP setelah mengatur Wi-Fi (contoh:{' '}
-                  <code>ML-A1B2C3</code>).
+            {showScanner ? (
+              <BarcodeScannerBox
+                onDetected={handleBarcodeDetected}
+                onClose={() => setShowScanner(false)}
+              />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="wizard-scan-launch-card"
+                  onClick={() => {
+                    setErrorMsg(null)
+                    setScanBadgeMsg('')
+                    setShowScanner(true)
+                  }}
+                >
+                  <div className="wizard-scan-launch-icon">
+                    <ScanBarcode size={22} />
+                  </div>
+                  <div className="wizard-scan-launch-copy">
+                    <div className="wizard-scan-launch-title">Scan Barcode / QR Code Alat</div>
+                    <div className="wizard-scan-launch-desc">
+                      Gunakan kamera atau foto stiker di bodi / kemasan VoltKu agar terisi otomatis.
+                    </div>
+                  </div>
+                  <span className="wizard-scan-launch-pill">Kamera</span>
+                </button>
+
+                <div className="wizard-or-divider">
+                  <span>atau ketik kode manual</span>
                 </div>
+              </>
+            )}
+
+            {scanBadgeMsg && (
+              <div className="feedback-msg success" style={{ marginBottom: 0 }}>
+                {scanBadgeMsg}
               </div>
-            </div>
+            )}
 
             <div className="form-field-group" style={{ marginBottom: 4 }}>
               <label className="field-label" htmlFor="pairing-device-id">
                 Kode Perangkat
               </label>
-              <input
-                id="pairing-device-id"
-                type="text"
-                className="modern-input wizard-code-input num-tabular"
-                placeholder="Contoh: ML-A1B2C3"
-                value={deviceId}
-                onChange={(e) => {
-                  setDeviceId(e.target.value)
-                  if (errorMsg) setErrorMsg(null)
-                }}
-                autoCapitalize="characters"
-                autoCorrect="off"
-                spellCheck={false}
-                autoFocus
-              />
+              <div className="wizard-code-input-wrap">
+                <input
+                  id="pairing-device-id"
+                  type="text"
+                  className="modern-input wizard-code-input wizard-code-input-with-btn num-tabular"
+                  placeholder="Contoh: ML-A1B2C3"
+                  value={deviceId}
+                  onChange={(e) => {
+                    setDeviceId(e.target.value)
+                    if (scanBadgeMsg) setScanBadgeMsg('')
+                    if (errorMsg) setErrorMsg(null)
+                  }}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                {!showScanner && (
+                  <button
+                    type="button"
+                    className="wizard-inline-scan-btn"
+                    title="Scan Barcode / QR"
+                    aria-label="Scan Barcode / QR"
+                    onClick={() => {
+                      setErrorMsg(null)
+                      setShowScanner(true)
+                    }}
+                  >
+                    <ScanBarcode size={17} />
+                  </button>
+                )}
+              </div>
               {hasInput && !isDeviceIdValid ? (
                 <small className="field-hint wizard-hint-warn">
                   Gunakan minimal 2 karakter huruf, angka, tanda (-), atau (_), tanpa spasi.
                 </small>
               ) : (
                 <small className="field-hint">
-                  Huruf, angka, tanda hubung (-), atau garis bawah (_) tanpa spasi.
+                  Lihat pada stiker bodi alat atau layar HP setelah mengatur Wi-Fi.
                 </small>
               )}
             </div>
@@ -370,6 +426,7 @@ export function AddDeviceModal({
                 type="button"
                 className="btn btn-secondary wizard-btn-back"
                 onClick={() => {
+                  setShowScanner(false)
                   setErrorMsg(null)
                   setStep(cameFromWifiStep ? 2 : 1)
                 }}
