@@ -9,13 +9,15 @@ import {
   Settings2,
   Sun,
   Moon,
-  LogIn,
   User,
   ChevronDown,
   Check,
   Plus,
+  LogOut,
+  Megaphone,
 } from 'lucide-react'
 import { formatNum } from '../utils/formatters'
+import { BrandLogo } from './BrandLogo'
 
 function PanelSwitcherDropdown({
   variant = 'mobile',
@@ -50,7 +52,9 @@ function PanelSwitcherDropdown({
   if (!activeDevice) return null
 
   const activeName = activeDevice.name || activeDevice.id
-  const activeOnline = isDeviceOnlineFn ? isDeviceOnlineFn(activeDevice) : activeDevice.status === 'online'
+  const activeOnline = isDeviceOnlineFn
+    ? isDeviceOnlineFn(activeDevice)
+    : activeDevice.status === 'online'
 
   return (
     <div className={`header-panel-switcher is-${variant}`} ref={containerRef}>
@@ -71,9 +75,7 @@ function PanelSwitcherDropdown({
         </span>
       </button>
 
-      {variant === 'mobile' && subLabel && (
-        <div className="header-page-sub">{subLabel}</div>
-      )}
+      {variant === 'mobile' && subLabel && <div className="header-page-sub">{subLabel}</div>}
 
       {isOpen && (
         <div className="header-panel-popover" role="listbox" aria-label="Pilih Panel Listrik">
@@ -136,6 +138,122 @@ function PanelSwitcherDropdown({
   )
 }
 
+function AccountAvatarButton({
+  isAuthenticated,
+  currentUser,
+  onOpenLogin,
+  onOpenSettings,
+  onLogout,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [imgBroken, setImgBroken] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    setImgBroken(false)
+  }, [currentUser?.avatar_url])
+
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const handleOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false)
+      }
+    }
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [menuOpen])
+
+  if (!isAuthenticated) {
+    return (
+      <button
+        type="button"
+        className="header-avatar-btn is-guest"
+        onClick={onOpenLogin}
+        aria-label="Masuk atau Daftar Akun"
+        title="Masuk / Daftar Akun"
+        data-testid="header-account-btn"
+      >
+        <User size={19} strokeWidth={1.9} />
+      </button>
+    )
+  }
+
+  const hasPhoto = Boolean(currentUser?.avatar_url && !imgBroken)
+
+  return (
+    <div className="header-account-wrap" ref={menuRef}>
+      <button
+        type="button"
+        className="header-avatar-btn is-authenticated"
+        onClick={() => setMenuOpen((prev) => !prev)}
+        aria-label={`Menu Akun ${currentUser?.name || ''}`}
+        aria-expanded={menuOpen}
+        aria-haspopup="menu"
+        title={currentUser?.name || currentUser?.email || 'Akun Saya'}
+        data-testid="header-account-btn"
+      >
+        {hasPhoto ? (
+          <img
+            src={currentUser.avatar_url}
+            alt={currentUser.name || 'Profil'}
+            className="header-avatar-img"
+            referrerPolicy="no-referrer"
+            onError={() => setImgBroken(true)}
+          />
+        ) : (
+          <User size={19} strokeWidth={2} />
+        )}
+        <span className="header-avatar-dot" aria-hidden="true" />
+      </button>
+
+      {menuOpen && (
+        <div className="header-account-popover" role="menu" aria-label="Menu Profil">
+          <div className="header-account-pop-head">
+            <div className="header-account-pop-name">{currentUser?.name || 'Pengguna VoltKu'}</div>
+            <div className="header-account-pop-email">{currentUser?.email || ''}</div>
+          </div>
+
+          <button
+            type="button"
+            role="menuitem"
+            className="header-account-pop-item"
+            onClick={() => {
+              setMenuOpen(false)
+              if (onOpenSettings) onOpenSettings()
+            }}
+          >
+            <Sliders size={15} />
+            <span>Setelan &amp; Tarif</span>
+          </button>
+
+          {onLogout && (
+            <button
+              type="button"
+              role="menuitem"
+              className="header-account-pop-item is-danger"
+              onClick={() => {
+                setMenuOpen(false)
+                onLogout()
+              }}
+            >
+              <LogOut size={15} />
+              <span>Keluar</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function Header({
   activeTab,
   onTabChange,
@@ -152,16 +270,19 @@ export function Header({
   isAuthenticated = false,
   currentUser = null,
   onOpenLogin,
+  onLogout,
+  appConfig = {},
 }) {
-  const mobileTitle = isDeviceScope && activeDevice
-    ? activeDevice.name || activeDevice.id
-    : activeTab === 'alerts'
-    ? 'Peringatan'
-    : activeTab === 'settings'
-    ? 'Setelan'
-    : isAuthenticated
-    ? 'Rumah Saya'
-    : 'VoltKu'
+  const appName = appConfig.app_name || 'VoltKu'
+  const brandDisplay = appConfig.navbar_brand_display || 'logo_only'
+  const mobileTitle =
+    isDeviceScope && activeDevice
+      ? activeDevice.name || activeDevice.id
+      : activeTab === 'alerts'
+      ? 'Peringatan'
+      : activeTab === 'settings'
+      ? 'Setelan'
+      : ''
 
   const mobileSub = isDeviceScope && activeDevice ? activeDevice.location || '' : ''
 
@@ -180,20 +301,42 @@ export function Header({
   ]
 
   const desktopTabs = isDeviceScope ? deviceNav : homeNav
-  const shortUserName = currentUser?.name ? currentUser.name.split(' ')[0] : 'Akun'
+  const showAnnouncement = Boolean(appConfig.announcement_active && appConfig.announcement_text)
 
   return (
     <div className="app-header-wrap clean-header-bar">
+      {showAnnouncement && (
+        <div className="header-announcement-strip">
+          <div className="container header-announcement-inner">
+            <Megaphone size={13} className="header-announcement-ico" />
+            {appConfig.announcement_url ? (
+              <a
+                href={appConfig.announcement_url}
+                target="_blank"
+                rel="noreferrer"
+                className="header-announcement-link"
+              >
+                {appConfig.announcement_text}
+              </a>
+            ) : (
+              <span>{appConfig.announcement_text}</span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="container">
         <header className="app-header clean-header-inner">
           <div className="header-main-row">
             {/* Brand / Context Left */}
             <div className="header-home-title-wrap">
               <div className="desktop-brand-row">
-                <span className="desktop-brand-mark">
-                  <Zap size={17} />
-                </span>
-                <span className="desktop-brand-name">VoltKu</span>
+                <BrandLogo
+                  theme={theme}
+                  displayMode={brandDisplay}
+                  appName={appName}
+                  variant="navbar"
+                />
                 {isDeviceScope && activeDevice && (
                   <PanelSwitcherDropdown
                     variant="desktop"
@@ -217,6 +360,13 @@ export function Header({
                     onSelectDevice={onSelectDevice}
                     onOpenAddDevice={onOpenAddDevice}
                   />
+                ) : activeTab === 'home' ? (
+                  <BrandLogo
+                    theme={theme}
+                    displayMode={brandDisplay}
+                    appName={appName}
+                    variant="compact"
+                  />
                 ) : (
                   <>
                     <h1 className="header-home-title" title={mobileTitle}>
@@ -228,7 +378,7 @@ export function Header({
               </div>
             </div>
 
-            {/* Desktop Contextual Navigation (Beranda di tengah) */}
+            {/* Desktop Contextual Navigation */}
             <nav className="desktop-header-nav" aria-label="Navigasi Desktop">
               {desktopTabs.map((tab) => {
                 const Icon = tab.icon
@@ -244,40 +394,14 @@ export function Header({
                   >
                     <Icon size={15} />
                     <span>{tab.label}</span>
-                    {tab.badge > 0 && (
-                      <span className="desktop-nav-badge">{tab.badge}</span>
-                    )}
+                    {tab.badge > 0 && <span className="desktop-nav-badge">{tab.badge}</span>}
                   </button>
                 )
               })}
             </nav>
 
-            {/* Auth User Action + Theme Switch (Zero Admin Controls) */}
+            {/* Kanan Navbar: Tema dulu, lalu Ikon Orang/Akun di PALING KANAN */}
             <div className="header-actions">
-              {isAuthenticated ? (
-                <button
-                  type="button"
-                  className="header-role-pill is-user"
-                  onClick={() => onTabChange('settings')}
-                  title={currentUser?.email || 'Akun Saya'}
-                >
-                  <User size={14} />
-                  <span>{shortUserName}</span>
-                </button>
-              ) : (
-                onOpenLogin && (
-                  <button
-                    type="button"
-                    className="header-role-pill"
-                    onClick={onOpenLogin}
-                    title="Masuk atau Daftar Akun"
-                  >
-                    <LogIn size={14} />
-                    <span>Masuk</span>
-                  </button>
-                )
-              )}
-
               <button
                 type="button"
                 className="header-icon-btn"
@@ -285,8 +409,16 @@ export function Header({
                 aria-label="Ganti Tema"
                 title={theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}
               >
-                {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
+                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
               </button>
+
+              <AccountAvatarButton
+                isAuthenticated={isAuthenticated}
+                currentUser={currentUser}
+                onOpenLogin={onOpenLogin}
+                onOpenSettings={() => onTabChange('settings')}
+                onLogout={onLogout}
+              />
             </div>
           </div>
         </header>

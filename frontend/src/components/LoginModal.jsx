@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { Zap, ArrowRight, X, Server, HelpCircle, UserCheck } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { ArrowRight, X, FileText, UserCheck } from 'lucide-react'
+import { BrandLogo } from './BrandLogo'
 
 function GoogleIconSvg() {
   return (
@@ -29,14 +30,17 @@ export function LoginModal({
   onRegister,
   onGoogleLogin,
   googleEnabled = false,
+  registrationEnabled = true,
   termsAccepted = true,
   onOpenTerms,
-  onOpenServerConfig,
   onTryGuest,
   error,
   canClose = false,
   onClose,
-  subtitle = 'Pantau dan kelola pemakaian listrik rumah secara real-time',
+  theme = 'light',
+  appName = 'VoltKu',
+  brandDisplay = 'logo_only',
+  subtitle = 'Pantau listrik rumah lebih tenang dan akurat',
 }) {
   const [authTab, setAuthTab] = useState('login')
   const [name, setName] = useState('')
@@ -46,6 +50,16 @@ export function LoginModal({
   const [localError, setLocalError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+
+  useEffect(() => {
+    setLocalAgreed(termsAccepted)
+  }, [termsAccepted])
+
+  useEffect(() => {
+    if (!registrationEnabled && authTab === 'register') {
+      setAuthTab('login')
+    }
+  }, [registrationEnabled, authTab])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -68,9 +82,9 @@ export function LoginModal({
     setSubmitting(true)
     try {
       if (authTab === 'login') {
-        await onLogin(email.trim(), password)
+        await onLogin(email.trim(), password, localAgreed)
       } else if (onRegister) {
-        await onRegister(name.trim(), email.trim(), password)
+        await onRegister(name.trim(), email.trim(), password, localAgreed)
       }
     } finally {
       setSubmitting(false)
@@ -86,7 +100,7 @@ export function LoginModal({
     if (!onGoogleLogin) return
     setGoogleLoading(true)
     try {
-      await onGoogleLogin()
+      await onGoogleLogin(localAgreed)
     } catch (err) {
       setLocalError(err?.message || 'Gagal masuk menggunakan Google.')
     } finally {
@@ -106,22 +120,8 @@ export function LoginModal({
         style={{ position: 'relative' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top utility row ala mobile smart-home app */}
         <div className="native-auth-top-bar">
-          {onOpenServerConfig ? (
-            <button
-              type="button"
-              className="native-auth-util-btn"
-              onClick={onOpenServerConfig}
-              title="Atur alamat server backend"
-            >
-              <Server size={14} />
-              <span>Server</span>
-            </button>
-          ) : (
-            <span />
-          )}
-
+          <span />
           <div className="native-auth-top-right">
             {onOpenTerms && (
               <button
@@ -129,7 +129,7 @@ export function LoginModal({
                 className="native-auth-util-btn"
                 onClick={() => onOpenTerms('terms')}
               >
-                <HelpCircle size={14} />
+                <FileText size={14} />
                 <span>Ketentuan</span>
               </button>
             )}
@@ -147,42 +147,48 @@ export function LoginModal({
         </div>
 
         <div className="auth-header">
-          <div className="clean-app-logo">
-            <Zap size={28} />
+          <div className="auth-brand-hero">
+            <BrandLogo
+              theme={theme}
+              displayMode={brandDisplay}
+              appName={appName}
+              variant="hero"
+            />
           </div>
-          <h2 className="auth-title">VoltKu</h2>
           <p className="auth-subtitle">{subtitle}</p>
         </div>
 
-        <div className="user-auth-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={authTab === 'login'}
-            className={`user-auth-tab ${authTab === 'login' ? 'active' : ''}`}
-            onClick={() => {
-              setAuthTab('login')
-              setLocalError(null)
-            }}
-          >
-            Masuk
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={authTab === 'register'}
-            className={`user-auth-tab ${authTab === 'register' ? 'active' : ''}`}
-            onClick={() => {
-              setAuthTab('register')
-              setLocalError(null)
-            }}
-          >
-            Daftar Akun
-          </button>
-        </div>
+        {registrationEnabled && (
+          <div className="user-auth-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={authTab === 'login'}
+              className={`user-auth-tab ${authTab === 'login' ? 'active' : ''}`}
+              onClick={() => {
+                setAuthTab('login')
+                setLocalError(null)
+              }}
+            >
+              Masuk
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={authTab === 'register'}
+              className={`user-auth-tab ${authTab === 'register' ? 'active' : ''}`}
+              onClick={() => {
+                setAuthTab('register')
+                setLocalError(null)
+              }}
+            >
+              Daftar Akun
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
-          {authTab === 'register' && (
+          {authTab === 'register' && registrationEnabled && (
             <div className="form-field-group">
               <label className="field-label" htmlFor="user-name-input">
                 Nama Lengkap
@@ -275,7 +281,7 @@ export function LoginModal({
                 ? authTab === 'register'
                   ? 'Mendaftarkan...'
                   : 'Memverifikasi...'
-                : authTab === 'register'
+                : authTab === 'register' && registrationEnabled
                 ? 'Buat Akun Sekarang'
                 : 'Masuk'}
             </span>
@@ -283,7 +289,7 @@ export function LoginModal({
           </button>
         </form>
 
-        {onGoogleLogin && (
+        {googleEnabled && onGoogleLogin && (
           <>
             <div className="auth-divider-or">
               <span>atau</span>
@@ -294,23 +300,12 @@ export function LoginModal({
               className="google-auth-btn"
               onClick={handleGoogleClick}
               disabled={submitting || googleLoading}
-              title={
-                googleEnabled
-                  ? 'Masuk cepat menggunakan Akun Google Anda'
-                  : 'Membutuhkan GOOGLE_CLIENT_ID di server'
-              }
             >
               <GoogleIconSvg />
               <span>
                 {googleLoading ? 'Menghubungkan ke Google...' : 'Lanjutkan dengan Google'}
               </span>
             </button>
-            {!googleEnabled && (
-              <div className="google-setup-hint">
-                Aktifkan <code>GOOGLE_CLIENT_ID</code> di <code>.env</code> server untuk login
-                Google langsung.
-              </div>
-            )}
           </>
         )}
 
@@ -320,7 +315,7 @@ export function LoginModal({
               <span className="native-try-guest-circle">
                 <UserCheck size={18} />
               </span>
-              <span className="native-try-guest-label">Coba Sekarang (Mode Guest)</span>
+              <span className="native-try-guest-label">Lanjut sebagai Tamu</span>
             </button>
           </div>
         )}

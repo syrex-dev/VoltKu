@@ -1,5 +1,5 @@
 import React from 'react'
-import { Zap, Wifi, WifiOff, Plus, LogIn, Sparkles, ShieldCheck, Compass } from 'lucide-react'
+import { Zap, Wifi, WifiOff, Plus, LogIn, CheckCircle2, ShieldCheck, Compass } from 'lucide-react'
 import { RoomFilterBar } from './RoomFilterBar'
 import { formatNum } from '../utils/formatters'
 
@@ -14,7 +14,10 @@ export function HomeDevicesView({
   isAuthenticated = false,
   onOpenLogin,
   onReplayTour,
+  appConfig = {},
 }) {
+  const showOnboardingCard = Boolean(onReplayTour && appConfig.onboarding_enabled !== false)
+  const appName = appConfig.app_name || 'VoltKu'
   const filteredDevices = devices.filter((dev) => {
     if (activeRoom === 'Semua') return true
     if (activeRoom === 'Lainnya') return !dev.location || !dev.location.trim()
@@ -31,18 +34,18 @@ export function HomeDevicesView({
           </span>
           <span className="home-tip-copy">
             <strong>Pasang Panel Wi-Fi 2.4 GHz</strong>
-            <span>Sambungkan sensor VoltKu baru dalam 3 langkah</span>
+            <span>Sambungkan sensor {appName} baru dalam 3 langkah</span>
           </span>
         </button>
 
-        {onReplayTour && (
+        {showOnboardingCard && (
           <button type="button" className="home-tip-card is-teal" onClick={onReplayTour}>
             <span className="home-tip-icon">
               <Compass size={16} />
             </span>
             <span className="home-tip-copy">
               <strong>Panduan Aplikasi</strong>
-              <span>Lihat tur singkat cara memantau daya &amp; biaya</span>
+              <span>Lihat pengenalan singkat cara memantau daya &amp; biaya</span>
             </span>
           </button>
         )}
@@ -54,7 +57,7 @@ export function HomeDevicesView({
             </span>
             <span className="home-tip-copy">
               <strong>Masuk dengan Google / Email</strong>
-              <span>Sinkronkan data panel yang sama di Web &amp; APK</span>
+              <span>Sinkronkan data panel yang sama di Web &amp; Aplikasi</span>
             </span>
           </button>
         )}
@@ -62,11 +65,11 @@ export function HomeDevicesView({
         {isAuthenticated && (
           <div className="home-tip-card is-amber is-static">
             <span className="home-tip-icon">
-              <Sparkles size={16} />
+              <CheckCircle2 size={16} />
             </span>
             <span className="home-tip-copy">
-              <strong>Sinkronisasi Real-Time</strong>
-              <span>Web &amp; APK terhubung langsung ke cloud rumah Anda</span>
+              <strong>Sinkronisasi Cloud Aktif</strong>
+              <span>Web &amp; Aplikasi terhubung langsung ke panel Anda</span>
             </span>
           </div>
         )}

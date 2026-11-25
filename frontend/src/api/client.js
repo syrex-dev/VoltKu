@@ -1,5 +1,5 @@
-const API_BASE_STORAGE_KEY = 'voltku_api_base_url'
 const DEFAULT_NATIVE_API_BASE_URL = 'https://voltku.synemax.web.id'
+const CLIENT_ID_STORAGE_KEY = 'voltku_client_id'
 
 export function isNativeApp() {
   if (typeof window === 'undefined') return false
@@ -10,17 +10,13 @@ export function normalizeServerUrl(rawUrl) {
   const clean = String(rawUrl || '').trim().replace(/\/+$/, '')
   if (!clean) return ''
   if (!/^https?:\/\//i.test(clean)) {
-    return `http://${clean}`
+    return `https://${clean}`
   }
   return clean
 }
 
 export function getApiBaseUrl() {
   if (typeof window === 'undefined') return ''
-  const custom = localStorage.getItem(API_BASE_STORAGE_KEY) || ''
-  if (custom.trim()) {
-    return normalizeServerUrl(custom)
-  }
   const envBase = import.meta.env?.VITE_API_BASE_URL || ''
   if (envBase.trim()) {
     return normalizeServerUrl(envBase)
@@ -31,14 +27,22 @@ export function getApiBaseUrl() {
   return ''
 }
 
-export function setApiBaseUrl(rawUrl) {
-  const normalized = normalizeServerUrl(rawUrl)
-  if (!normalized) {
-    localStorage.removeItem(API_BASE_STORAGE_KEY)
-    return ''
+export function getOrCreateClientId() {
+  if (typeof window === 'undefined') return 'server-client'
+  try {
+    let cid = localStorage.getItem(CLIENT_ID_STORAGE_KEY) || ''
+    if (cid.trim().length >= 8) return cid.trim()
+    const prefix = isNativeApp() ? 'apk' : 'web'
+    const rand =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+    cid = `${prefix}-${rand}`
+    localStorage.setItem(CLIENT_ID_STORAGE_KEY, cid)
+    return cid
+  } catch {
+    return `ephem-${Date.now().toString(36)}`
   }
-  localStorage.setItem(API_BASE_STORAGE_KEY, normalized)
-  return normalized
 }
 
 export function buildApiUrl(endpoint) {
@@ -65,17 +69,6 @@ export function setStoredUserToken(token) {
 
 export async function apiRequest(endpoint, options = {}, token = '', onUnauthorized = null) {
   const targetUrl = buildApiUrl(endpoint)
-  const baseConfigured = Boolean(getApiBaseUrl())
-
-  if (typeof window !== 'undefined' && window.location.protocol === 'file:' && !baseConfigured) {
-    throw new Error('Aplikasi harus dibuka melalui server web atau atur URL server VoltKu.')
-  }
-
-  if (isNativeApp() && !baseConfigured && !/^https?:\/\//i.test(targetUrl)) {
-    throw new Error(
-      'Alamat server VoltKu belum diatur. Ketuk ikon Server untuk memasukkan IP LAN atau URL tunnel backend.'
-    )
-  }
 
   const fetchOptions = { ...options }
   const headers = { ...(options.headers || {}) }
@@ -98,19 +91,20 @@ export async function apiRequest(endpoint, options = {}, token = '', onUnauthori
       const retryAfter = resp.headers.get('Retry-After') || '30'
       const errData = await resp.json().catch(() => ({}))
       const msg =
-        errData?.error?.message || `Terlalu banyak percobaan. Coba lagi dalam ${retryAfter} detik.`
+        errData?.error?.message ||
+        `Terlalu banyak percobaan. Coba lagi dalam ${retryAfter} detik.`
       throw new Error(msg)
     }
+
+    const data = await resp.json().catch(() => ({}))
     if (!resp.ok) {
-      const errData = await resp.json().catch(() => ({}))
-      const msg = errData?.error?.message || `Error ${resp.status}: Permintaan gagal.`
-      throw new Error(msg)
+      const errMsg = data?.error?.message || data?.detail || `HTTP ${resp.status}`
+      throw new Error(errMsg)
     }
-    return await resp.json()
+    return data
   } catch (err) {
-    if (err.name === 'TypeError' && err.message.includes('fetch')) {
-      const destLabel = baseConfigured ? getApiBaseUrl() : 'server backend VoltKu'
-      throw new Error(`Gagal terhubung ke ${destLabel}. Pastikan server aktif dan terjangkau.`)
+    if (err?.message === 'Failed to fetch' || err?.name === 'TypeError') {
+      throw new Error('Gagal terhubung ke server VoltKu. Periksa koneksi internet Anda.')
     }
     throw err
   }

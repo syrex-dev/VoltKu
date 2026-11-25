@@ -1,11 +1,49 @@
-import React, { useState } from 'react'
-import { ShieldCheck, FileText, ArrowLeft, Check } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { FileText, ArrowLeft, Check } from 'lucide-react'
+import { BrandLogo } from './BrandLogo'
+
+function renderLegalSections(rawText = '') {
+  const blocks = String(rawText || '')
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean)
+
+  return blocks.map((block, idx) => {
+    const lines = block.split('\n').map((l) => l.trim()).filter(Boolean)
+    if (lines.length === 0) return null
+    const first = lines[0]
+    const looksLikeHeading = /^\d+\.\s+/.test(first) || (lines.length > 1 && first.length < 72)
+
+    if (looksLikeHeading && lines.length > 1) {
+      return (
+        <section key={idx} className="legal-doc-section">
+          <h4>{first}</h4>
+          {lines.slice(1).map((p, pIdx) => (
+            <p key={pIdx}>{p}</p>
+          ))}
+        </section>
+      )
+    }
+    return (
+      <section key={idx} className="legal-doc-section">
+        <p>{block}</p>
+      </section>
+    )
+  })
+}
 
 export function TermsAgreementModal({
   isOpen,
   isUpdate = false,
   readOnly = false,
+  submitting = false,
   termsVersion = '2026-11-v1',
+  legalUpdatedAt = '25 November 2026',
+  appName = 'VoltKu',
+  termsTitle = 'Syarat & Ketentuan Layanan',
+  termsContent = '',
+  privacyTitle = 'Kebijakan Privasi',
+  privacyContent = '',
   initialDoc = null,
   onAgree,
   onDecline,
@@ -13,11 +51,17 @@ export function TermsAgreementModal({
 }) {
   const [activeDoc, setActiveDoc] = useState(initialDoc)
 
+  useEffect(() => {
+    if (isOpen) {
+      setActiveDoc(initialDoc)
+    }
+  }, [isOpen, initialDoc])
+
   if (!isOpen) return null
 
   const title = isUpdate
-    ? 'Pembaruan Kebijakan Penting'
-    : 'Syarat Penggunaan & Kebijakan Privasi'
+    ? 'Pembaruan Kebijakan Pengguna'
+    : 'Persetujuan Ketentuan & Privasi'
 
   return (
     <div
@@ -34,21 +78,20 @@ export function TermsAgreementModal({
         {!activeDoc ? (
           <>
             <div className="app-dialog-body">
-              <div className="app-dialog-badge-icon">
-                <ShieldCheck size={24} />
+              <div className="app-dialog-brand-wrap">
+                <BrandLogo variant="icon" appName={appName} />
               </div>
               <h2 id="terms-modal-title" className="app-dialog-title">
                 {title}
               </h2>
               <p className="app-dialog-copy">
-                VoltKu menjaga keamanan dan privasi data kelistrikan Anda. Syarat Penggunaan
-                dan Kebijakan Privasi menjelaskan bagaimana data sensor meter, preferensi
-                tarif PLN, serta identitas akun (termasuk Login Google) dikelola dan
-                dilindungi.
+                {isUpdate
+                  ? `${appName} telah memperbarui Syarat & Ketentuan Layanan serta Kebijakan Privasi (versi ${termsVersion}). Mohon tinjau sebelum melanjutkan penggunaan aplikasi.`
+                  : `Sebelum menggunakan ${appName}, harap baca dan setujui Syarat & Ketentuan Layanan serta Kebijakan Privasi mengenai pengelolaan akun, perangkat, dan data kelistrikan Anda.`}
               </p>
-              <p className="app-dialog-copy">
-                Dengan mengetuk <strong>[Setuju]</strong>, Anda menyatakan telah membaca,
-                memahami, dan menyetujui seluruh ketentuan versi <code>{termsVersion}</code>.
+              <p className="app-dialog-copy app-dialog-copy-muted">
+                Persetujuan Anda dicatat resmi dengan versi <code>{termsVersion}</code> (diperbarui{' '}
+                {legalUpdatedAt}).
               </p>
 
               <div className="app-dialog-links-row">
@@ -57,15 +100,15 @@ export function TermsAgreementModal({
                   className="app-link-btn"
                   onClick={() => setActiveDoc('terms')}
                 >
-                  Syarat Penggunaan
+                  {termsTitle}
                 </button>
-                <span className="app-link-sep">&amp;</span>
+                <span className="app-link-sep">&middot;</span>
                 <button
                   type="button"
                   className="app-link-btn"
                   onClick={() => setActiveDoc('privacy')}
                 >
-                  Kebijakan Privasi
+                  {privacyTitle}
                 </button>
               </div>
             </div>
@@ -79,11 +122,21 @@ export function TermsAgreementModal({
               </div>
             ) : (
               <div className="app-dialog-split-footer">
-                <button type="button" className="app-dialog-action-exit" onClick={onDecline}>
-                  Keluar
+                <button
+                  type="button"
+                  className="app-dialog-action-exit"
+                  onClick={onDecline}
+                  disabled={submitting}
+                >
+                  Tolak
                 </button>
-                <button type="button" className="app-dialog-action-agree" onClick={onAgree}>
-                  Setuju
+                <button
+                  type="button"
+                  className="app-dialog-action-agree"
+                  onClick={onAgree}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Menyimpan...' : 'Setuju & Lanjutkan'}
                 </button>
               </div>
             )}
@@ -99,55 +152,14 @@ export function TermsAgreementModal({
               >
                 <ArrowLeft size={18} />
               </button>
-              <h3>
-                {activeDoc === 'terms' ? 'Syarat Penggunaan VoltKu' : 'Kebijakan Privasi VoltKu'}
-              </h3>
+              <h3>{activeDoc === 'terms' ? termsTitle : privacyTitle}</h3>
               <span className="app-doc-version">{termsVersion}</span>
             </div>
 
             <div className="app-doc-scroll">
-              {activeDoc === 'terms' ? (
-                <>
-                  <h4>1. Ruang Lingkup Layanan</h4>
-                  <p>
-                    VoltKu menyediakan pemantauan daya, tegangan, arus, histori pemakaian kWh,
-                    perkiraan biaya listrik, serta peringatan anomali berbasis perangkat IoT
-                    ESP32 &amp; PZEM-004T.
-                  </p>
-                  <h4>2. Akun &amp; Kepemilikan Perangkat</h4>
-                  <p>
-                    Pengguna bertanggung jawab menjaga kerahasiaan akun email/Google dan
-                    perangkat yang diklaim pada akun masing-masing. Mode Guest hanya
-                    menampilkan panel publik demo secara read-only.
-                  </p>
-                  <h4>3. Batasan Tanggung Jawab</h4>
-                  <p>
-                    Estimasi tagihan PLN bersifat informatif berdasarkan tarif yang diatur
-                    pengguna dan kalibrasi sensor. VoltKu tidak memutus atau mengendalikan
-                    beban listrik AC secara sepihak.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <h4>1. Data yang Dikumpulkan</h4>
-                  <p>
-                    Saat mendaftar dengan Email atau Akun Google, VoltKu menyimpan nama,
-                    alamat email terverifikasi, foto profil opsional, dan daftar ID panel
-                    listrik milik Anda di database MySQL server Anda.
-                  </p>
-                  <h4>2. Data Telemetri &amp; Wi-Fi Perangkat</h4>
-                  <p>
-                    Kredensial Wi-Fi rumah disimpan secara lokal di memori NVS perangkat ESP32
-                    dan tidak dikirim ke server publik mana pun.
-                  </p>
-                  <h4>3. Kontrol &amp; Penghapusan</h4>
-                  <p>
-                    Anda dapat menghapus perangkat atau meminta pengelola menonaktifkan akun
-                    kapan saja. Sesi token disimpan secara aman di perangkat Anda agar nyaman
-                    digunakan di Web maupun aplikasi Android (.apk).
-                  </p>
-                </>
-              )}
+              {activeDoc === 'terms'
+                ? renderLegalSections(termsContent)
+                : renderLegalSections(privacyContent)}
             </div>
 
             <div className="app-doc-footer">
@@ -155,10 +167,10 @@ export function TermsAgreementModal({
                 type="button"
                 className="btn btn-primary"
                 style={{ width: '100%' }}
-                onClick={() => setActiveDoc(null)}
+                onClick={() => (readOnly && initialDoc ? onClose && onClose() : setActiveDoc(null))}
               >
                 <FileText size={16} />
-                <span>Mengerti &amp; Kembali</span>
+                <span>{readOnly && initialDoc ? 'Tutup Dokumen' : 'Kembali ke Persetujuan'}</span>
               </button>
             </div>
           </div>
@@ -167,4 +179,3 @@ export function TermsAgreementModal({
     </div>
   )
 }
-

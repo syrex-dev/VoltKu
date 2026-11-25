@@ -4,7 +4,7 @@ import {
   Users,
   Cpu,
   ShieldAlert,
-  Lock,
+  Sliders,
   Plus,
   Search,
   Pencil,
@@ -22,6 +22,9 @@ import {
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatNum, formatTimeWIB } from '../utils/formatters'
+import { BrandLogo } from './BrandLogo'
+import { InAppSelect } from './InAppSelect'
+import { AdminAppSettingsTab } from './AdminAppSettingsTab'
 
 export function AdminPanel({
   token,
@@ -36,6 +39,8 @@ export function AdminPanel({
   const [users, setUsers] = useState([])
   const [devices, setDevices] = useState([])
   const [anomalies, setAnomalies] = useState([])
+  const [appSettings, setAppSettings] = useState(null)
+  const [consentsData, setConsentsData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState(null)
 
@@ -71,16 +76,20 @@ export function AdminPanel({
   const loadAdminData = useCallback(async () => {
     if (!token) return
     try {
-      const [ov, usrs, devs, anoms] = await Promise.all([
+      const [ov, usrs, devs, anoms, appCfg, consents] = await Promise.all([
         apiRequest('/api/admin/overview', {}, token, onLogout),
         apiRequest('/api/admin/users', {}, token, onLogout),
         apiRequest('/api/admin/devices', {}, token, onLogout),
         apiRequest('/api/admin/anomalies?limit=100', {}, token, onLogout),
+        apiRequest('/api/admin/app-settings', {}, token, onLogout).catch(() => null),
+        apiRequest('/api/admin/consents?limit=100', {}, token, onLogout).catch(() => null),
       ])
       setOverview(ov)
       setUsers(usrs || [])
       setDevices(devs || [])
       setAnomalies(anoms || [])
+      if (appCfg) setAppSettings(appCfg)
+      if (consents) setConsentsData(consents)
     } catch (err) {
       setNotice({ type: 'error', text: err.message || 'Gagal memuat data Panel Admin.' })
     } finally {
@@ -285,7 +294,7 @@ export function AdminPanel({
     { id: 'users', label: 'Pengguna', icon: Users },
     { id: 'devices', label: 'Perangkat', icon: Cpu },
     { id: 'anomalies', label: 'Anomali', icon: ShieldAlert },
-    { id: 'access', label: 'Akses', icon: Lock },
+    { id: 'settings', label: 'Pengaturan', icon: Sliders },
   ]
 
   return (
@@ -295,7 +304,13 @@ export function AdminPanel({
           <header className="app-header clean-header-inner">
             <div className="header-main-row">
               <div className="admin-head-left">
-                <span className="admin-title-badge">Panel Admin</span>
+                <BrandLogo
+                  theme={theme}
+                  displayMode="logo_only"
+                  appName={appSettings?.app_name || 'VoltKu'}
+                  variant="compact"
+                />
+                <span className="admin-title-badge">Admin</span>
                 <a
                   href="/"
                   target="_blank"
@@ -834,19 +849,21 @@ export function AdminPanel({
             {adminTab === 'anomalies' && (
               <div className="admin-section-stack tab-pane-fade">
                 <div className="clean-sheet admin-toolbar-card">
-                  <select
-                    className="modern-input admin-select"
-                    value={anomDeviceFilter}
-                    onChange={(e) => setAnomDeviceFilter(e.target.value)}
-                    aria-label="Filter Perangkat"
-                  >
-                    <option value="">Semua Perangkat</option>
-                    {devices.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name || d.id}
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ minWidth: 220, flex: '1 1 220px' }}>
+                    <InAppSelect
+                      id="admin-anom-dev-filter"
+                      value={anomDeviceFilter}
+                      onChange={setAnomDeviceFilter}
+                      ariaLabel="Filter Perangkat"
+                      options={[
+                        { value: '', label: 'Semua Perangkat' },
+                        ...devices.map((d) => ({
+                          value: d.id,
+                          label: d.name || d.id,
+                        })),
+                      ]}
+                    />
+                  </div>
 
                   <div className="admin-filter-pills">
                     {[
@@ -902,44 +919,17 @@ export function AdminPanel({
               </div>
             )}
 
-            {adminTab === 'access' && overview && (
-              <div className="admin-section-stack tab-pane-fade settings-single-wrap">
-                <section className="clean-sheet admin-card-block">
-                  <div className="admin-card-head">
-                    <h3>Isolasi Peran: Guest, User Login &amp; Admin</h3>
-                  </div>
-                  <div className="admin-toggle-row">
-                    <div>
-                      <div className="admin-row-title">Izinkan Akses Guest Tanpa Login</div>
-                      <div className="admin-row-sub">
-                        Guest hanya dapat melihat perangkat yang Anda buka akses Guest-nya pada tab Perangkat.
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={overview.public_read_enabled}
-                      className={`admin-switch ${overview.public_read_enabled ? 'on' : ''}`}
-                      onClick={handleTogglePublicAccess}
-                      disabled={togglingAccess}
-                    >
-                      <span className="admin-switch-thumb" />
-                    </button>
-                  </div>
-
-                  <div className="admin-policy-notes">
-                    <div>
-                      <strong>Guest (Tanpa Login):</strong> Hanya melihat perangkat bertanda akses Guest secara <em>read-only</em>; unit akun pembeli lain tetap terisolasi.
-                    </div>
-                    <div>
-                      <strong>Pembeli (User Terdaftar):</strong> Mengklaim unit miliknya dengan kode perangkat serta mengatur tarif &amp; batas daya akunnya sendiri. Token User ditolak (403) di Panel Admin.
-                    </div>
-                    <div>
-                      <strong>Operator (Admin /admin):</strong> Login terpisah menggunakan kata sandi pengelola untuk mengelola tenant, inventaris alat, dan kebijakan akses.
-                    </div>
-                  </div>
-                </section>
-              </div>
+            {adminTab === 'settings' && (
+              <AdminAppSettingsTab
+                token={token}
+                appSettings={appSettings}
+                consentsData={consentsData}
+                onLogout={onLogout}
+                onNotice={setNotice}
+                onSettingsUpdated={async () => {
+                  await loadAdminData()
+                }}
+              />
             )}
           </>
         )}
@@ -1035,19 +1025,19 @@ export function AdminPanel({
                 <label className="field-label" htmlFor="admin-edit-owner">
                   Pemilik Akun (Tenant)
                 </label>
-                <select
+                <InAppSelect
                   id="admin-edit-owner"
-                  className="modern-input"
                   value={editOwnerId}
-                  onChange={(e) => setEditOwnerId(e.target.value)}
-                >
-                  <option value="0">— Stok / Belum Diklaim —</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={String(u.id)}>
-                      {u.name} ({u.email})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setEditOwnerId}
+                  ariaLabel="Pemilik Akun (Tenant)"
+                  options={[
+                    { value: '0', label: '— Stok / Belum Diklaim —' },
+                    ...users.map((u) => ({
+                      value: String(u.id),
+                      label: `${u.name} (${u.email})`,
+                    })),
+                  ]}
+                />
               </div>
               <label className="admin-checkbox-row">
                 <input

@@ -1,5 +1,8 @@
 name: Build VoltKu Android APK
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -57,9 +60,30 @@ jobs:
         working-directory: frontend/android
         run: ./gradlew assembleDebug
 
-      - name: Upload VoltKu APK Artifact
+      - name: Siapkan berkas VoltKu.apk
+        run: |
+          mkdir -p dist-apk
+          APK_FILE=$(find frontend/android/app/build/outputs/apk/debug -maxdepth 2 -name "*.apk" | head -n 1)
+          test -n "$APK_FILE"
+          cp "$APK_FILE" dist-apk/VoltKu.apk
+          ls -lh dist-apk/VoltKu.apk
+
+      - name: Upload VoltKu.apk Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoltKu-android-debug-apk
-          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          name: VoltKu.apk
+          path: dist-apk/VoltKu.apk
           retention-days: 30
+
+      - name: Publikasikan VoltKu.apk di GitHub Release (unduh langsung .apk)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="voltku-apk"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist-apk/VoltKu.apk --clobber
+          else
+            gh release create "$TAG" dist-apk/VoltKu.apk \
+              --title "VoltKu Android APK" \
+              --notes "Build otomatis APK Android VoltKu langsung dari GitHub Actions."
+          fi

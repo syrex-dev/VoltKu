@@ -7,6 +7,7 @@ const DISMISS_SESSION_KEY = 'ml_pwa_banner_dismissed'
 
 export function PwaInstallPrompt({
   hasBottomNav = false,
+  appName = 'VoltKu',
 }) {
   const { canInstall, isInstalled, platform, install } = usePwaInstall()
   const [showBanner, setShowBanner] = useState(false)
@@ -82,22 +83,22 @@ export function PwaInstallPrompt({
           <span className="pwa-toast-check">
             <Check size={14} />
           </span>
-          <span>VoltKu berhasil dipasang di perangkat</span>
+          <span>{appName} berhasil dipasang di perangkat</span>
         </div>
       )}
 
       {showBanner && !isInstalled && !showGuide && (
         <aside
-          aria-label="Pasang VoltKu"
+          aria-label={`Pasang ${appName}`}
           className={`pwa-banner-float ${hasBottomNav ? 'has-bottom' : ''}`}
         >
           <img
             src="/pwa-192.png"
-            alt="VoltKu"
+            alt={appName}
             className="pwa-banner-icon"
           />
           <div className="pwa-banner-copy">
-            <div className="pwa-banner-title">VoltKu</div>
+            <div className="pwa-banner-title">{appName}</div>
             <div className="pwa-banner-sub">Pasang ke layar utama</div>
           </div>
           <div className="pwa-banner-actions">

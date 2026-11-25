@@ -1,7 +1,13 @@
 import React, { useState } from 'react'
-import { Shield, ArrowRight, ArrowLeft } from 'lucide-react'
+import { ArrowRight, ArrowLeft } from 'lucide-react'
+import { BrandLogo } from './BrandLogo'
 
-export function AdminLoginScreen({ onAdminLogin, error }) {
+export function AdminLoginScreen({
+  onAdminLogin,
+  error,
+  theme = 'light',
+  appName = 'VoltKu',
+}) {
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -20,13 +26,13 @@ export function AdminLoginScreen({ onAdminLogin, error }) {
     <div className="auth-hero-backdrop clean-auth-bg">
       <div className="auth-card-modern clean-auth-card">
         <div className="auth-header">
-          <div className="clean-app-logo">
-            <Shield size={26} />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+            <BrandLogo theme={theme} appName={appName} displayMode="logo_only" variant="hero" />
           </div>
-          <span className="admin-login-pill">Portal Operator</span>
-          <h2 className="auth-title">Admin VoltKu</h2>
+          <span className="admin-login-pill">Portal Pengelola</span>
+          <h2 className="auth-title">Panel Admin {appName}</h2>
           <p className="auth-subtitle">
-            Masuk dengan kata sandi pengelola untuk mengatur tenant pengguna, inventaris unit, dan sistem.
+            Masuk dengan kata sandi pengelola untuk mengatur pengguna, inventaris unit, serta kebijakan aplikasi.
           </p>
         </div>
 
@@ -69,4 +75,3 @@ export function AdminLoginScreen({ onAdminLogin, error }) {
     </div>
   )
 }
-

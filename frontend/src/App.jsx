@@ -4,6 +4,7 @@ import { App as CapApp } from '@capacitor/app'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import {
   apiRequest,
+  getOrCreateClientId,
   getStoredUserToken,
   setStoredUserToken,
   isNativeApp,
@@ -29,13 +30,41 @@ import { PwaInstallPrompt } from './components/PwaInstallPrompt'
 import { AdminPanel } from './components/AdminPanel'
 import { TermsAgreementModal } from './components/TermsAgreementModal'
 import { OnboardingTour } from './components/OnboardingTour'
-import { ServerConfigModal } from './components/ServerConfigModal'
 
-const DEFAULT_LOGIN_SUBTITLE = 'Pantau dan kelola pemakaian listrik rumah secara real-time'
+const DEFAULT_LOGIN_SUBTITLE = 'Pantau listrik rumah lebih tenang dan akurat'
 const DEFAULT_TERMS_VERSION = '2026-11-v1'
 const TERMS_STORAGE_KEY = 'voltku_terms_accepted_version'
 const WELCOME_SEEN_KEY = 'voltku_welcome_seen'
 const TOUR_COMPLETED_KEY = 'voltku_tour_completed_v1'
+const THEME_MANUAL_KEY = 'voltku_theme_manual'
+
+const DEFAULT_APP_CONFIG = {
+  app_name: 'VoltKu',
+  app_tagline: DEFAULT_LOGIN_SUBTITLE,
+  navbar_brand_display: 'logo_only',
+  announcement_active: false,
+  announcement_text: '',
+  announcement_url: '',
+  default_theme: 'light',
+  onboarding_enabled: true,
+  onboarding_steps: null,
+  public_read_enabled: true,
+  registration_enabled: true,
+  google_enabled: false,
+  google_auth_enabled: true,
+  google_client_id: null,
+  google_android_client_id: null,
+  require_terms_consent: true,
+  terms_version: DEFAULT_TERMS_VERSION,
+  legal_updated_at: '25 November 2026',
+  terms_title: 'Syarat & Ketentuan Layanan',
+  terms_content: '',
+  privacy_title: 'Kebijakan Privasi',
+  privacy_content: '',
+  support_whatsapp: '',
+  support_telegram: '',
+  support_email: '',
+}
 
 const isDeviceOnlineHelper = (dev, overrideLastTs = null) => {
   if (!dev) return false
@@ -45,8 +74,27 @@ const isDeviceOnlineHelper = (dev, overrideLastTs = null) => {
   return dev.status === 'online' && isRecent
 }
 
-function useThemePreference() {
+function resolveDefaultTheme(defaultTheme = 'light') {
+  if (defaultTheme === 'dark' || defaultTheme === 'light') return defaultTheme
+  if (
+    defaultTheme === 'system' &&
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches
+  ) {
+    return 'dark'
+  }
+  return 'light'
+}
+
+function useThemePreference(serverDefaultTheme = 'light') {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
+
+  useEffect(() => {
+    if (!localStorage.getItem(THEME_MANUAL_KEY) && serverDefaultTheme) {
+      const next = resolveDefaultTheme(serverDefaultTheme)
+      setTheme(next)
+    }
+  }, [serverDefaultTheme])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -64,6 +112,7 @@ function useThemePreference() {
   }, [theme])
 
   const toggleTheme = useCallback(() => {
+    localStorage.setItem(THEME_MANUAL_KEY, '1')
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
   }, [])
 
@@ -74,7 +123,7 @@ function useThemePreference() {
  * Portal Khusus Operator Admin (/admin) — terpisah penuh dari UI Customer / Publik.
  */
 function AdminPortalRoot() {
-  const { theme, toggleTheme } = useThemePreference()
+  const { theme, toggleTheme } = useThemePreference('light')
   const [adminToken, setAdminToken] = useState(
     () => sessionStorage.getItem('admin_token') || ''
   )
@@ -104,7 +153,11 @@ function AdminPortalRoot() {
   if (!adminToken) {
     return (
       <>
-        <AdminLoginScreen onAdminLogin={handleAdminLogin} error={adminLoginError} />
+        <AdminLoginScreen
+          onAdminLogin={handleAdminLogin}
+          error={adminLoginError}
+          theme={theme}
+        />
         <PwaInstallPrompt hasBottomNav={false} />
       </>
     )
@@ -139,7 +192,9 @@ function AdminPortalRoot() {
  * Portal Pelanggan & Publik (/) — Multi-tenant & Mode Demo Tanpa Login (tanpa kontrol Admin).
  */
 function CustomerPortalRoot() {
-  const { theme, toggleTheme } = useThemePreference()
+  const [publicAppConfig, setPublicAppConfig] = useState(DEFAULT_APP_CONFIG)
+  const { theme, toggleTheme } = useThemePreference(publicAppConfig.default_theme)
+
   const [userToken, setUserToken] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const tokenFromUrl = urlParams.get('token')
@@ -154,29 +209,20 @@ function CustomerPortalRoot() {
   const [loginError, setLoginError] = useState(null)
   const [publicReadEnabled, setPublicReadEnabled] = useState(true)
   const [accessChecked, setAccessChecked] = useState(false)
-  const [oauthConfig, setOauthConfig] = useState({
-    google_enabled: false,
-    google_client_id: null,
-    google_android_client_id: null,
-    terms_version: DEFAULT_TERMS_VERSION,
-  })
   const [acceptedTermsVersion, setAcceptedTermsVersion] = useState(
     () => localStorage.getItem(TERMS_STORAGE_KEY) || ''
   )
+  const [submittingConsent, setSubmittingConsent] = useState(false)
   const [termsDeclined, setTermsDeclined] = useState(false)
   const [termsReaderDoc, setTermsReaderDoc] = useState(null)
   const [welcomeSeen, setWelcomeSeen] = useState(
     () => localStorage.getItem(WELCOME_SEEN_KEY) === '1'
   )
   const [showTour, setShowTour] = useState(false)
-  const [isServerModalOpen, setIsServerModalOpen] = useState(false)
   const [showLoginModal, setShowLoginModal] = useState(false)
-  const [loginModalSubtitle, setLoginModalSubtitle] = useState(DEFAULT_LOGIN_SUBTITLE)
+  const [loginModalSubtitle, setLoginModalSubtitle] = useState('')
   const [pendingAddDevice, setPendingAddDevice] = useState(false)
 
-  // Two-tier Navigation:
-  // Home Scope (activeDeviceId === ''): 'home' | 'alerts' | 'settings'
-  // Device Scope (activeDeviceId !== ''): 'live' | 'charts' | 'anomalies' | 'device_settings'
   const [activeTab, setActiveTab] = useState('home')
   const [activeRoom, setActiveRoom] = useState('Semua')
 
@@ -200,26 +246,49 @@ function CustomerPortalRoot() {
   const pollTimerRef = useRef(null)
   const chartTimerRef = useRef(null)
 
-  const activeTermsVersion = oauthConfig.terms_version || DEFAULT_TERMS_VERSION
-  const needsTermsAgreement = acceptedTermsVersion !== activeTermsVersion
-  const isTermsUpdate = Boolean(acceptedTermsVersion) && needsTermsAgreement
+  const activeTermsVersion = publicAppConfig.terms_version || DEFAULT_TERMS_VERSION
+  const consentRequired = publicAppConfig.require_terms_consent !== false
   const isAuthenticated = Boolean(userToken)
+
+  const needsGuestTermsAgreement =
+    consentRequired && !isAuthenticated && acceptedTermsVersion !== activeTermsVersion
+  const needsUserReconsent =
+    consentRequired && isAuthenticated && Boolean(currentUser?.needs_terms_reconsent)
+  const needsTermsAgreement = needsGuestTermsAgreement || needsUserReconsent
+  const isTermsUpdate =
+    needsUserReconsent || (Boolean(acceptedTermsVersion) && needsGuestTermsAgreement)
+
   const showWelcomeGate = !needsTermsAgreement && !termsDeclined && !userToken && !welcomeSeen
   const canReadDashboard = isAuthenticated || (accessChecked && publicReadEnabled)
 
+  const appName = publicAppConfig.app_name || 'VoltKu'
+  const effectiveLoginSubtitle =
+    loginModalSubtitle || publicAppConfig.app_tagline || DEFAULT_LOGIN_SUBTITLE
+
+  useEffect(() => {
+    document.title = appName
+  }, [appName])
+
   const checkPublicAccess = useCallback(async () => {
     try {
-      const [accessRes, oauthRes] = await Promise.all([
+      const [appCfgRes, accessRes, oauthRes] = await Promise.all([
+        apiRequest('/api/public/app-config').catch(() => null),
         apiRequest('/api/public/access').catch(() => null),
         apiRequest('/api/users/oauth-config').catch(() => null),
       ])
-      if (accessRes && typeof accessRes.public_read_enabled === 'boolean') {
-        setPublicReadEnabled(accessRes.public_read_enabled)
+
+      if (appCfgRes) {
+        setPublicAppConfig((prev) => ({ ...prev, ...appCfgRes }))
+        if (typeof appCfgRes.public_read_enabled === 'boolean') {
+          setPublicReadEnabled(appCfgRes.public_read_enabled)
+        }
       } else {
-        setPublicReadEnabled(true)
-      }
-      if (oauthRes) {
-        setOauthConfig((prev) => ({ ...prev, ...oauthRes }))
+        if (accessRes && typeof accessRes.public_read_enabled === 'boolean') {
+          setPublicReadEnabled(accessRes.public_read_enabled)
+        }
+        if (oauthRes) {
+          setPublicAppConfig((prev) => ({ ...prev, ...oauthRes }))
+        }
       }
     } finally {
       setAccessChecked(true)
@@ -230,17 +299,24 @@ function CustomerPortalRoot() {
     checkPublicAccess()
   }, [checkPublicAccess])
 
-  const completeOnboardingSession = useCallback((tokenVal, userObj) => {
-    setUserToken(tokenVal)
-    setStoredUserToken(tokenVal)
-    setCurrentUser(userObj || null)
-    localStorage.setItem(WELCOME_SEEN_KEY, '1')
-    setWelcomeSeen(true)
-    setShowLoginModal(false)
-    setLoginModalSubtitle(DEFAULT_LOGIN_SUBTITLE)
-    setActiveDeviceId('')
-    setActiveTab('home')
-  }, [])
+  const completeOnboardingSession = useCallback(
+    (tokenVal, userObj) => {
+      setUserToken(tokenVal)
+      setStoredUserToken(tokenVal)
+      setCurrentUser(userObj || null)
+      if (userObj?.terms_version_accepted) {
+        localStorage.setItem(TERMS_STORAGE_KEY, userObj.terms_version_accepted)
+        setAcceptedTermsVersion(userObj.terms_version_accepted)
+      }
+      localStorage.setItem(WELCOME_SEEN_KEY, '1')
+      setWelcomeSeen(true)
+      setShowLoginModal(false)
+      setLoginModalSubtitle('')
+      setActiveDeviceId('')
+      setActiveTab('home')
+    },
+    []
+  )
 
   const handleLogout = useCallback(() => {
     setUserToken('')
@@ -270,81 +346,141 @@ function CustomerPortalRoot() {
     }
     apiRequest('/api/users/me', {}, userToken, handleUnauthorized)
       .then((profile) => {
-        // Pastikan portal pelanggan tidak memakai token admin
         if (profile?.role === 'admin') {
           handleLogout()
           return
         }
         setCurrentUser(profile)
+        if (profile?.terms_version_accepted) {
+          localStorage.setItem(TERMS_STORAGE_KEY, profile.terms_version_accepted)
+          setAcceptedTermsVersion(profile.terms_version_accepted)
+        }
       })
       .catch(() => setCurrentUser(null))
   }, [userToken, handleUnauthorized, handleLogout])
 
-  const handleUserLogin = async (email, password) => {
+  const maybeTriggerOnboarding = useCallback(() => {
+    if (
+      publicAppConfig.onboarding_enabled !== false &&
+      localStorage.getItem(TOUR_COMPLETED_KEY) !== '1'
+    ) {
+      setShowTour(true)
+    }
+  }, [publicAppConfig.onboarding_enabled])
+
+  const handleUserLogin = async (email, password, acceptTerms = true) => {
     setLoginError(null)
     try {
       const data = await apiRequest('/api/users/login', {
         method: 'POST',
-        body: { email, password },
+        body: {
+          email,
+          password,
+          accept_terms: Boolean(acceptTerms),
+          accepted_terms_version: activeTermsVersion,
+          client_id: getOrCreateClientId(),
+        },
       })
       completeOnboardingSession(data.token, data.user)
       if (pendingAddDevice) {
         setPendingAddDevice(false)
         setIsAddDeviceOpen(true)
-      } else if (localStorage.getItem(TOUR_COMPLETED_KEY) !== '1') {
-        setShowTour(true)
+      } else {
+        maybeTriggerOnboarding()
       }
     } catch (err) {
       setLoginError(err.message || 'Email atau kata sandi salah.')
     }
   }
 
-  const handleUserRegister = async (name, email, password) => {
+  const handleUserRegister = async (name, email, password, acceptTerms = true) => {
     setLoginError(null)
     try {
       const data = await apiRequest('/api/users/register', {
         method: 'POST',
-        body: { name, email, password },
+        body: {
+          name,
+          email,
+          password,
+          accept_terms: Boolean(acceptTerms),
+          accepted_terms_version: activeTermsVersion,
+          client_id: getOrCreateClientId(),
+        },
       })
       completeOnboardingSession(data.token, data.user)
       if (pendingAddDevice) {
         setPendingAddDevice(false)
         setIsAddDeviceOpen(true)
-      } else if (localStorage.getItem(TOUR_COMPLETED_KEY) !== '1') {
-        setShowTour(true)
+      } else {
+        maybeTriggerOnboarding()
       }
     } catch (err) {
       setLoginError(err.message || 'Pendaftaran akun gagal.')
     }
   }
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = async (acceptTerms = true) => {
     setLoginError(null)
-    const cid = oauthConfig.google_client_id || oauthConfig.google_android_client_id
-    if (!cid || !oauthConfig.google_enabled) {
-      throw new Error(
-        'Login Google belum dikonfigurasi pada server (.env GOOGLE_CLIENT_ID kosong).'
-      )
+    const cid =
+      publicAppConfig.google_client_id || publicAppConfig.google_android_client_id
+    if (!cid || !publicAppConfig.google_enabled) {
+      throw new Error('Masuk dengan Google sedang tidak tersedia saat ini.')
     }
     const idToken = await signInWithGoogleForIdToken(cid)
     const data = await apiRequest('/api/users/google', {
       method: 'POST',
-      body: { id_token: idToken },
+      body: {
+        id_token: idToken,
+        accept_terms: Boolean(acceptTerms),
+        accepted_terms_version: activeTermsVersion,
+        client_id: getOrCreateClientId(),
+      },
     })
     completeOnboardingSession(data.token, data.user)
     if (pendingAddDevice) {
       setPendingAddDevice(false)
       setIsAddDeviceOpen(true)
-    } else if (localStorage.getItem(TOUR_COMPLETED_KEY) !== '1') {
-      setShowTour(true)
+    } else {
+      maybeTriggerOnboarding()
     }
   }
 
-  const handleAgreeTerms = () => {
-    localStorage.setItem(TERMS_STORAGE_KEY, activeTermsVersion)
-    setAcceptedTermsVersion(activeTermsVersion)
-    setTermsDeclined(false)
-    setTermsReaderDoc(null)
+  const handleAgreeTerms = async () => {
+    setSubmittingConsent(true)
+    const clientId = getOrCreateClientId()
+    try {
+      if (userToken) {
+        const updatedUser = await apiRequest(
+          '/api/users/terms-consent',
+          {
+            method: 'POST',
+            body: {
+              accepted: true,
+              terms_version: activeTermsVersion,
+              client_id: clientId,
+            },
+          },
+          userToken,
+          handleUnauthorized
+        )
+        setCurrentUser(updatedUser)
+      } else {
+        await apiRequest('/api/public/terms-consent', {
+          method: 'POST',
+          body: {
+            accepted: true,
+            terms_version: activeTermsVersion,
+            client_id: clientId,
+          },
+        }).catch(() => null)
+      }
+      localStorage.setItem(TERMS_STORAGE_KEY, activeTermsVersion)
+      setAcceptedTermsVersion(activeTermsVersion)
+      setTermsDeclined(false)
+      setTermsReaderDoc(null)
+    } finally {
+      setSubmittingConsent(false)
+    }
   }
 
   const handleDeclineTerms = () => {
@@ -360,9 +496,7 @@ function CustomerPortalRoot() {
     setWelcomeSeen(true)
     setShowLoginModal(false)
     setPendingAddDevice(false)
-    if (localStorage.getItem(TOUR_COMPLETED_KEY) !== '1') {
-      setShowTour(true)
-    }
+    maybeTriggerOnboarding()
   }
 
   const finishTour = () => {
@@ -453,96 +587,104 @@ function CustomerPortalRoot() {
         userToken,
         handleUnauthorized
       )
-      if (today) setTodaySummary(today)
+      setTodaySummary(today)
     } catch {
       setTodaySummary(null)
-    }
-  }, [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized])
-
-  const loadPowerChart = useCallback(async (range) => {
-    if (!canReadDashboard || !activeDeviceId) return
-
-    const nowSec = Math.floor(Date.now() / 1000)
-    let fromSec = nowSec - 5 * 3600
-    let resParam = 'raw'
-
-    if (range === '24h') {
-      fromSec = nowSec - 24 * 3600
-      resParam = '5m'
-    } else if (range === '3d') {
-      fromSec = nowSec - 3 * 86400
-      resParam = '5m'
-    } else if (range === '30d') {
-      fromSec = nowSec - 30 * 86400
-      resParam = '1h'
-    }
-
-    try {
-      const data = await apiRequest(
-        `${readBase}/devices/${activeDeviceId}/series?from=${fromSec}&to=${nowSec}&resolution=${resParam}`,
-        {},
-        userToken,
-        handleUnauthorized
-      )
-      setPowerPoints(data.points || [])
-    } catch {
-      setPowerPoints([])
-    }
-  }, [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized])
-
-  const loadDailyChart = useCallback(async () => {
-    if (!canReadDashboard || !activeDeviceId) return
-    const nowSec = Math.floor(Date.now() / 1000)
-    const fromSec = nowSec - 14 * 86400
-
-    try {
-      const data = await apiRequest(
-        `${readBase}/devices/${activeDeviceId}/series?from=${fromSec}&to=${nowSec}&resolution=1d`,
-        {},
-        userToken,
-        handleUnauthorized
-      )
-      setDailyPoints(data.points || [])
-    } catch {
-      setDailyPoints([])
     }
   }, [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized])
 
   const loadPeriodicData = useCallback(async () => {
     if (!canReadDashboard || !activeDeviceId) return
     try {
-      const [week, month, fc, anom] = await Promise.all([
-        apiRequest(`${readBase}/devices/${activeDeviceId}/summary?range=week`, {}, userToken, handleUnauthorized).catch(() => null),
-        apiRequest(`${readBase}/devices/${activeDeviceId}/summary?range=month`, {}, userToken, handleUnauthorized).catch(() => null),
-        apiRequest(`${readBase}/devices/${activeDeviceId}/forecast`, {}, userToken, handleUnauthorized).catch(() => null),
-        apiRequest(`${readBase}/anomalies?device_id=${activeDeviceId}`, {}, userToken, handleUnauthorized).catch(() => []),
+      const [week, month, fc, anoms] = await Promise.all([
+        apiRequest(
+          `${readBase}/devices/${activeDeviceId}/summary?range=week`,
+          {},
+          userToken,
+          handleUnauthorized
+        ).catch(() => null),
+        apiRequest(
+          `${readBase}/devices/${activeDeviceId}/summary?range=month`,
+          {},
+          userToken,
+          handleUnauthorized
+        ).catch(() => null),
+        apiRequest(
+          `${readBase}/devices/${activeDeviceId}/forecast`,
+          {},
+          userToken,
+          handleUnauthorized
+        ).catch(() => null),
+        apiRequest(
+          `${readBase}/anomalies?device_id=${activeDeviceId}`,
+          {},
+          userToken,
+          handleUnauthorized
+        ).catch(() => []),
       ])
       setWeekSummary(week)
       setMonthSummary(month)
       setForecast(fc)
-      setDeviceAnomalies(anom || [])
+      setDeviceAnomalies(anoms || [])
     } catch (err) {
-      console.error('Gagal memuat periodic data:', err)
+      console.error('Gagal memuat data periodik:', err)
+    }
+  }, [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized])
+
+  const loadPowerChart = useCallback(
+    async (rangeVal) => {
+      if (!canReadDashboard || !activeDeviceId) return
+      const nowSec = Math.floor(Date.now() / 1000)
+      let dur = 5 * 3600
+      if (rangeVal === '24h') dur = 24 * 3600
+      else if (rangeVal === '7d') dur = 7 * 86400
+      const fromTs = nowSec - dur
+
+      try {
+        const res = await apiRequest(
+          `${readBase}/devices/${activeDeviceId}/series?from=${fromTs}&to=${nowSec}&resolution=auto`,
+          {},
+          userToken,
+          handleUnauthorized
+        )
+        setPowerPoints(res?.points || [])
+      } catch {
+        setPowerPoints([])
+      }
+    },
+    [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized]
+  )
+
+  const loadDailyChart = useCallback(async () => {
+    if (!canReadDashboard || !activeDeviceId) return
+    const nowSec = Math.floor(Date.now() / 1000)
+    const fromTs = nowSec - 90 * 86400
+    try {
+      const res = await apiRequest(
+        `${readBase}/devices/${activeDeviceId}/series?from=${fromTs}&to=${nowSec}&resolution=1d`,
+        {},
+        userToken,
+        handleUnauthorized
+      )
+      setDailyPoints(res?.points || [])
+    } catch {
+      setDailyPoints([])
     }
   }, [canReadDashboard, readBase, activeDeviceId, userToken, handleUnauthorized])
 
   useEffect(() => {
-    if (canReadDashboard) {
-      loadSettings()
-      loadDevicesAndAlerts()
+    if (!canReadDashboard) {
+      setDevices([])
+      setGlobalAnomalies([])
+      clearInterval(homePollRef.current)
+      return
     }
-  }, [canReadDashboard, loadSettings, loadDevicesAndAlerts])
-
-  useEffect(() => {
-    if (!canReadDashboard) return
+    loadSettings()
+    loadDevicesAndAlerts()
     clearInterval(homePollRef.current)
-    homePollRef.current = setInterval(() => {
-      if (document.visibilityState !== 'hidden') {
-        loadDevicesAndAlerts()
-      }
-    }, 8000)
+    homePollRef.current = setInterval(loadDevicesAndAlerts, 15000)
     return () => clearInterval(homePollRef.current)
-  }, [canReadDashboard, loadDevicesAndAlerts])
+  }, [canReadDashboard, loadSettings, loadDevicesAndAlerts])
 
   useEffect(() => {
     if (!canReadDashboard || !activeDeviceId) {
@@ -583,7 +725,15 @@ function CustomerPortalRoot() {
       stopIntervals()
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [canReadDashboard, activeDeviceId, powerRange, pollLatest, loadPeriodicData, loadPowerChart, loadDailyChart])
+  }, [
+    canReadDashboard,
+    activeDeviceId,
+    powerRange,
+    pollLatest,
+    loadPeriodicData,
+    loadPowerChart,
+    loadDailyChart,
+  ])
 
   const handleSaveSettings = async (payload) => {
     if (!userToken) {
@@ -635,7 +785,9 @@ function CustomerPortalRoot() {
     if (!isAuthenticated) {
       setPendingAddDevice(true)
       setLoginError(null)
-      setLoginModalSubtitle('Masuk atau daftar akun terlebih dahulu untuk menambahkan panel listrik baru.')
+      setLoginModalSubtitle(
+        'Masuk atau daftar akun terlebih dahulu untuk menambahkan panel listrik baru.'
+      )
       setShowLoginModal(true)
       return
     }
@@ -661,15 +813,12 @@ function CustomerPortalRoot() {
   const activeDeviceOnline = isDeviceOnlineHelper(activeDevice, latestData?.ts)
   const tariffNum = settings?.tariff_sen ? settings.tariff_sen / 100 : 1444.7
 
-  // Dukungan tombol Back Android pada aplikasi Capacitor (.apk)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return undefined
     let handleRef = null
     CapApp.addListener('backButton', () => {
       if (termsReaderDoc) {
         setTermsReaderDoc(null)
-      } else if (isServerModalOpen) {
-        setIsServerModalOpen(false)
       } else if (showTour) {
         finishTour()
       } else if (isAddDeviceOpen) {
@@ -693,15 +842,7 @@ function CustomerPortalRoot() {
         handleRef.remove()
       }
     }
-  }, [
-    termsReaderDoc,
-    isServerModalOpen,
-    showTour,
-    isAddDeviceOpen,
-    showLoginModal,
-    activeDeviceId,
-    activeTab,
-  ])
+  }, [termsReaderDoc, showTour, isAddDeviceOpen, showLoginModal, activeDeviceId, activeTab])
 
   if (!userToken && !accessChecked) {
     return null
@@ -714,7 +855,7 @@ function CustomerPortalRoot() {
           <h2 className="auth-title">Persetujuan Diperlukan</h2>
           <p className="auth-subtitle" style={{ marginTop: 10 }}>
             Untuk melindungi data kelistrikan dan akun Anda, silakan tinjau dan setujui
-            Syarat Penggunaan &amp; Kebijakan Privasi VoltKu.
+            Syarat Penggunaan &amp; Kebijakan Privasi {appName}.
           </p>
           <button
             type="button"
@@ -736,7 +877,14 @@ function CustomerPortalRoot() {
         <TermsAgreementModal
           isOpen
           isUpdate={isTermsUpdate}
+          submitting={submittingConsent}
           termsVersion={activeTermsVersion}
+          legalUpdatedAt={publicAppConfig.legal_updated_at}
+          appName={appName}
+          termsTitle={publicAppConfig.terms_title}
+          termsContent={publicAppConfig.terms_content}
+          privacyTitle={publicAppConfig.privacy_title}
+          privacyContent={publicAppConfig.privacy_content}
           onAgree={handleAgreeTerms}
           onDecline={handleDeclineTerms}
         />
@@ -751,27 +899,32 @@ function CustomerPortalRoot() {
           onLogin={handleUserLogin}
           onRegister={handleUserRegister}
           onGoogleLogin={handleGoogleLogin}
-          googleEnabled={oauthConfig.google_enabled}
+          googleEnabled={publicAppConfig.google_enabled}
+          registrationEnabled={publicAppConfig.registration_enabled !== false}
           termsAccepted={!needsTermsAgreement}
           onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
-          onOpenServerConfig={() => setIsServerModalOpen(true)}
           onTryGuest={publicReadEnabled ? handleEnterGuestMode : undefined}
           error={loginError}
           canClose={false}
+          theme={theme}
+          appName={appName}
+          brandDisplay={publicAppConfig.navbar_brand_display}
+          subtitle={effectiveLoginSubtitle}
         />
         <TermsAgreementModal
           isOpen={Boolean(termsReaderDoc)}
           readOnly
           initialDoc={termsReaderDoc}
           termsVersion={activeTermsVersion}
+          legalUpdatedAt={publicAppConfig.legal_updated_at}
+          appName={appName}
+          termsTitle={publicAppConfig.terms_title}
+          termsContent={publicAppConfig.terms_content}
+          privacyTitle={publicAppConfig.privacy_title}
+          privacyContent={publicAppConfig.privacy_content}
           onClose={() => setTermsReaderDoc(null)}
         />
-        <ServerConfigModal
-          isOpen={isServerModalOpen}
-          onClose={() => setIsServerModalOpen(false)}
-          onSaved={() => checkPublicAccess()}
-        />
-        <PwaInstallPrompt hasBottomNav={false} />
+        <PwaInstallPrompt hasBottomNav={false} appName={appName} />
       </>
     )
   }
@@ -796,13 +949,14 @@ function CustomerPortalRoot() {
         onOpenLogin={() => {
           setPendingAddDevice(false)
           setLoginError(null)
-          setLoginModalSubtitle(DEFAULT_LOGIN_SUBTITLE)
+          setLoginModalSubtitle('')
           setShowLoginModal(true)
         }}
+        onLogout={handleLogout}
+        appConfig={publicAppConfig}
       />
 
       <main className="container main-content-wrap has-bottom-nav">
-        {/* HOME SCOPE (Belum memilih perangkat) */}
         {!isDeviceScope && activeTab === 'home' && (
           <HomeDevicesView
             devices={devices}
@@ -817,9 +971,10 @@ function CustomerPortalRoot() {
             onOpenLogin={() => {
               setPendingAddDevice(false)
               setLoginError(null)
-              setLoginModalSubtitle(DEFAULT_LOGIN_SUBTITLE)
+              setLoginModalSubtitle('')
               setShowLoginModal(true)
             }}
+            appConfig={publicAppConfig}
           />
         )}
 
@@ -847,7 +1002,7 @@ function CustomerPortalRoot() {
               onOpenLogin={() => {
                 setPendingAddDevice(false)
                 setLoginError(null)
-                setLoginModalSubtitle(DEFAULT_LOGIN_SUBTITLE)
+                setLoginModalSubtitle('')
                 setShowLoginModal(true)
               }}
               onLogout={handleLogout}
@@ -857,12 +1012,11 @@ function CustomerPortalRoot() {
                 setShowTour(true)
               }}
               onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
-              onOpenServerConfig={() => setIsServerModalOpen(true)}
+              appConfig={publicAppConfig}
             />
           </div>
         )}
 
-        {/* DEVICE SCOPE (Sudah memilih & masuk ke salah satu perangkat) */}
         {isDeviceScope && activeTab === 'live' && (
           <div className="tab-pane-fade">
             <WarningBanner settings={settings} activeDevice={activeDevice} />
@@ -927,6 +1081,7 @@ function CustomerPortalRoot() {
                 setShowLoginModal(true)
               }}
               onLogout={handleLogout}
+              appConfig={publicAppConfig}
             />
           </div>
         )}
@@ -962,17 +1117,20 @@ function CustomerPortalRoot() {
           onLogin={handleUserLogin}
           onRegister={handleUserRegister}
           onGoogleLogin={handleGoogleLogin}
-          googleEnabled={oauthConfig.google_enabled}
+          googleEnabled={publicAppConfig.google_enabled}
+          registrationEnabled={publicAppConfig.registration_enabled !== false}
           termsAccepted={!needsTermsAgreement}
           onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
-          onOpenServerConfig={() => setIsServerModalOpen(true)}
           error={loginError}
-          subtitle={loginModalSubtitle}
+          subtitle={effectiveLoginSubtitle}
           canClose
+          theme={theme}
+          appName={appName}
+          brandDisplay={publicAppConfig.navbar_brand_display}
           onClose={() => {
             setShowLoginModal(false)
             setPendingAddDevice(false)
-            setLoginModalSubtitle(DEFAULT_LOGIN_SUBTITLE)
+            setLoginModalSubtitle('')
           }}
         />
       )}
@@ -982,28 +1140,23 @@ function CustomerPortalRoot() {
         readOnly
         initialDoc={termsReaderDoc}
         termsVersion={activeTermsVersion}
+        legalUpdatedAt={publicAppConfig.legal_updated_at}
+        appName={appName}
+        termsTitle={publicAppConfig.terms_title}
+        termsContent={publicAppConfig.terms_content}
+        privacyTitle={publicAppConfig.privacy_title}
+        privacyContent={publicAppConfig.privacy_content}
         onClose={() => setTermsReaderDoc(null)}
-      />
-
-      <ServerConfigModal
-        isOpen={isServerModalOpen}
-        onClose={() => setIsServerModalOpen(false)}
-        onSaved={() => {
-          checkPublicAccess()
-          if (canReadDashboard) {
-            loadSettings()
-            loadDevicesAndAlerts()
-          }
-        }}
       />
 
       <OnboardingTour
         isOpen={showTour && !isDeviceScope && activeTab === 'home'}
+        steps={publicAppConfig.onboarding_steps}
         onComplete={finishTour}
         onSkip={finishTour}
       />
 
-      <PwaInstallPrompt hasBottomNav />
+      <PwaInstallPrompt hasBottomNav appName={appName} />
     </div>
   )
 }

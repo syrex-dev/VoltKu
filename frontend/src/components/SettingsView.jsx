@@ -10,15 +10,24 @@ import {
   ChevronRight,
   Compass,
   ShieldCheck,
-  Server,
   Sun,
   Moon,
   Info,
   User,
+  MessageCircle,
+  Send,
+  Mail,
 } from 'lucide-react'
-import { apiRequest, getApiBaseUrl, isNativeApp } from '../api/client'
+import { apiRequest } from '../api/client'
 
 const PRESET_ROOMS = ['Panel Utama', 'Ruang Tamu', 'Kamar Tidur', 'Dapur', 'Lantai 2', 'Warung']
+
+function normalizeWaHref(raw = '') {
+  const digits = String(raw || '').replace(/[^0-9]/g, '')
+  if (!digits) return ''
+  if (digits.startsWith('0')) return `https://wa.me/62${digits.slice(1)}`
+  return `https://wa.me/${digits}`
+}
 
 export function SettingsView({
   mode = 'global',
@@ -36,10 +45,8 @@ export function SettingsView({
   onLogout,
   onReplayTour,
   onOpenTerms,
-  onOpenServerConfig,
+  appConfig = {},
 }) {
-
-  // System Settings State
   const [tariff, setTariff] = useState('')
   const [powerLimit, setPowerLimit] = useState(2200)
   const [cooldown, setCooldown] = useState(30)
@@ -49,7 +56,6 @@ export function SettingsView({
   const [sysErr, setSysErr] = useState(false)
   const [savingSys, setSavingSys] = useState(false)
 
-  // Active Device Settings State
   const [devName, setDevName] = useState('')
   const [devLocation, setDevLocation] = useState('')
   const [devMcb, setDevMcb] = useState(2200)
@@ -298,11 +304,16 @@ export function SettingsView({
     )
   }
 
-  const configuredServer = getApiBaseUrl()
+  const appName = appConfig.app_name || 'VoltKu'
+  const appTagline = appConfig.app_tagline || 'Monitor Listrik Pintar'
+  const termsVersion = appConfig.terms_version || '2026-11-v1'
+  const showOnboardingRow = Boolean(onReplayTour && appConfig.onboarding_enabled !== false)
+  const waHref = normalizeWaHref(appConfig.support_whatsapp)
+  const tgHandle = (appConfig.support_telegram || '').replace(/^@/, '').trim()
+  const supportEmail = (appConfig.support_email || '').trim()
 
   return (
     <div className="settings-single-wrap settings-stack-col">
-      {/* Kartu Profil & Akun ala Mobile Smart-Home */}
       <section className="clean-sheet profile-hero-card">
         <div className="profile-hero-left">
           {currentUser?.avatar_url ? (
@@ -310,6 +321,7 @@ export function SettingsView({
               src={currentUser.avatar_url}
               alt={currentUser.name || 'Profil'}
               className="profile-avatar-img"
+              referrerPolicy="no-referrer"
             />
           ) : (
             <div className="profile-avatar-fallback">
@@ -319,7 +331,7 @@ export function SettingsView({
           <div className="profile-hero-copy">
             <h2 className="profile-hero-name">
               {isAuthenticated
-                ? currentUser?.name || 'Pengguna VoltKu'
+                ? currentUser?.name || `Pengguna ${appName}`
                 : 'Pengguna Tamu (Guest)'}
             </h2>
             <p className="profile-hero-sub">
@@ -358,9 +370,9 @@ export function SettingsView({
         )}
       </section>
 
-      {/* Menu Pengaturan & Aplikasi Berkelompok (Chevron Rows) */}
+      {/* Menu Aplikasi & Dukungan */}
       <section className="clean-sheet app-menu-group">
-        {onReplayTour && (
+        {showOnboardingRow && (
           <button type="button" className="app-menu-row" onClick={onReplayTour}>
             <span className="app-menu-icon is-blue">
               <Compass size={17} />
@@ -380,25 +392,11 @@ export function SettingsView({
             </span>
             <span className="app-menu-copy">
               <strong>Syarat Penggunaan &amp; Kebijakan Privasi</strong>
-              <span>Baca syarat layanan serta perlindungan data pengguna</span>
-            </span>
-            <ChevronRight size={17} className="app-menu-chevron" />
-          </button>
-        )}
-
-        {onOpenServerConfig && (
-          <button type="button" className="app-menu-row" onClick={onOpenServerConfig}>
-            <span className="app-menu-icon is-amber">
-              <Server size={17} />
-            </span>
-            <span className="app-menu-copy">
-              <strong>Alamat Server Backend (.apk &amp; Tunnel)</strong>
               <span>
-                {configuredServer
-                  ? configuredServer
-                  : isNativeApp()
-                  ? 'Belum diatur — ketuk untuk mengisi URL backend'
-                  : 'Mode Web (terhubung ke origin halaman ini)'}
+                Versi {termsVersion}
+                {currentUser?.terms_version_accepted
+                  ? ` · Disetujui (${currentUser.terms_version_accepted})`
+                  : ''}
               </span>
             </span>
             <ChevronRight size={17} className="app-menu-chevron" />
@@ -418,13 +416,57 @@ export function SettingsView({
           </button>
         )}
 
+        {waHref && (
+          <a href={waHref} target="_blank" rel="noreferrer" className="app-menu-row">
+            <span className="app-menu-icon is-emerald">
+              <MessageCircle size={17} />
+            </span>
+            <span className="app-menu-copy">
+              <strong>Bantuan WhatsApp</strong>
+              <span>Hubungi dukungan teknis {appName}</span>
+            </span>
+            <ChevronRight size={17} className="app-menu-chevron" />
+          </a>
+        )}
+
+        {tgHandle && (
+          <a
+            href={`https://t.me/${tgHandle}`}
+            target="_blank"
+            rel="noreferrer"
+            className="app-menu-row"
+          >
+            <span className="app-menu-icon is-blue">
+              <Send size={17} />
+            </span>
+            <span className="app-menu-copy">
+              <strong>Bantuan Telegram</strong>
+              <span>@{tgHandle}</span>
+            </span>
+            <ChevronRight size={17} className="app-menu-chevron" />
+          </a>
+        )}
+
+        {supportEmail && (
+          <a href={`mailto:${supportEmail}`} className="app-menu-row">
+            <span className="app-menu-icon is-amber">
+              <Mail size={17} />
+            </span>
+            <span className="app-menu-copy">
+              <strong>Email Dukungan</strong>
+              <span>{supportEmail}</span>
+            </span>
+            <ChevronRight size={17} className="app-menu-chevron" />
+          </a>
+        )}
+
         <div className="app-menu-row is-static">
           <span className="app-menu-icon is-slate">
             <Info size={17} />
           </span>
           <span className="app-menu-copy">
-            <strong>Tentang VoltKu</strong>
-            <span>Web App + Android APK v0.2.0 · 1 Cloud &amp; MySQL Terpadu</span>
+            <strong>Tentang {appName}</strong>
+            <span>{appTagline}</span>
           </span>
         </div>
       </section>
@@ -451,9 +493,7 @@ export function SettingsView({
 
         <form onSubmit={handleSubmitSystem}>
           {sysMsg && (
-            <div className={`feedback-msg ${sysErr ? 'error' : 'success'}`}>
-              {sysMsg}
-            </div>
+            <div className={`feedback-msg ${sysErr ? 'error' : 'success'}`}>{sysMsg}</div>
           )}
 
           <div className="settings-fields-grid">
