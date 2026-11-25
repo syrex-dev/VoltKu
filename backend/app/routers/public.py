@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,11 +15,18 @@ from app.routers.devices import (
     list_devices_data,
 )
 from app.routers.settings import format_settings_response, get_all_settings
+from app.services.app_config import get_public_app_config, record_terms_consent
 from app.services.reports import calculate_device_forecast, calculate_device_summary
 
 PUBLIC_ACCESS_KEY = "public_dashboard_enabled"
 
 router = APIRouter(prefix="/api/public", tags=["Public"])
+
+
+class PublicTermsConsentRequest(BaseModel):
+    accepted: bool
+    client_id: str
+    terms_version: Optional[str] = None
 
 
 def is_public_dashboard_enabled(session: Session) -> bool:
@@ -56,6 +64,57 @@ def _ensure_public_demo_device(session: Session, device_id: str) -> Device:
 def get_public_access_status(session: Session = Depends(get_db)):
     """Status apakah pengunjung dapat memantau unit demo tanpa login."""
     return {"public_read_enabled": is_public_dashboard_enabled(session)}
+
+
+@router.get("/app-config", response_model=dict[str, Any])
+def get_public_app_configuration(session: Session = Depends(get_db)):
+    """Konfigurasi aplikasi publik (brand, panduan, auth/Google, teks legal, kontak dukungan)."""
+    return get_public_app_config(session)
+
+
+@router.post("/terms-consent", status_code=status.HTTP_201_CREATED, response_model=dict[str, Any])
+def record_public_terms_consent(
+    req: PublicTermsConsentRequest,
+    request: Request,
+    session: Session = Depends(get_db),
+):
+    """Mencatat persetujuan Syarat Penggunaan & Privasi dari pengguna/perangkat sebelum login."""
+    if not req.accepted:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": 422,
+                    "message": "Persetujuan harus bernilai true untuk dicatat.",
+                }
+            },
+        )
+    clean_client = req.client_id.strip()
+    if len(clean_client) < 4 or len(clean_client) > 128:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {"code": 422, "message": "client_id harus antara 4 dan 128 karakter."}
+            },
+        )
+
+    entry = record_terms_consent(
+        session,
+        user=None,
+        email_snapshot=None,
+        client_id=clean_client,
+        accepted_via="guest",
+        accepted_terms_version=req.terms_version,
+        request=request,
+    )
+    session.commit()
+    return {
+        "recorded": True,
+        "id": entry.id,
+        "terms_version": entry.terms_version,
+        "privacy_version": entry.privacy_version,
+        "accepted_at": entry.accepted_at,
+    }
 
 
 @router.get(

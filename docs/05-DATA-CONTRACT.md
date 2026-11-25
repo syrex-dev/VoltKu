@@ -20,11 +20,12 @@ Payload telemetry:
 | Method dan path | Fungsi |
 |---|---|
 | `POST /api/login` | Login legacy/admin `{"password": "..."}`, mengembalikan token JWT `{"token": "..."}` (`role="admin"`). Gagal berulang mengembalikan HTTP 429 (`Retry-After: N`). |
-| `POST /api/users/register` | Registrasi akun pembeli multi-tenant (`name`, `email`, `password` min 6 karakter). Mengembalikan HTTP `201` dengan JWT (`role="user"`) dan profil user. |
-| `POST /api/users/login` | Login akun pembeli (`email`, `password`). Mengembalikan JWT (`role="user"`) dan profil user. Gagal berulang mengembalikan HTTP 429. |
-| `POST /api/users/google` | Login atau registrasi otomatis akun pembeli menggunakan Google ID Token (`{"id_token": "..."}`, berlaku untuk Web GIS & Android APK). Mengembalikan JWT (`role="user"`) dan profil user. |
+| `POST /api/users/register` | Registrasi akun pembeli multi-tenant (`name`, `email`, `password` min 6 karakter, opsional `accept_terms` / `client_id`). Mengembalikan HTTP `201` dengan JWT (`role="user"`) dan profil user serta mencatat persetujuan legal ke database. |
+| `POST /api/users/login` | Login akun pembeli (`email`, `password`, opsional `accept_terms` / `client_id`). Mengembalikan JWT (`role="user"`) dan profil user. Gagal berulang mengembalikan HTTP 429. |
+| `POST /api/users/google` | Login atau registrasi otomatis akun pembeli menggunakan Google ID Token (`{"id_token": "...", "accept_terms": bool, "client_id": "..."}`, berlaku untuk Web GIS & Android APK). Mengembalikan JWT (`role="user"`) dan profil user. |
 | `GET /api/users/oauth-config` | Konfigurasi publik otentikasi klien (`google_enabled`, `google_client_id`, `google_android_client_id`, `terms_version`). |
-| `GET /api/users/me` | Profil akun pembeli yang sedang login (`id`, `name`, `email`, `role`, `auth_provider`, `avatar_url`). |
+| `GET /api/users/me` | Profil akun pembeli yang sedang login (`id`, `name`, `email`, `role`, `auth_provider`, `avatar_url`, `terms_version_accepted`, `terms_accepted_at`, `needs_terms_reconsent`). |
+| `POST /api/users/terms-consent` | Menyimpan/memperbarui persetujuan Syarat & Ketentuan + Privasi pengguna login ke `users` & `terms_consents`. |
 | `POST /api/admin/login` | Login portal Admin terpisah (`/admin`, `{"password": "..."}`). Mengembalikan JWT khusus Admin (`role="admin"`). |
 | `GET /api/devices` | Daftar perangkat dan status dinamis (`online`/`offline`). Token `user` hanya melihat perangkat dengan `owner_user_id = user.id`; token `admin` melihat semua. Parameter opsional `include_latest=true`. |
 | `POST /api/devices` | Daftarkan atau klaim perangkat (`id`, `name`, `location` opsional, `mcb_watt` 100..25000, `claim` opsional default `false`). Untuk token `user`, mengklaim unit tak bertuan (`owner_user_id = NULL`) ke akun user; menolak (`409`) bila sudah dimiliki akun lain. |
@@ -38,19 +39,24 @@ Payload telemetry:
 | `GET /api/settings` | Pengambilan pengaturan aktif (untuk `user`, memadukan preferensi `user_settings` dengan default global). |
 | `PATCH /api/settings` | Pembaruan pengaturan (`tariff_rp`, `power_limit_w`, `alert_cooldown_min`, `extra_percent`, `report_hour`). Untuk `user`, disimpan per tenant di `user_settings`. |
 | `GET /api/public/access` | Status publik `{"public_read_enabled": bool}` untuk mode Tanpa Login. |
+| `GET /api/public/app-config` | Konfigurasi aplikasi publik non-rahasia (identitas brand, format navbar, pengumuman, tema default, langkah panduan, status auth & Google Sign-In, dokumen Syarat & Ketentuan + Privasi, serta kontak dukungan). |
+| `POST /api/public/terms-consent` | Mencatat persetujuan Syarat & Ketentuan + Kebijakan Privasi sesi pengunjung/instalasi aplikasi ke `terms_consents`. |
 | `GET /api/public/*` | Endpoint pantau *read-only* tanpa login hanya untuk perangkat bertanda `is_public_demo = 1` (`/devices`, `/devices/{id}/latest`, `/series`, `/summary`, `/forecast`, `/anomalies`, `/settings`) saat `public_read_enabled = true`; mengembalikan `401` bila dinonaktifkan Admin atau `404` untuk perangkat privat. |
 | `GET /api/admin/overview` | Ringkasan sistem Panel Admin (total/online/offline unit, tenant/user aktif, anomali 7 hari, status MQTT/worker/scheduler/bot, flag akses publik). Wajib `role="admin"`. |
 | `GET/POST /api/admin/users`, `PATCH/DELETE /api/admin/users/{id}` | Manajemen akun tenant/pembeli dari Panel Admin (`role="admin"`). |
 | `GET /api/admin/devices`, `PATCH /api/admin/devices/{id}` | Inventaris semua perangkat beserta pemilik, toggle `is_public_demo`, dan pengalihan `owner_user_id`. Wajib `role="admin"`. |
 | `GET /api/admin/anomalies` | Log anomali lintas semua perangkat dengan filter `device_id`, `severity`, `from`, `limit`. Wajib `role="admin"`. |
 | `GET /api/admin/access`, `PATCH /api/admin/access` | Membaca dan mengubah kebijakan `public_read_enabled`. Wajib `role="admin"`. |
+| `GET /api/admin/app-settings`, `PATCH /api/admin/app-settings` | Membaca dan menyimpan seluruh pengaturan aplikasi (identitas, branding navbar, panduan, autentikasi/Google Client ID, teks/versi Syarat & Ketentuan + Privasi, operasional default, kontak dukungan). Wajib `role="admin"`. |
+| `GET /api/admin/consents` | Audit riwayat persetujuan Syarat & Ketentuan dan Kebijakan Privasi seluruh pengguna & sesi tamu. Wajib `role="admin"`. |
 | `GET /healthz` | Health check (publik) |
 
 Format error: objek `error` berisi `code` dan `message`. Seluruh endpoint `/api/admin/*` (kecuali `/api/admin/login`) wajib Bearer JWT `role="admin"` (`403` untuk token `user`). Seluruh mutasi (`POST`, `PATCH`, `DELETE`) dan rute `/api/devices*`, `/api/anomalies`, `/api/settings` wajib Bearer JWT. Rute `/api/public/*` hanya mengizinkan `GET` pada unit `is_public_demo = 1` saat `public_read_enabled = true`.
 
 ## 3. Model data
 ```
-users(id PK, email UNIQUE, name, password_hash, auth_provider, google_sub UNIQUE NULL, avatar_url NULL, is_active, created_at, last_login_at)
+users(id PK, email UNIQUE, name, password_hash, auth_provider, google_sub UNIQUE NULL, avatar_url NULL, terms_version_accepted NULL, terms_accepted_at NULL, is_active, created_at, last_login_at)
+terms_consents(id PK, user_id FK->users.id NULL, email_snapshot NULL, client_id NULL, terms_version, privacy_version, accepted_via, ip_address NULL, user_agent NULL, accepted_at)
 user_settings(user_id PK, key PK, value)
 devices(id PK, name, location, mcb_watt, owner_user_id FK->users.id NULL, is_public_demo DEFAULT 0, created_at, last_seen_at, last_data_ts, status)
 readings(id PK, device_id, ts, v, i, p, e_kwh, delta_kwh, f, pf, rssi, is_gap)
@@ -61,6 +67,7 @@ anomalies(id PK, device_id, ts, type, severity, details_json, message, notified)
 alert_state(device_id, alert_type, state, since, last_notified_at, details_json)   PK (device_id, alert_type)
 scheduled_reports_log(report_type, report_date, sent_at)   PK (report_type, report_date)
 settings(key PK, value)   -- tariff_sen_per_kwh, extra_percent, power_limit_w, alert_cooldown_min, report_hour, report_enabled
+app_config(key PK, value TEXT, updated_at)   -- branding, panduan, legal/terms, auth toggles, kontak dukungan
 telegram_users(chat_id PK, name)
 chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
 ```

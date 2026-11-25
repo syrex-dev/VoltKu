@@ -195,11 +195,13 @@ def test_route_audit_security_lockdown():
         "/api/users/login",
         "/api/users/google",
         "/api/admin/login",
+        "/api/public/terms-consent",
     }
     public_get_paths = {
         "/healthz",
         "/api/users/oauth-config",
         "/api/public/access",
+        "/api/public/app-config",
         "/api/public/devices",
         "/api/public/devices/{device_id}/latest",
         "/api/public/devices/{device_id}/series",

@@ -16,7 +16,7 @@ from app.auth import (
 )
 from app.config import get_settings
 from app.db import get_db
-from app.models import Anomaly, Device, Reading, Setting, User, UserSetting
+from app.models import Anomaly, Device, Reading, Setting, TermsConsent, User, UserSetting
 from app.mqtt_ingest import ingest_service
 from app.routers.anomalies import query_anomalies_list
 from app.routers.devices import (
@@ -28,6 +28,11 @@ from app.routers.devices import (
 from app.routers.public import PUBLIC_ACCESS_KEY, is_public_dashboard_enabled
 from app.routers.settings import format_settings_response, get_all_settings
 from app.routers.users import EMAIL_RE, _serialize_user
+from app.services.app_config import (
+    get_active_terms_version,
+    get_admin_app_settings,
+    update_admin_app_settings,
+)
 
 auth_router = APIRouter(prefix="/api/admin", tags=["Admin Auth"])
 router = APIRouter(
@@ -61,6 +66,45 @@ class AdminDeviceUpdateRequest(BaseModel):
     mcb_watt: Optional[int] = None
     owner_user_id: Optional[int] = None
     is_public_demo: Optional[bool] = None
+
+
+class AdminAppSettingsUpdateRequest(BaseModel):
+    app_name: Optional[str] = None
+    app_tagline: Optional[str] = None
+    navbar_brand_display: Optional[str] = None
+    announcement_active: Optional[bool] = None
+    announcement_text: Optional[str] = None
+    announcement_url: Optional[str] = None
+    default_theme: Optional[str] = None
+    onboarding_enabled: Optional[bool] = None
+    onboarding_step1_title: Optional[str] = None
+    onboarding_step1_desc: Optional[str] = None
+    onboarding_step2_title: Optional[str] = None
+    onboarding_step2_desc: Optional[str] = None
+    onboarding_step3_title: Optional[str] = None
+    onboarding_step3_desc: Optional[str] = None
+    public_read_enabled: Optional[bool] = None
+    registration_enabled: Optional[bool] = None
+    google_auth_enabled: Optional[bool] = None
+    google_client_id: Optional[str] = None
+    google_android_client_id: Optional[str] = None
+    require_terms_consent: Optional[bool] = None
+    terms_version: Optional[str] = None
+    privacy_version: Optional[str] = None
+    legal_updated_at: Optional[str] = None
+    terms_title: Optional[str] = None
+    terms_content: Optional[str] = None
+    privacy_title: Optional[str] = None
+    privacy_content: Optional[str] = None
+    support_whatsapp: Optional[str] = None
+    support_telegram: Optional[str] = None
+    support_email: Optional[str] = None
+    tariff_rp: Optional[str] = None
+    power_limit_w: Optional[int] = None
+    alert_cooldown_min: Optional[int] = None
+    extra_percent: Optional[float] = None
+    report_hour: Optional[int] = None
+    report_enabled: Optional[bool] = None
 
 
 def _admin_err(code: int, message: str) -> HTTPException:
@@ -237,6 +281,9 @@ def delete_admin_user(user_id: int, session: Session = Depends(get_db)):
     owned = session.scalars(select(Device).where(Device.owner_user_id == user_id)).all()
     for dev in owned:
         dev.owner_user_id = None
+    consents = session.scalars(select(TermsConsent).where(TermsConsent.user_id == user_id)).all()
+    for c in consents:
+        c.user_id = None
     session.execute(delete(UserSetting).where(UserSetting.user_id == user_id))
     session.delete(user)
     session.commit()
@@ -348,3 +395,70 @@ def update_admin_access_policy(
         row.value = val_str
     session.commit()
     return {"public_read_enabled": req.public_read_enabled}
+
+
+@router.get("/app-settings", response_model=dict[str, Any])
+def get_admin_application_settings(session: Session = Depends(get_db)):
+    """Membaca seluruh pengaturan aplikasi (brand, panduan, legal, auth, operasional)."""
+    return get_admin_app_settings(session)
+
+
+@router.patch("/app-settings", response_model=dict[str, Any])
+def update_admin_application_settings(
+    req: AdminAppSettingsUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    """Memperbarui pengaturan aplikasi terpusat dari Panel Admin."""
+    payload = req.model_dump(exclude_unset=True)
+    try:
+        return update_admin_app_settings(session, payload)
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+
+@router.get("/consents", response_model=dict[str, Any])
+def get_admin_terms_consents(
+    limit: int = Query(100, ge=1, le=500),
+    session: Session = Depends(get_db),
+):
+    """Audit riwayat persetujuan Syarat Penggunaan & Kebijakan Privasi pengguna dan tamu."""
+    current_ver = get_active_terms_version(session)
+    rows = session.scalars(
+        select(TermsConsent)
+        .order_by(TermsConsent.accepted_at.desc(), TermsConsent.id.desc())
+        .limit(limit)
+    ).all()
+    users = session.scalars(select(User)).all()
+    users_map = {u.id: u for u in users}
+
+    agreed_current = sum(1 for u in users if u.terms_version_accepted == current_ver)
+    pending_or_outdated = len(users) - agreed_current
+
+    items = []
+    for r in rows:
+        usr = users_map.get(r.user_id) if r.user_id is not None else None
+        items.append(
+            {
+                "id": r.id,
+                "user_id": r.user_id,
+                "user_name": usr.name if usr else None,
+                "email": usr.email if usr else r.email_snapshot,
+                "client_id": r.client_id,
+                "terms_version": r.terms_version,
+                "privacy_version": r.privacy_version,
+                "accepted_via": r.accepted_via,
+                "ip_address": r.ip_address,
+                "user_agent": r.user_agent,
+                "accepted_at": r.accepted_at,
+                "is_current_version": r.terms_version == current_ver,
+            }
+        )
+
+    return {
+        "current_terms_version": current_ver,
+        "users_total": len(users),
+        "users_agreed_current": agreed_current,
+        "users_pending_or_outdated": pending_or_outdated,
+        "total_logged": len(items),
+        "items": items,
+    }

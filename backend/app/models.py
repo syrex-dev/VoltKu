@@ -28,11 +28,32 @@ class User(Base):
     auth_provider: Mapped[str] = mapped_column(String(32), default="local", nullable=False)
     google_sub: Mapped[Optional[str]] = mapped_column(String(128), unique=True, nullable=True)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    terms_version_accepted: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    terms_accepted_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[int] = mapped_column(
         Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
     )
     last_login_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class TermsConsent(Base):
+    __tablename__ = "terms_consents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    email_snapshot: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    client_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    terms_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    privacy_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    accepted_via: Mapped[str] = mapped_column(String(32), default="web", nullable=False)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    accepted_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
 
 
 class UserSetting(Base):
@@ -114,6 +135,16 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(String(256), nullable=False)
+
+
+class AppConfig(Base):
+    __tablename__ = "app_config"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
 
 
 class Anomaly(Base):
