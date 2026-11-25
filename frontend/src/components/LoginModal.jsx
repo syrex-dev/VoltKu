@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowRight, X, FileText, UserCheck } from 'lucide-react'
+import { ArrowRight, X, UserCheck } from 'lucide-react'
 import { BrandLogo } from './BrandLogo'
 
 function GoogleIconSvg() {
@@ -120,20 +120,10 @@ export function LoginModal({
         style={{ position: 'relative' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="native-auth-top-bar">
-          <span />
-          <div className="native-auth-top-right">
-            {onOpenTerms && (
-              <button
-                type="button"
-                className="native-auth-util-btn"
-                onClick={() => onOpenTerms('terms')}
-              >
-                <FileText size={14} />
-                <span>Ketentuan</span>
-              </button>
-            )}
-            {canClose && onClose && (
+        {canClose && onClose && (
+          <div className="native-auth-top-bar">
+            <span />
+            <div className="native-auth-top-right">
               <button
                 type="button"
                 className="btn-icon-close"
@@ -142,9 +132,9 @@ export function LoginModal({
               >
                 <X size={18} />
               </button>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="auth-header">
           <div className="auth-brand-hero">

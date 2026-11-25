@@ -5,6 +5,7 @@
 
 :root,
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg-app: #0d1117;
   --bg-radial: none;
   --surface-card: #161b22;
@@ -25,6 +26,7 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --bg-app: #f4f6f9;
   --bg-radial: none;
   --surface-card: #ffffff;
@@ -44,9 +46,15 @@
   --shadow-card-hover: 0 4px 12px rgba(16, 24, 40, 0.08);
 }
 
-body {
+html,
+body,
+.app-layout {
   background-color: var(--bg-app);
   background-image: none;
+}
+
+html {
+  min-height: 100%;
 }
 
 .brand-blue-text {
@@ -92,6 +100,10 @@ body {
   border: 1px solid var(--border-subtle) !important;
   box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06) !important;
   border-radius: 16px;
+}
+
+.clean-auth-card::before {
+  display: none !important;
 }
 
 .clean-app-logo {
@@ -425,9 +437,10 @@ body {
 
 .clean-room-bar-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   border-bottom: 1px solid var(--border-subtle);
   margin: 0 -2px;
 }
@@ -435,11 +448,11 @@ body {
 .clean-room-tabs-scroll {
   display: flex;
   align-items: center;
-  gap: 18px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  overflow: visible;
   padding: 0 2px;
-  flex: 1;
+  flex: 1 1 210px;
   min-width: 0;
 }
 
@@ -458,6 +471,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
+  margin-left: auto;
   margin-bottom: 6px;
   transition: background-color 0.15s ease;
 }

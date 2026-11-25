@@ -103,12 +103,16 @@ function useThemePreference(serverDefaultTheme = 'light') {
     localStorage.setItem('theme', theme)
     const themeMeta = document.getElementById('app-theme-color')
     if (themeMeta) {
-      themeMeta.setAttribute('content', theme === 'dark' ? '#161b22' : '#ffffff')
+      themeMeta.setAttribute('content', theme === 'dark' ? '#0d1117' : '#ffffff')
+    }
+    const appleStatusMeta = document.getElementById('apple-status-bar-style')
+    if (appleStatusMeta) {
+      appleStatusMeta.setAttribute('content', theme === 'dark' ? 'black-translucent' : 'default')
     }
     if (Capacitor.isNativePlatform()) {
       StatusBar.setStyle({ style: theme === 'dark' ? Style.Dark : Style.Light }).catch(() => {})
       StatusBar.setBackgroundColor({
-        color: theme === 'dark' ? '#161b22' : '#ffffff',
+        color: theme === 'dark' ? '#0d1117' : '#ffffff',
       }).catch(() => {})
     }
   }, [theme])
