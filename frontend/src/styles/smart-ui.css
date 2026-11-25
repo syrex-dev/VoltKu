@@ -5934,6 +5934,81 @@ button,
   color: var(--text-secondary);
 }
 
+.settings-tariff-dropdown {
+  position: relative;
+}
+
+.settings-tariff-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-tariff-trigger-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.settings-tariff-rate-chip {
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(22, 119, 255, 0.1);
+  color: #1677ff;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.settings-tariff-popover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 45;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.2);
+  overflow: hidden;
+}
+
+.settings-tariff-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-inset);
+}
+
+.settings-tariff-cat-btn {
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-tariff-cat-btn.active {
+  background: #1677ff;
+  border-color: #1677ff;
+  color: #ffffff;
+}
+
+.settings-tariff-list {
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .settings-calc-strip {
   display: flex;
   align-items: center;
@@ -6078,10 +6153,13 @@ button,
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 
 .settings-hour-trigger-left svg {
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .settings-hour-caret {

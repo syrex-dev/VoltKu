@@ -8,6 +8,7 @@ import {
   Lock,
   ChevronRight,
   ChevronDown,
+  Check,
   Compass,
   ShieldCheck,
   Zap,
@@ -21,15 +22,158 @@ import { formatNum, formatRp } from '../utils/formatters'
 
 const PRESET_ROOMS = ['Panel Utama', 'Ruang Tamu', 'Kamar Tidur', 'Dapur', 'Lantai 2', 'Warung']
 
-const PLN_TARIFF_PRESETS = [
-  { id: 'r1-900', label: 'R1 900 VA', tariffRp: '1352.00', watt: 900 },
-  { id: 'r1-1300', label: 'R1 1300–2200 VA', tariffRp: '1444.70', watt: 2200 },
-  { id: 'r2-3500', label: 'R2 3500+ VA', tariffRp: '1699.53', watt: 3500 },
+const PLN_TARIFF_CATEGORIES = [
+  { id: 'all', label: 'Semua' },
+  { id: 'rumah', label: 'Rumah' },
+  { id: 'bisnis', label: 'Bisnis' },
+  { id: 'sosial', label: 'Sosial' },
+  { id: 'lainnya', label: 'Industri & Pem' },
 ]
 
-const POWER_PRESETS = [900, 1300, 2200, 3500, 4400, 5500]
+const PLN_TARIFF_PRESETS = [
+  // Rumah Tangga (R)
+  { id: 'r1-450', category: 'rumah', group: 'Rumah Tangga', label: 'R-1/TR · 450 VA (Subsidi)', tariffRp: '415.00' },
+  { id: 'r1-900-sub', category: 'rumah', group: 'Rumah Tangga', label: 'R-1/TR · 900 VA (Subsidi)', tariffRp: '605.00' },
+  { id: 'r1-900-rtm', category: 'rumah', group: 'Rumah Tangga', label: 'R-1/TR · 900 VA (RTM)', tariffRp: '1352.00' },
+  { id: 'r1-1300', category: 'rumah', group: 'Rumah Tangga', label: 'R-1/TR · 1.300 VA', tariffRp: '1444.70' },
+  { id: 'r1-2200', category: 'rumah', group: 'Rumah Tangga', label: 'R-1/TR · 2.200 VA', tariffRp: '1444.70' },
+  { id: 'r2-3500', category: 'rumah', group: 'Rumah Tangga', label: 'R-2/TR · 3.500–5.500 VA', tariffRp: '1699.53' },
+  { id: 'r3-6600', category: 'rumah', group: 'Rumah Tangga', label: 'R-3/TR · ≥ 6.600 VA', tariffRp: '1699.53' },
+  // Bisnis (B)
+  { id: 'b1-450', category: 'bisnis', group: 'Bisnis', label: 'B-1/TR · 450 VA', tariffRp: '254.00' },
+  { id: 'b1-900', category: 'bisnis', group: 'Bisnis', label: 'B-1/TR · 451–900 VA', tariffRp: '420.00' },
+  { id: 'b1-1300', category: 'bisnis', group: 'Bisnis', label: 'B-1/TR · 901–1.300 VA', tariffRp: '966.00' },
+  { id: 'b1-2200', category: 'bisnis', group: 'Bisnis', label: 'B-1/TR · 1.301–5.500 VA', tariffRp: '1100.00' },
+  { id: 'b2-6600', category: 'bisnis', group: 'Bisnis', label: 'B-2/TR · 6.600 VA–200 kVA', tariffRp: '1444.70' },
+  { id: 'b3-tm', category: 'bisnis', group: 'Bisnis', label: 'B-3/TM · > 200 kVA', tariffRp: '1114.74' },
+  // Sosial (S)
+  { id: 's1-450', category: 'sosial', group: 'Sosial', label: 'S-1/TR · 450 VA', tariffRp: '325.00' },
+  { id: 's1-900', category: 'sosial', group: 'Sosial', label: 'S-1/TR · 900 VA', tariffRp: '455.00' },
+  { id: 's1-1300', category: 'sosial', group: 'Sosial', label: 'S-1/TR · 1.300 VA', tariffRp: '708.00' },
+  { id: 's1-2200', category: 'sosial', group: 'Sosial', label: 'S-1/TR · 2.200 VA', tariffRp: '760.00' },
+  { id: 's1-3500', category: 'sosial', group: 'Sosial', label: 'S-1/TR · 3.500 VA–200 kVA', tariffRp: '900.00' },
+  { id: 's2-tm', category: 'sosial', group: 'Sosial', label: 'S-2/TM · > 200 kVA', tariffRp: '925.00' },
+  // Pemerintah & Industri (P / I)
+  { id: 'p1-tr', category: 'lainnya', group: 'Pemerintah & Industri', label: 'P-1/TR · Kantor Pem 6.600 VA–200 kVA', tariffRp: '1699.53' },
+  { id: 'p2-tm', category: 'lainnya', group: 'Pemerintah & Industri', label: 'P-2/TM · Kantor Pem > 200 kVA', tariffRp: '1522.88' },
+  { id: 'p3-tr', category: 'lainnya', group: 'Pemerintah & Industri', label: 'P-3/TR · Penerangan Jalan Umum', tariffRp: '1699.53' },
+  { id: 'i3-tm', category: 'lainnya', group: 'Pemerintah & Industri', label: 'I-3/TM · Industri > 200 kVA', tariffRp: '1114.74' },
+  { id: 'i4-tt', category: 'lainnya', group: 'Pemerintah & Industri', label: 'I-4/TT · Industri ≥ 30.000 kVA', tariffRp: '996.74' },
+]
+
+const POWER_PRESETS = [450, 900, 1300, 2200, 3500, 4400, 5500, 6600]
 const COOLDOWN_PRESETS = [15, 30, 60]
 const REPORT_HOUR_QUICK = [7, 12, 20, 21]
+
+function TariffPresetDropdown({ currentTariffNum, selectedPresetId, disabled, onSelect }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [catFilter, setCatFilter] = useState('all')
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const handleOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setIsOpen(false)
+      }
+    }
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') setIsOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [isOpen])
+
+  const activePreset =
+    PLN_TARIFF_PRESETS.find((p) => p.id === selectedPresetId) ||
+    PLN_TARIFF_PRESETS.find((p) => Math.abs(currentTariffNum - Number(p.tariffRp)) < 0.01)
+
+  const filtered =
+    catFilter === 'all'
+      ? PLN_TARIFF_PRESETS
+      : PLN_TARIFF_PRESETS.filter((p) => p.category === catFilter)
+
+  return (
+    <div className="settings-tariff-dropdown" ref={wrapRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        className={`settings-hour-trigger ${isOpen ? 'open' : ''}`}
+        onClick={() => !disabled && setIsOpen((prev) => !prev)}
+      >
+        <span className="settings-hour-trigger-left">
+          <Zap size={15} className="brand-blue-text" />
+          <span className="settings-tariff-trigger-label">
+            {activePreset ? activePreset.label : 'Pilih Golongan Tarif PLN (atau isi manual)'}
+          </span>
+        </span>
+        <span className="settings-tariff-trigger-right">
+          {activePreset && (
+            <span className="settings-tariff-rate-chip num-tabular">
+              Rp {formatNum(Number(activePreset.tariffRp), 2)}
+            </span>
+          )}
+          <ChevronDown size={15} className="settings-hour-caret" />
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="settings-tariff-popover" role="listbox" aria-label="Daftar Tarif PLN">
+          <div className="settings-tariff-cats">
+            {PLN_TARIFF_CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                className={`settings-tariff-cat-btn ${catFilter === cat.id ? 'active' : ''}`}
+                onClick={() => setCatFilter(cat.id)}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="settings-tariff-list">
+            {filtered.map((item) => {
+              const isSelected = activePreset
+                ? activePreset.id === item.id
+                : Math.abs(currentTariffNum - Number(item.tariffRp)) < 0.01
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`header-panel-item ${isSelected ? 'selected' : ''}`}
+                  onClick={() => {
+                    onSelect(item)
+                    setIsOpen(false)
+                  }}
+                >
+                  <span className="header-panel-item-copy">
+                    <span className="header-panel-item-title">{item.label}</span>
+                    <span className="header-panel-item-sub">{item.group}</span>
+                  </span>
+                  <span className="header-panel-item-right">
+                    <span className="header-panel-item-watt num-tabular">
+                      Rp {formatNum(Number(item.tariffRp), 2)}
+                    </span>
+                    {isSelected && <Check size={15} className="header-panel-check" />}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function formatHourLabel(hour) {
   const h = Math.max(0, Math.min(23, Number(hour) || 0))
@@ -124,6 +268,7 @@ export function SettingsView({
   appConfig = {},
 }) {
   const [tariff, setTariff] = useState('1444.70')
+  const [selectedPresetId, setSelectedPresetId] = useState('')
   const [powerLimit, setPowerLimit] = useState(2200)
   const [cooldown, setCooldown] = useState(30)
   const [extraPercent, setExtraPercent] = useState(0)
@@ -508,23 +653,16 @@ export function SettingsView({
           </div>
 
           <div className="settings-preset-block">
-            <span className="settings-preset-label">Preset Golongan PLN</span>
-            <div className="room-chips-row">
-              {PLN_TARIFF_PRESETS.map((p) => {
-                const isSelected = Math.abs(parsedBaseTariff - Number(p.tariffRp)) < 0.01
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    disabled={!isAuthenticated}
-                    className={`room-chip num-tabular ${isSelected ? 'selected' : ''}`}
-                    onClick={() => setTariff(p.tariffRp)}
-                  >
-                    {p.label}
-                  </button>
-                )
-              })}
-            </div>
+            <span className="settings-preset-label">Golongan Tarif PLN ({PLN_TARIFF_PRESETS.length} Pilihan)</span>
+            <TariffPresetDropdown
+              currentTariffNum={parsedBaseTariff}
+              selectedPresetId={selectedPresetId}
+              disabled={!isAuthenticated}
+              onSelect={(preset) => {
+                setSelectedPresetId(preset.id)
+                setTariff(preset.tariffRp)
+              }}
+            />
           </div>
 
           <div className="settings-fields-grid">
@@ -539,7 +677,10 @@ export function SettingsView({
                   id="settings-view-tariff"
                   className="modern-input has-prefix has-suffix num-tabular"
                   value={tariff}
-                  onChange={(e) => setTariff(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedPresetId('')
+                    setTariff(e.target.value)
+                  }}
                   placeholder="1444.70"
                   disabled={!isAuthenticated}
                   required
