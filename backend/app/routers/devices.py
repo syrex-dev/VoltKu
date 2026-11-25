@@ -605,10 +605,13 @@ def export_device_daily_csv(
         ["tanggal_wib", "energi_kwh", "biaya_rp", "tarif_rp_per_kwh", "daya_puncak_w"]
     )
     for r in rows:
+        day_cell = str(r.day)
+        if day_cell[:1] in ("=", "+", "-", "@", "\t", "\r"):
+            day_cell = f"'{day_cell}"
         tariff_rp = f"{(int(r.tariff_sen) / 100):.2f}"
         writer.writerow(
             [
-                r.day,
+                day_cell,
                 f"{float(r.kwh):.3f}",
                 int(r.cost_rp),
                 tariff_rp,

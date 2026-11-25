@@ -2,7 +2,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth import (
     create_access_token,
     get_current_admin,
+    get_trusted_client_ip,
     hash_password,
     login_limiter,
     verify_password,
@@ -146,30 +148,29 @@ def _admin_err(code: int, message: str) -> HTTPException:
 
 
 @auth_router.post("/login", response_model=dict[str, str])
-def admin_login(req: AdminLoginRequest, response: Response):
-    """Endpoint login terpisah khusus Portal Admin (/admin)."""
-    is_limited, retry_after = login_limiter.check_rate_limit()
+def admin_login(req: AdminLoginRequest, request: Request):
+    """Endpoint login terpisah khusus Portal Admin (/admin) dengan rate limit per IP."""
+    client_ip = get_trusted_client_ip(request)
+    is_limited, retry_after = login_limiter.check_rate_limit(client_ip)
     if is_limited:
-        response.status_code = status.HTTP_429_TOO_MANY_REQUESTS
-        response.headers["Retry-After"] = str(retry_after)
-        return Response(
+        return JSONResponse(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             headers={"Retry-After": str(retry_after)},
-            content='{"error":{"code":429,"message":"Too many failed attempts. Retry later."}}',
-            media_type="application/json",
+            content={
+                "error": {"code": 429, "message": "Too many failed attempts. Retry later."}
+            },
         )
 
     if not verify_password(req.password):
-        delay = login_limiter.record_failure()
+        delay = login_limiter.record_failure(client_ip)
         headers = {"Retry-After": str(delay)} if delay > 0 else {}
-        return Response(
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             headers=headers,
-            content='{"error":{"code":401,"message":"Kata sandi Admin salah"}}',
-            media_type="application/json",
+            content={"error": {"code": 401, "message": "Kata sandi Admin salah"}},
         )
 
-    login_limiter.record_success()
+    login_limiter.record_success(client_ip)
     token = create_access_token(subject="dashboard_admin", role="admin")
     return {"token": token, "token_type": "bearer"}
 

@@ -413,15 +413,9 @@ def update_admin_app_settings(session: Session, payload: dict[str, Any]) -> dict
 def extract_client_ip(request: Optional[Request]) -> Optional[str]:
     if request is None:
         return None
-    cf_ip = request.headers.get("cf-connecting-ip")
-    if cf_ip:
-        return cf_ip.strip()[:64]
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()[:64]
-    if request.client and request.client.host:
-        return request.client.host[:64]
-    return None
+    from app.auth import get_trusted_client_ip
+
+    return get_trusted_client_ip(request)
 
 
 def extract_user_agent(request: Optional[Request]) -> Optional[str]:

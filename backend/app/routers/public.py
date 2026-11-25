@@ -1,10 +1,12 @@
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import get_trusted_client_ip, public_consent_limiter
 from app.config import get_settings
 from app.db import get_db
 from app.models import Device, Setting
@@ -79,6 +81,20 @@ def record_public_terms_consent(
     session: Session = Depends(get_db),
 ):
     """Mencatat persetujuan Syarat Penggunaan & Privasi dari pengguna/perangkat sebelum login."""
+    client_ip = get_trusted_client_ip(request)
+    is_limited, retry_after = public_consent_limiter.check_and_record(client_ip)
+    if is_limited:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry_after)},
+            content={
+                "error": {
+                    "code": 429,
+                    "message": "Terlalu banyak permintaan persetujuan. Coba lagi nanti.",
+                }
+            },
+        )
+
     if not req.accepted:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -3,11 +3,12 @@ import hmac
 import secrets
 import threading
 import time
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -17,56 +18,137 @@ from app.models import User
 
 security_bearer = HTTPBearer(auto_error=False)
 PBKDF2_ITERATIONS = 120_000
+_TRUSTED_PROXY_HOSTS = {"127.0.0.1", "::1", "testclient"}
+_MAX_RATE_LIMIT_KEYS = 10_000
+
+
+def get_trusted_client_ip(request: Optional[Request]) -> str:
+    """Ekstrak IP klien secara aman: hanya percaya header proxy bila berasal dari loopback lokal."""
+    if request is None:
+        return "global"
+    peer_host = request.client.host.strip() if (request.client and request.client.host) else ""
+    if peer_host in _TRUSTED_PROXY_HOSTS or not peer_host:
+        cf_ip = request.headers.get("cf-connecting-ip")
+        if cf_ip and cf_ip.strip():
+            return cf_ip.strip()[:64]
+        x_real = request.headers.get("x-real-ip")
+        if x_real and x_real.strip():
+            return x_real.strip()[:64]
+        xff = request.headers.get("x-forwarded-for")
+        if xff and xff.strip():
+            return xff.split(",")[0].strip()[:64]
+    return (peer_host or "unknown")[:64]
+
+
+class _FailureBucket:
+    __slots__ = ("failure_count", "lockout_until", "last_seen")
+
+    def __init__(self) -> None:
+        self.failure_count = 0
+        self.lockout_until = 0.0
+        self.last_seen = time.monotonic()
 
 
 class LoginRateLimiter:
-    """Rate limiter untuk endpoint login berbasis backoff bertahap tanpa sleep blocking."""
+    """Rate limiter untuk endpoint login berbasis backoff bertahap per IP tanpa sleep blocking."""
 
     def __init__(self, max_delay: int = 30) -> None:
-        self.failure_count = 0
-        self.lockout_until = 0.0
         self.max_delay = max_delay
+        self._buckets: dict[str, _FailureBucket] = {}
         self._lock = threading.Lock()
 
-    def check_rate_limit(self) -> tuple[bool, int]:
-        """Memeriksa apakah login sedang dibatasi. Mengembalikan (is_limited, retry_after_detik)."""
+    def _evict_if_full(self) -> None:
+        if len(self._buckets) < _MAX_RATE_LIMIT_KEYS:
+            return
+        now_mono = time.monotonic()
+        expired = [k for k, v in self._buckets.items() if (now_mono - v.last_seen) > 3600]
+        for k in expired:
+            del self._buckets[k]
+        while len(self._buckets) >= _MAX_RATE_LIMIT_KEYS:
+            oldest_key = min(self._buckets, key=lambda k: self._buckets[k].last_seen)
+            del self._buckets[oldest_key]
+
+    def check_rate_limit(self, key: str = "global") -> tuple[bool, int]:
+        """Memeriksa apakah key/IP dibatasi. Mengembalikan (is_limited, retry_after_detik)."""
         now = time.time()
         with self._lock:
-            if now < self.lockout_until:
-                retry_after = max(1, int(self.lockout_until - now + 0.99))
+            bucket = self._buckets.get(key)
+            if bucket and now < bucket.lockout_until:
+                retry_after = max(1, int(bucket.lockout_until - now + 0.99))
                 return True, min(retry_after, self.max_delay)
             return False, 0
 
-    def record_failure(self) -> int:
-        """Mencatat kegagalan login.
-
-        Jika >= 5 kegagalan berturut-turut, kunci sementara dengan backoff.
-        """
+    def record_failure(self, key: str = "global") -> int:
+        """Mencatat kegagalan login untuk key/IP. Backoff aktif setelah >= 5 kegagalan."""
         now = time.time()
         with self._lock:
-            self.failure_count += 1
-            if self.failure_count >= 5:
-                # Backoff eksponensial: 2 detik, 4 detik, ..., maksimal 30 detik
-                delay = min(self.max_delay, 2 ** (self.failure_count - 4))
-                self.lockout_until = now + delay
+            bucket = self._buckets.get(key)
+            if bucket is None:
+                self._evict_if_full()
+                bucket = _FailureBucket()
+                self._buckets[key] = bucket
+            bucket.last_seen = time.monotonic()
+            bucket.failure_count += 1
+            if bucket.failure_count >= 5:
+                delay = min(self.max_delay, 2 ** (bucket.failure_count - 4))
+                bucket.lockout_until = now + delay
                 return delay
             return 0
 
-    def record_success(self) -> None:
+    def record_success(self, key: str = "global") -> None:
         """Mereset riwayat kegagalan setelah login berhasil."""
         with self._lock:
-            self.failure_count = 0
-            self.lockout_until = 0.0
+            self._buckets.pop(key, None)
 
     def reset(self) -> None:
-        """Reset untuk keperluan pengujian."""
+        """Reset semua bucket untuk keperluan pengujian."""
         with self._lock:
-            self.failure_count = 0
-            self.lockout_until = 0.0
+            self._buckets.clear()
+
+
+class SlidingWindowRateLimiter:
+    """Rate limiter sliding-window per key/IP untuk proteksi spam & burst DDoS."""
+
+    def __init__(self, max_requests: int, window_seconds: int) -> None:
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._hits: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def check_and_record(self, key: str = "global") -> tuple[bool, int]:
+        """Mengembalikan (is_limited, retry_after_seconds)."""
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            if key not in self._hits and len(self._hits) >= _MAX_RATE_LIMIT_KEYS:
+                stale = [k for k, dq in self._hits.items() if not dq or dq[-1] < cutoff]
+                for k in stale:
+                    del self._hits[k]
+                while len(self._hits) >= _MAX_RATE_LIMIT_KEYS:
+                    oldest_key = next(iter(self._hits))
+                    del self._hits[oldest_key]
+
+            dq = self._hits.setdefault(key, deque())
+            while dq and dq[0] <= cutoff:
+                dq.popleft()
+
+            if len(dq) >= self.max_requests:
+                retry_after = max(1, int(dq[0] + self.window_seconds - now + 0.99))
+                return True, retry_after
+
+            dq.append(now)
+            return False, 0
+
+    def reset(self) -> None:
+        with self._lock:
+            self._hits.clear()
 
 
 login_limiter = LoginRateLimiter(max_delay=30)
 user_login_limiter = LoginRateLimiter(max_delay=30)
+register_limiter = SlidingWindowRateLimiter(max_requests=10, window_seconds=600)
+public_consent_limiter = SlidingWindowRateLimiter(max_requests=30, window_seconds=600)
+api_burst_limiter = SlidingWindowRateLimiter(max_requests=180, window_seconds=10)
 
 
 def hash_password(plain_password: str) -> str:
@@ -107,6 +189,15 @@ def verify_password(plain_password: str) -> bool:
     return hmac.compare_digest(plain_password.encode("utf-8"), configured_password.encode("utf-8"))
 
 
+def _resolve_jwt_secret() -> str:
+    settings = get_settings()
+    if settings.jwt_secret and len(settings.jwt_secret.strip()) >= 32:
+        return settings.jwt_secret.strip()
+    if settings.app_env == "test":
+        return settings.jwt_secret or "dummy_secret_for_testing_purposes_only_32_chars"
+    raise RuntimeError("JWT_SECRET must be configured (>= 32 chars) outside test mode")
+
+
 def create_access_token(
     subject: str = "dashboard_user",
     expires_delta: Optional[timedelta] = None,
@@ -114,7 +205,6 @@ def create_access_token(
     user_id: Optional[int] = None,
 ) -> str:
     """Membuat token JWT HS256 dengan klaim role (admin/user) dan user_id opsional."""
-    settings = get_settings()
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(hours=24))
     payload: dict[str, Any] = {
@@ -125,14 +215,13 @@ def create_access_token(
     }
     if user_id is not None:
         payload["uid"] = int(user_id)
-    secret = settings.jwt_secret or "dummy_secret_for_testing_purposes_only_32_chars"
+    secret = _resolve_jwt_secret()
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
 def verify_token(token: str) -> dict[str, Any]:
     """Memverifikasi token JWT secara ketat menolak algoritma selain HS256."""
-    settings = get_settings()
-    secret = settings.jwt_secret or "dummy_secret_for_testing_purposes_only_32_chars"
+    secret = _resolve_jwt_secret()
     try:
         payload = jwt.decode(token, secret, algorithms=["HS256"])
         if "role" not in payload:

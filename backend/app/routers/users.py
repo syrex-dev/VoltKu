@@ -1,9 +1,9 @@
-import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from app.auth import (
     create_access_token,
     get_current_user,
+    get_trusted_client_ip,
     hash_password,
+    register_limiter,
     user_login_limiter,
     verify_user_password,
 )
@@ -35,6 +37,7 @@ router = APIRouter(prefix="/api/users", tags=["Users"])
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 GOOGLE_ONLY_PASSWORD_SENTINEL = "!google_oauth_only"
+WEAK_PASSWORDS = {"123456", "12345678", "password", "qwerty", "admin123", "abcdef"}
 
 
 class UserRegisterRequest(BaseModel):
@@ -122,7 +125,21 @@ def register_user(
     request: Request,
     session: Session = Depends(get_db),
 ):
-    """Registrasi akun pembeli baru untuk mode multi-tenant."""
+    """Registrasi akun pembeli baru untuk mode multi-tenant dengan batas laju per IP."""
+    client_ip = get_trusted_client_ip(request)
+    is_limited, retry_after = register_limiter.check_and_record(client_ip)
+    if is_limited:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry_after)},
+            content={
+                "error": {
+                    "code": 429,
+                    "message": "Terlalu banyak pendaftaran dari IP ini. Coba lagi nanti.",
+                }
+            },
+        )
+
     if not is_registration_enabled(session):
         raise _api_error(
             status.HTTP_403_FORBIDDEN,
@@ -150,6 +167,11 @@ def register_user(
         raise _api_error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Kata sandi minimal 6 karakter",
+        )
+    if req.password.strip().lower() in WEAK_PASSWORDS:
+        raise _api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Kata sandi terlalu lemah. Gunakan kombinasi huruf dan angka yang lebih kuat.",
         )
 
     existing = session.scalar(select(User).where(User.email == clean_email))
@@ -205,37 +227,35 @@ def register_user(
 def login_user(
     req: UserLoginRequest,
     request: Request,
-    response: Response,
     session: Session = Depends(get_db),
 ):
-    """Login akun pembeli dengan proteksi rate limit."""
+    """Login akun pembeli dengan proteksi rate limit per IP."""
     if req.accept_terms is False:
         raise _api_error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Anda harus menyetujui Syarat Penggunaan & Kebijakan Privasi.",
         )
 
-    is_limited, retry_after = user_login_limiter.check_rate_limit()
+    client_ip = get_trusted_client_ip(request)
+    is_limited, retry_after = user_login_limiter.check_rate_limit(client_ip)
     if is_limited:
-        response.status_code = status.HTTP_429_TOO_MANY_REQUESTS
-        response.headers["Retry-After"] = str(retry_after)
-        return Response(
+        return JSONResponse(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             headers={"Retry-After": str(retry_after)},
-            content='{"error":{"code":429,"message":"Too many failed attempts. Retry later."}}',
-            media_type="application/json",
+            content={
+                "error": {"code": 429, "message": "Too many failed attempts. Retry later."}
+            },
         )
 
     clean_email = req.email.strip().lower()
     user = session.scalar(select(User).where(User.email == clean_email))
     if not user or not verify_user_password(req.password, user.password_hash):
-        delay = user_login_limiter.record_failure()
+        delay = user_login_limiter.record_failure(client_ip)
         headers = {"Retry-After": str(delay)} if delay > 0 else {}
-        return Response(
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             headers=headers,
-            content='{"error":{"code":401,"message":"Email atau kata sandi salah"}}',
-            media_type="application/json",
+            content={"error": {"code": 401, "message": "Email atau kata sandi salah"}},
         )
 
     if not user.is_active:
@@ -244,7 +264,7 @@ def login_user(
             "Akun dinonaktifkan oleh pengelola. Hubungi dukungan.",
         )
 
-    user_login_limiter.record_success()
+    user_login_limiter.record_success(client_ip)
     user.last_login_at = int(datetime.now(timezone.utc).timestamp())
 
     cfg_map = get_app_config_map(session)
@@ -299,7 +319,6 @@ def get_oauth_config(session: Session = Depends(get_db)):
 def login_with_google(
     req: GoogleLoginRequest,
     request: Request,
-    response: Response,
     session: Session = Depends(get_db),
 ):
     """Autentikasi atau pendaftaran akun pelanggan via Google ID Token (Web & APK)."""
@@ -309,15 +328,15 @@ def login_with_google(
             "Anda harus menyetujui Syarat Penggunaan & Kebijakan Privasi.",
         )
 
-    is_limited, retry_after = user_login_limiter.check_rate_limit()
+    client_ip = get_trusted_client_ip(request)
+    is_limited, retry_after = user_login_limiter.check_rate_limit(client_ip)
     if is_limited:
-        response.status_code = status.HTTP_429_TOO_MANY_REQUESTS
-        response.headers["Retry-After"] = str(retry_after)
-        return Response(
+        return JSONResponse(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             headers={"Retry-After": str(retry_after)},
-            content='{"error":{"code":429,"message":"Too many failed attempts. Retry later."}}',
-            media_type="application/json",
+            content={
+                "error": {"code": 429, "message": "Too many failed attempts. Retry later."}
+            },
         )
 
     cfg_map = get_app_config_map(session)
@@ -336,13 +355,12 @@ def login_with_google(
     try:
         g_profile = verify_google_id_token(req.id_token, oauth["allowed_client_ids"])
     except GoogleTokenError as err:
-        delay = user_login_limiter.record_failure()
+        delay = user_login_limiter.record_failure(client_ip)
         headers = {"Retry-After": str(delay)} if delay > 0 else {}
-        return Response(
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             headers=headers,
-            content=json.dumps({"error": {"code": 401, "message": str(err)}}),
-            media_type="application/json",
+            content={"error": {"code": 401, "message": str(err)}},
         )
 
     now_utc = int(datetime.now(timezone.utc).timestamp())
@@ -397,7 +415,7 @@ def login_with_google(
 
     session.commit()
     session.refresh(user)
-    user_login_limiter.record_success()
+    user_login_limiter.record_success(client_ip)
 
     token = create_access_token(subject=user.email, role="user", user_id=user.id)
     return {

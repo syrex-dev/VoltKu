@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.auth import api_burst_limiter, get_trusted_client_ip
 from app.config import get_settings, validate_startup_credentials
 from app.db import init_db
 from app.mqtt_ingest import ingest_service
@@ -27,20 +28,47 @@ settings = get_settings()
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        req_path = request.url.path
+        if settings.app_env != "test" and req_path.startswith("/api/"):
+            client_ip = get_trusted_client_ip(request)
+            limited, retry_after = api_burst_limiter.check_and_record(client_ip)
+            if limited:
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error": {
+                            "code": 429,
+                            "message": "Terlalu banyak permintaan. Coba beberapa saat lagi.",
+                        }
+                    },
+                    headers={"Retry-After": str(retry_after)},
+                )
+
         response: Response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self' data: blob:; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com; "
+            "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
             "style-src 'self' 'unsafe-inline' "
             "https://fonts.googleapis.com https://accounts.google.com; "
             "frame-src 'self' https://accounts.google.com; "
             "connect-src 'self' http: https: ws: wss:; "
             "img-src 'self' data: blob: https:; "
-            "font-src 'self' data: https://fonts.gstatic.com;"
+            "font-src 'self' data: https://fonts.gstatic.com; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none';"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        req_path = request.url.path
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(self), microphone=(), geolocation=(), payment=()"
+        )
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "").lower()
+        if proto == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
         if req_path in (
             "/",
             "/index.html",
@@ -87,24 +115,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         ingest_service.stop_worker()
 
 
+_is_prod = settings.app_env == "production"
 app = FastAPI(
     title=settings.app_name,
     description="Backend API VoltKu (IoT + AI)",
     version="0.2.0",
     lifespan=lifespan,
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
 )
 
 # Pasang Security Headers
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Pasang CORS Middleware untuk mendukung Vite dev server,
-# dashboard, & remote tunnel akses luar jaringan
+# Pasang CORS Middleware hanya untuk origin tepercaya (konfigurasi di ALLOWED_CORS_ORIGINS)
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https?://.*",
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 

@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     recording_notifier: bool = False
     alert_exclude_device_prefixes: str = "sim-"
     public_dashboard_enabled: bool = True
+    cors_allowed_origins: str = (
+        "https://voltku.synemax.web.id,"
+        "https://localhost,"
+        "http://localhost,"
+        "capacitor://localhost,"
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173,"
+        "http://127.0.0.1:8000"
+    )
 
     # Konstanta Tegangan (Bukan di DB settings)
     voltage_min_v: float = 200.0
@@ -77,6 +86,10 @@ class Settings(BaseSettings):
                 if val not in ids:
                     ids.append(val)
         return ids
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
     @property
     def allowed_chat_id_list(self) -> list[int]:
