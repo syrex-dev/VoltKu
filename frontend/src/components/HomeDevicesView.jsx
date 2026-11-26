@@ -343,8 +343,9 @@ export function HomeDevicesView({
 
                 <div className="clean-card-middle">
                   <div className="clean-card-title">{device.name || device.id}</div>
-                  <div className="clean-card-room">
-                    {device.location || 'Panel Listrik'} · MCB {mcbCap} W
+                  <div className="clean-card-meta-row">
+                    <span className="clean-card-room-loc">{device.location || 'Panel Utama'}</span>
+                    <span className="clean-card-mcb-pill num-tabular">MCB {mcbCap} W</span>
                   </div>
                   {watts !== null && (
                     <div className="clean-card-mcb-track" aria-hidden="true">

@@ -26,12 +26,21 @@ export function HeroBannerCarousel({
 }) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [paused, setPaused] = useState(false)
-  const trackRef = useRef(null)
-  const activeIndexRef = useRef(0)
-  const rafRef = useRef(0)
-  const settleTimerRef = useRef(null)
-  const touchStartPosRef = useRef(null)
-  const suppressNextClickRef = useRef(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragOffsetPx, setDragOffsetPx] = useState(0)
+  const [dragViewportWidth, setDragViewportWidth] = useState(340)
+
+  const viewportRef = useRef(null)
+  const gestureRef = useRef({
+    active: false,
+    axis: null, // null | 'x' | 'y'
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+    width: 340,
+    lastDx: 0,
+  })
+  const suppressClickRef = useRef(false)
 
   const slides = useMemo(() => {
     const proCfg = appConfig.plans?.pro || {
@@ -158,109 +167,107 @@ export function HeroBannerCarousel({
     onOpenLogin,
   ])
 
-  const safeActiveIndex = slides.length > 0 ? activeIndex % slides.length : 0
+  const slideCount = slides.length
+  const safeActiveIndex = slideCount > 0 ? activeIndex % slideCount : 0
 
   useEffect(() => {
-    activeIndexRef.current = safeActiveIndex
-  }, [safeActiveIndex])
-
-  const commitActiveIndex = useCallback((nextIdx) => {
-    const clamped = Math.max(0, Math.min(slides.length - 1, nextIdx))
-    if (activeIndexRef.current !== clamped) {
-      activeIndexRef.current = clamped
-      setActiveIndex(clamped)
-    }
-  }, [slides.length])
-
-  // Baca indeks slide terdekat dari posisi scroll aktual DOM track
-  const measureNearestSlideIndex = useCallback(() => {
-    const el = trackRef.current
-    if (!el || el.children.length === 0) return
-    const scrollLeft = el.scrollLeft
-    let bestIdx = 0
-    let bestDist = Infinity
-    for (let i = 0; i < el.children.length; i += 1) {
-      const child = el.children[i]
-      const dist = Math.abs(child.offsetLeft - scrollLeft)
-      if (dist < bestDist) {
-        bestDist = dist
-        bestIdx = i
-      }
-    }
-    commitActiveIndex(bestIdx)
-  }, [commitActiveIndex])
-
-  const scrollToSlide = useCallback((idx) => {
-    const el = trackRef.current
-    if (!el || slides.length === 0) return
-    const clamped = Math.max(0, Math.min(slides.length - 1, idx))
-    const targetChild = el.children[clamped]
-    const targetLeft = targetChild ? targetChild.offsetLeft : clamped * el.clientWidth
-    commitActiveIndex(clamped)
-    el.scrollTo({ left: targetLeft, behavior: 'smooth' })
-  }, [slides.length, commitActiveIndex])
-
-  // Auto-advance timer di luar state updater React
-  useEffect(() => {
-    if (paused || slides.length <= 1) return undefined
+    if (paused || isDragging || slideCount <= 1) return undefined
     const timer = window.setInterval(() => {
-      const next = (activeIndexRef.current + 1) % slides.length
-      scrollToSlide(next)
+      setActiveIndex((prev) => (prev + 1) % slideCount)
     }, AUTO_SCROLL_MS)
     return () => window.clearInterval(timer)
-  }, [paused, slides.length, scrollToSlide])
+  }, [paused, isDragging, slideCount])
 
-  // Sinkronisasi multi-jalur: scroll rAF langsung + scrollend + IntersectionObserver
-  useEffect(() => {
-    const el = trackRef.current
-    if (!el) return undefined
+  const startGesture = useCallback((clientX, clientY) => {
+    if (slideCount <= 1) return
+    const width = viewportRef.current?.clientWidth || 340
+    setDragViewportWidth(width)
+    gestureRef.current = {
+      active: true,
+      axis: null,
+      startX: clientX,
+      startY: clientY,
+      startTime: performance.now(),
+      width,
+      lastDx: 0,
+    }
+    suppressClickRef.current = false
+    setPaused(true)
+  }, [slideCount])
 
-    const handleNativeScroll = () => {
-      if (rafRef.current) {
-        window.cancelAnimationFrame(rafRef.current)
+  const moveGesture = useCallback(
+    (clientX, clientY) => {
+      const g = gestureRef.current
+      if (!g.active) return
+      const dx = clientX - g.startX
+      const dy = clientY - g.startY
+
+      if (!g.axis) {
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return
+        if (Math.abs(dy) > Math.abs(dx)) {
+          g.axis = 'y'
+          g.active = false
+          setIsDragging(false)
+          setDragOffsetPx(0)
+          return
+        }
+        g.axis = 'x'
+        suppressClickRef.current = true
+        setIsDragging(true)
       }
-      rafRef.current = window.requestAnimationFrame(() => {
-        measureNearestSlideIndex()
-      })
-      if (settleTimerRef.current) {
-        window.clearTimeout(settleTimerRef.current)
+
+      if (g.axis === 'x') {
+        let clampedDx = dx
+        if ((safeActiveIndex === 0 && dx > 0) || (safeActiveIndex === slideCount - 1 && dx < 0)) {
+          clampedDx = dx * 0.28
+        }
+        g.lastDx = clampedDx
+        setDragOffsetPx(clampedDx)
       }
-      settleTimerRef.current = window.setTimeout(() => {
-        measureNearestSlideIndex()
-      }, 120)
+    },
+    [safeActiveIndex, slideCount]
+  )
+
+  const endGesture = useCallback(() => {
+    const g = gestureRef.current
+    if (!g.active && !isDragging) {
+      setPaused(false)
+      return
+    }
+    const dx = g.lastDx
+    const width = Math.max(1, g.width)
+    const elapsed = Math.max(1, performance.now() - g.startTime)
+    const velocity = dx / elapsed
+
+    g.active = false
+    g.axis = null
+    g.lastDx = 0
+    setIsDragging(false)
+    setDragOffsetPx(0)
+    setPaused(false)
+
+    let nextIdx = safeActiveIndex
+    if (dx <= -width * 0.22 || velocity <= -0.28) {
+      nextIdx = Math.min(slideCount - 1, safeActiveIndex + 1)
+    } else if (dx >= width * 0.22 || velocity >= 0.28) {
+      nextIdx = Math.max(0, safeActiveIndex - 1)
     }
 
-    el.addEventListener('scroll', handleNativeScroll, { passive: true })
-    el.addEventListener('scrollend', measureNearestSlideIndex, { passive: true })
+    setActiveIndex(nextIdx)
+  }, [isDragging, safeActiveIndex, slideCount])
 
-    let observer = null
-    if (typeof IntersectionObserver !== 'undefined') {
-      observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting && entry.intersectionRatio >= 0.55) {
-              const idxAttr = Number(entry.target.getAttribute('data-slide-idx'))
-              if (!Number.isNaN(idxAttr)) {
-                commitActiveIndex(idxAttr)
-              }
-            }
-          }
-        },
-        { root: el, threshold: 0.55 }
+  if (slideCount === 0) return null
+
+  // Hitung indikator dot secara sinkron 0ms langsung dari pergeseran jari
+  const displayDotIndex = isDragging
+    ? Math.max(
+        0,
+        Math.min(
+          slideCount - 1,
+          Math.round(safeActiveIndex - dragOffsetPx / Math.max(1, dragViewportWidth))
+        )
       )
-      Array.from(el.children).forEach((child) => observer.observe(child))
-    }
-
-    return () => {
-      el.removeEventListener('scroll', handleNativeScroll)
-      el.removeEventListener('scrollend', measureNearestSlideIndex)
-      if (rafRef.current) window.cancelAnimationFrame(rafRef.current)
-      if (settleTimerRef.current) window.clearTimeout(settleTimerRef.current)
-      if (observer) observer.disconnect()
-    }
-  }, [slides.length, measureNearestSlideIndex, commitActiveIndex])
-
-  if (slides.length === 0) return null
+    : safeActiveIndex
 
   return (
     <section
@@ -268,80 +275,92 @@ export function HeroBannerCarousel({
       aria-roledescription="carousel"
       aria-label="Sorotan Fitur VoltKu"
       onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onTouchStart={(e) => {
-        setPaused(true)
-        const t = e.touches?.[0]
-        if (t) {
-          touchStartPosRef.current = { x: t.clientX, y: t.clientY }
-          suppressNextClickRef.current = false
-        }
-      }}
-      onTouchMove={(e) => {
-        const start = touchStartPosRef.current
-        const t = e.touches?.[0]
-        if (start && t && Math.abs(t.clientX - start.x) > 10) {
-          suppressNextClickRef.current = true
-        }
-      }}
-      onTouchEnd={() => {
+      onMouseLeave={() => {
+        if (gestureRef.current.active) endGesture()
         setPaused(false)
-        measureNearestSlideIndex()
       }}
     >
-      <div ref={trackRef} className="ewl-hero-track">
-        {slides.map((slide, idx) => {
-          const Icon = slide.Icon
-          return (
-            <button
-              key={slide.id}
-              type="button"
-              data-slide-idx={idx}
-              className={`ewl-hero-slide ${slide.tone}`}
-              onClick={(e) => {
-                if (suppressNextClickRef.current) {
-                  e.preventDefault()
-                  suppressNextClickRef.current = false
-                  return
-                }
-                slide.onClick?.(e)
-              }}
-            >
-              <div className="ewl-hero-deco-circle a" aria-hidden="true" />
-              <div className="ewl-hero-deco-circle b" aria-hidden="true" />
+      <div
+        ref={viewportRef}
+        className="ewl-hero-viewport"
+        onTouchStart={(e) => {
+          const t = e.touches?.[0]
+          if (t) startGesture(t.clientX, t.clientY)
+        }}
+        onTouchMove={(e) => {
+          const t = e.touches?.[0]
+          if (t) moveGesture(t.clientX, t.clientY)
+        }}
+        onTouchEnd={endGesture}
+        onTouchCancel={endGesture}
+        onMouseDown={(e) => {
+          if (e.button !== 0) return
+          startGesture(e.clientX, e.clientY)
+        }}
+        onMouseMove={(e) => {
+          if (!gestureRef.current.active) return
+          moveGesture(e.clientX, e.clientY)
+        }}
+        onMouseUp={endGesture}
+      >
+        <div
+          className={`ewl-hero-track-gpu ${isDragging ? 'is-dragging' : ''}`}
+          style={{
+            transform: `translate3d(calc(${-safeActiveIndex * 100}% + ${dragOffsetPx}px), 0, 0)`,
+          }}
+        >
+          {slides.map((slide) => {
+            const Icon = slide.Icon
+            return (
+              <button
+                key={slide.id}
+                type="button"
+                className={`ewl-hero-slide ${slide.tone}`}
+                onClick={(e) => {
+                  if (suppressClickRef.current) {
+                    e.preventDefault()
+                    suppressClickRef.current = false
+                    return
+                  }
+                  slide.onClick?.(e)
+                }}
+              >
+                <div className="ewl-hero-deco-circle a" aria-hidden="true" />
+                <div className="ewl-hero-deco-circle b" aria-hidden="true" />
 
-              <div className="ewl-hero-copy">
-                <span className="ewl-hero-badge">{slide.badge}</span>
-                <div className="ewl-hero-title">{slide.title}</div>
-                <div className="ewl-hero-sub">{slide.subtitle}</div>
-              </div>
-
-              <div className="ewl-hero-visual" aria-hidden="true">
-                <div className="ewl-hero-visual-tile">
-                  <Icon size={24} strokeWidth={2} />
+                <div className="ewl-hero-copy">
+                  <span className="ewl-hero-badge">{slide.badge}</span>
+                  <div className="ewl-hero-title">{slide.title}</div>
+                  <div className="ewl-hero-sub">{slide.subtitle}</div>
                 </div>
-                <span className="ewl-hero-cta-mini">
-                  <span>{slide.cta}</span>
-                  <ChevronRight size={12} />
-                </span>
-              </div>
-            </button>
-          )
-        })}
+
+                <div className="ewl-hero-visual" aria-hidden="true">
+                  <div className="ewl-hero-visual-tile">
+                    <Icon size={24} strokeWidth={2} />
+                  </div>
+                  <span className="ewl-hero-cta-mini">
+                    <span>{slide.cta}</span>
+                    <ChevronRight size={12} />
+                  </span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Bottom Pagination Dots */}
-      {slides.length > 1 && (
+      {slideCount > 1 && (
         <div className="ewl-hero-dots" role="tablist" aria-label="Pilih slide banner">
           {slides.map((slide, idx) => (
             <button
               key={slide.id}
               type="button"
               role="tab"
-              aria-selected={idx === safeActiveIndex}
+              aria-selected={idx === displayDotIndex}
               aria-label={`Slide ${idx + 1}: ${slide.title}`}
-              className={`ewl-hero-dot ${idx === safeActiveIndex ? 'active' : ''}`}
-              onClick={() => scrollToSlide(idx)}
+              className={`ewl-hero-dot ${idx === displayDotIndex ? 'active' : ''}`}
+              onClick={() => setActiveIndex(idx)}
             />
           ))}
         </div>

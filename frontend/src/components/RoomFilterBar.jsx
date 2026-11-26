@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Plus,
   Search,
@@ -27,8 +27,40 @@ export function RoomFilterBar({
   onToggleSearch,
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [fadeEdges, setFadeEdges] = useState({ left: false, right: false })
   const menuWrapRef = useRef(null)
   const searchInputRef = useRef(null)
+  const tabsScrollRef = useRef(null)
+
+  const syncScrollFades = useCallback(() => {
+    const el = tabsScrollRef.current
+    if (!el) return
+    const maxScroll = el.scrollWidth - el.clientWidth
+    if (maxScroll <= 4) {
+      setFadeEdges({ left: false, right: false })
+      return
+    }
+    setFadeEdges({
+      left: el.scrollLeft > 4,
+      right: el.scrollLeft < maxScroll - 4,
+    })
+  }, [])
+
+  useEffect(() => {
+    syncScrollFades()
+    const el = tabsScrollRef.current
+    if (!el) return undefined
+    let ro = null
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(syncScrollFades)
+      ro.observe(el)
+    }
+    window.addEventListener('resize', syncScrollFades)
+    return () => {
+      if (ro) ro.disconnect()
+      window.removeEventListener('resize', syncScrollFades)
+    }
+  }, [rooms, devices.length, syncScrollFades])
 
   useEffect(() => {
     if (!menuOpen) return undefined
@@ -62,11 +94,26 @@ export function RoomFilterBar({
     return devices.filter((d) => (d.location || '').trim() === room).length
   }
 
+  const fadeClass =
+    fadeEdges.left && fadeEdges.right
+      ? 'fade-both'
+      : fadeEdges.right
+        ? 'fade-right'
+        : fadeEdges.left
+          ? 'fade-left'
+          : ''
+
   return (
     <div className="ewl-room-toolbar-wrap">
       <div className="ewl-room-toolbar">
-        {/* Scrollable Room Tabs (eWeLink style with active blue underline) */}
-        <div className="clean-room-tabs-scroll" role="tablist" aria-label="Filter Ruangan">
+        {/* Scrollable Room Tabs with active blue underline + soft fade on overflow */}
+        <div
+          ref={tabsScrollRef}
+          className={`clean-room-tabs-scroll ${fadeClass}`}
+          role="tablist"
+          aria-label="Filter Ruangan"
+          onScroll={syncScrollFades}
+        >
           {rooms.map((room) => {
             const isSelected = activeRoom === room
             const count = getRoomCount(room)
@@ -77,7 +124,14 @@ export function RoomFilterBar({
                 role="tab"
                 aria-selected={isSelected}
                 className={`clean-room-tab ${isSelected ? 'active' : ''}`}
-                onClick={() => onSelectRoom(room)}
+                onClick={(e) => {
+                  onSelectRoom(room)
+                  e.currentTarget.scrollIntoView?.({
+                    behavior: 'smooth',
+                    inline: 'center',
+                    block: 'nearest',
+                  })
+                }}
               >
                 <span>{room}</span>
                 {count > 0 && <span className="room-tab-count num-tabular">{count}</span>}
@@ -160,6 +214,30 @@ export function RoomFilterBar({
                     {viewMode === 'grid' ? <List size={16} /> : <LayoutGrid size={16} />}
                     <span>{viewMode === 'grid' ? 'Tampilan Daftar' : 'Tampilan Grid'}</span>
                   </button>
+                )}
+
+                {rooms.length > 2 && (
+                  <div className="ewl-more-rooms-section">
+                    <div className="ewl-more-section-label">Pilih Ruangan</div>
+                    <div className="ewl-more-rooms-chips">
+                      {rooms.map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          className={`ewl-more-room-chip ${activeRoom === r ? 'active' : ''}`}
+                          onClick={() => {
+                            onSelectRoom(r)
+                            setMenuOpen(false)
+                          }}
+                        >
+                          <span>{r}</span>
+                          {getRoomCount(r) > 0 && (
+                            <span className="num-tabular">{getRoomCount(r)}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
 
                 {onOpenAddDevice && (
