@@ -8136,6 +8136,7 @@ button,
   justify-content: center;
   align-items: center;
   min-height: 44px;
+  color-scheme: light;
 }
 
 .google-gsi-wrap.is-hidden {
@@ -8151,6 +8152,18 @@ button,
   width: 100%;
   display: flex;
   justify-content: center;
+  align-items: center;
+  color-scheme: light;
+  background: transparent !important;
+}
+
+.google-gsi-slot > div,
+.google-gsi-slot iframe {
+  color-scheme: light !important;
+  background: transparent !important;
+  border: none !important;
+  margin: 0 auto !important;
+  display: block !important;
 }
 
 .google-gsi-gate-overlay {
