@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
-  X,
   Sparkles,
   Crown,
   QrCode,
@@ -25,7 +24,6 @@ export function HeroBannerCarousel({
   onOpenAlerts,
   onOpenLogin,
 }) {
-  const [dismissed, setDismissed] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const [paused, setPaused] = useState(false)
   const trackRef = useRef(null)
@@ -165,7 +163,7 @@ export function HeroBannerCarousel({
   }, [])
 
   useEffect(() => {
-    if (dismissed || paused || slides.length <= 1) return undefined
+    if (paused || slides.length <= 1) return undefined
     const timer = window.setInterval(() => {
       setActiveIndex((prev) => {
         const next = (prev + 1) % slides.length
@@ -174,7 +172,7 @@ export function HeroBannerCarousel({
       })
     }, AUTO_SCROLL_MS)
     return () => window.clearInterval(timer)
-  }, [dismissed, paused, slides.length, scrollToSlide])
+  }, [paused, slides.length, scrollToSlide])
 
   useEffect(() => {
     return () => {
@@ -199,7 +197,7 @@ export function HeroBannerCarousel({
     }, 60)
   }
 
-  if (dismissed || slides.length === 0) return null
+  if (slides.length === 0) return null
 
   return (
     <section
@@ -247,20 +245,6 @@ export function HeroBannerCarousel({
           )
         })}
       </div>
-
-      {/* Dismiss (X) Button matching eWeLink carousel corner */}
-      <button
-        type="button"
-        className="ewl-hero-close"
-        aria-label="Tutup banner"
-        title="Sembunyikan sementara"
-        onClick={(e) => {
-          e.stopPropagation()
-          setDismissed(true)
-        }}
-      >
-        <X size={13} strokeWidth={2.5} />
-      </button>
 
       {/* Bottom Pagination Dots */}
       {slides.length > 1 && (
