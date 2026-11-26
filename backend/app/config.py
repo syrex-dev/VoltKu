@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     telegram_bot_token: Optional[str] = None
     telegram_allowed_chat_ids: str = ""
     llm_provider: str = "gemini"
-    llm_model: str = "gemini-2.5-flash"
+    llm_model: str = "gemini-3-flash-preview"
     llm_api_key: Optional[str] = None
     llm_base_url: Optional[str] = None
 

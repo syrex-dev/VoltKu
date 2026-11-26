@@ -528,3 +528,26 @@ def test_chat_works_without_external_llm_key_via_deterministic_tools():
         )
         assert res_peak.status_code == 200
         assert "get_hourly_profile" in res_peak.json()["tools_used"]
+
+
+def test_gemini_client_preserves_thought_signature_and_uses_user_role():
+    from app.ai.llm_client import GeminiLLMClient
+
+    raw_sig_parts = [
+        {
+            "functionCall": {"name": "list_devices", "args": {}},
+            "thoughtSignature": "sig-opaque-123",
+        }
+    ]
+    _, contents = GeminiLLMClient._build_contents(
+        [
+            {"role": "system", "content": "Sistem"},
+            {"role": "user", "content": "Cek perangkat"},
+            {"role": "assistant", "content": "", "raw_parts": raw_sig_parts, "tool_calls": []},
+            {"role": "tool", "name": "list_devices", "content": {"devices": []}},
+        ]
+    )
+    assert contents[1]["role"] == "model"
+    assert contents[1]["parts"][0]["thoughtSignature"] == "sig-opaque-123"
+    assert contents[2]["role"] == "user"
+    assert "functionResponse" in contents[2]["parts"][0]

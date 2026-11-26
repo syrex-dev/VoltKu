@@ -398,6 +398,7 @@ async def handle_chat_query(
                 {
                     "role": "assistant",
                     "content": resp.text,
+                    "raw_parts": resp.raw_parts,
                     "tool_calls": [
                         {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                         for tc in resp.tool_calls
@@ -451,6 +452,16 @@ async def handle_chat_query(
                 )
     except Exception as err:
         logger.warning("Chat LLM gagal (%s), mengembalikan pesan fallback.", type(err).__name__)
+        if llm_client is None:
+            local_answer, local_tools = _run_deterministic_assistant(
+                session,
+                clean_q,
+                user_id=user_id,
+                is_admin=is_admin,
+                now_dt=now_dt,
+            )
+            _save_chat_log(session, chat_id, clean_q, local_tools, local_answer, total_tokens)
+            return ChatResult(answer=local_answer, tools_used=local_tools, tokens=total_tokens)
         _save_chat_log(session, chat_id, clean_q, tools_used, FALLBACK_MESSAGE, total_tokens)
         return ChatResult(
             answer=FALLBACK_MESSAGE,

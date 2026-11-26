@@ -21,6 +21,7 @@ class LLMResponse:
     text: str = ""
     tool_calls: list[LLMToolCall] = field(default_factory=list)
     tokens: int = 0
+    raw_parts: Optional[list[dict[str, Any]]] = None
 
 
 class LLMClient(ABC):
@@ -71,16 +72,14 @@ class LLMStub(LLMClient):
 class GeminiLLMClient(LLMClient):
     """Klien HTTP Gemini REST API (tanpa mencatat API key ke log)."""
 
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash") -> None:
+    FALLBACK_MODELS = ("gemini-3-flash-preview", "gemini-flash-lite-latest")
+
+    def __init__(self, api_key: str, model: str = "gemini-3-flash-preview") -> None:
         self._api_key = api_key
         self._model = model
 
-    async def generate(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        timeout_s: float = 20.0,
-    ) -> LLMResponse:
+    @staticmethod
+    def _build_contents(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
         system_instruction = ""
         contents: list[dict[str, Any]] = []
         for msg in messages:
@@ -88,24 +87,28 @@ class GeminiLLMClient(LLMClient):
             if role == "system":
                 system_instruction = str(msg.get("content", ""))
             elif role == "assistant":
-                parts: list[dict[str, Any]] = []
-                if msg.get("content"):
-                    parts.append({"text": str(msg["content"])})
-                for tc in msg.get("tool_calls", []):
-                    parts.append(
-                        {
-                            "functionCall": {
-                                "name": tc["name"],
-                                "args": tc.get("arguments", {}),
+                raw_parts = msg.get("raw_parts")
+                if isinstance(raw_parts, list) and raw_parts:
+                    contents.append({"role": "model", "parts": raw_parts})
+                else:
+                    parts: list[dict[str, Any]] = []
+                    if msg.get("content"):
+                        parts.append({"text": str(msg["content"])})
+                    for tc in msg.get("tool_calls", []):
+                        parts.append(
+                            {
+                                "functionCall": {
+                                    "name": tc["name"],
+                                    "args": tc.get("arguments", {}),
+                                }
                             }
-                        }
-                    )
-                if parts:
-                    contents.append({"role": "model", "parts": parts})
+                        )
+                    if parts:
+                        contents.append({"role": "model", "parts": parts})
             elif role == "tool":
                 contents.append(
                     {
-                        "role": "function",
+                        "role": "user",
                         "parts": [
                             {
                                 "functionResponse": {
@@ -118,6 +121,15 @@ class GeminiLLMClient(LLMClient):
                 )
             else:
                 contents.append({"role": "user", "parts": [{"text": str(msg.get("content", ""))}]})
+        return system_instruction, contents
+
+    async def generate(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        timeout_s: float = 20.0,
+    ) -> LLMResponse:
+        system_instruction, contents = self._build_contents(messages)
 
         fn_declarations = [
             {
@@ -133,18 +145,41 @@ class GeminiLLMClient(LLMClient):
         if fn_declarations:
             body["tools"] = [{"functionDeclarations": fn_declarations}]
 
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self._model}:generateContent"
-        )
+        candidates_to_try = [self._model] + [
+            m for m in self.FALLBACK_MODELS if m != self._model
+        ]
+        data: dict[str, Any] = {}
+        last_exc: Optional[Exception] = None
+
         async with httpx.AsyncClient(timeout=timeout_s) as client:
-            resp = await client.post(
-                url,
-                headers={"x-goog-api-key": self._api_key, "Content-Type": "application/json"},
-                json=body,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            for model_name in candidates_to_try:
+                url = (
+                    f"https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{model_name}:generateContent"
+                )
+                try:
+                    resp = await client.post(
+                        url,
+                        headers={
+                            "x-goog-api-key": self._api_key,
+                            "Content-Type": "application/json",
+                        },
+                        json=body,
+                    )
+                    if resp.status_code in (404, 429, 500, 503):
+                        last_exc = httpx.HTTPStatusError(
+                            f"HTTP {resp.status_code}", request=resp.request, response=resp
+                        )
+                        continue
+                    resp.raise_for_status()
+                    data = resp.json()
+                    last_exc = None
+                    break
+                except httpx.TimeoutException as exc:
+                    last_exc = exc
+                    continue
+            if last_exc is not None:
+                raise last_exc
 
         candidates = data.get("candidates") or []
         if not candidates:
@@ -159,7 +194,7 @@ class GeminiLLMClient(LLMClient):
                 fc = part["functionCall"]
                 tool_calls.append(
                     LLMToolCall(
-                        id=f"gem_{idx}",
+                        id=str(fc.get("id") or f"gem_{idx}"),
                         name=str(fc.get("name", "")),
                         arguments=dict(fc.get("args") or {}),
                     )
@@ -167,7 +202,12 @@ class GeminiLLMClient(LLMClient):
 
         usage = data.get("usageMetadata") or {}
         tokens = int(usage.get("totalTokenCount") or 0)
-        return LLMResponse(text="\n".join(text_parts).strip(), tool_calls=tool_calls, tokens=tokens)
+        return LLMResponse(
+            text="\n".join(text_parts).strip(),
+            tool_calls=tool_calls,
+            tokens=tokens,
+            raw_parts=parts if parts else None,
+        )
 
 
 class OpenAICompatibleLLMClient(LLMClient):
@@ -287,7 +327,9 @@ def get_llm_client(settings=None) -> Optional[LLMClient]:
     if not api_key:
         return None
     provider = (getattr(settings, "llm_provider", "gemini") or "gemini").strip().lower()
-    model = (getattr(settings, "llm_model", "gemini-2.5-flash") or "gemini-2.5-flash").strip()
+    model = (
+        getattr(settings, "llm_model", "gemini-3-flash-preview") or "gemini-3-flash-preview"
+    ).strip()
     base_url = (getattr(settings, "llm_base_url", None) or "").strip()
 
     if provider in ("openai", "openrouter", "openai_compatible", "groq"):
