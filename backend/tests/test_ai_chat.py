@@ -480,3 +480,51 @@ def test_chat_api_endpoint_auth_and_history():
     hist = client.get("/api/chat/history", headers={"Authorization": f"Bearer {token_a}"})
     assert hist.status_code == 200
     assert any("Perangkat saya" in h["question"] for h in hist.json())
+
+
+def test_chat_works_without_external_llm_key_via_deterministic_tools():
+    chat_rate_limiter._hits.clear()
+    now_dt = datetime(2026, 11, 26, 15, 0, 0, tzinfo=TZ_WIB)
+    with SessionLocal() as session:
+        user_a, user_b = _seed_synthetic_ai_data(session, now_dt)
+        token_a = create_access_token(subject=user_a.email, role="user", user_id=user_a.id)
+        user_empty = User(
+            name="Kosong",
+            email="kosong@test.local",
+            password_hash="x",
+            auth_provider="local",
+            is_active=1,
+        )
+        session.add(user_empty)
+        session.commit()
+        session.refresh(user_empty)
+        token_empty = create_access_token(
+            subject=user_empty.email, role="user", user_id=user_empty.id
+        )
+
+    with patch("app.ai.chat_service.get_llm_client", return_value=None):
+        res_empty = client.post(
+            "/api/chat",
+            headers={"Authorization": f"Bearer {token_empty}"},
+            json={"question": "Berapa biaya listrik hari ini?"},
+        )
+        assert res_empty.status_code == 200
+        assert "Tambah Panel" in res_empty.json()["answer"]
+
+        res_today = client.post(
+            "/api/chat",
+            headers={"Authorization": f"Bearer {token_a}"},
+            json={"question": "Berapa biaya listrik hari ini?"},
+        )
+        assert res_today.status_code == 200
+        body = res_today.json()
+        assert "Rp" in body["answer"]
+        assert "get_summary" in body["tools_used"]
+
+        res_peak = client.post(
+            "/api/chat",
+            headers={"Authorization": f"Bearer {token_a}"},
+            json={"question": "Jam berapa paling boros hari ini?"},
+        )
+        assert res_peak.status_code == 200
+        assert "get_hourly_profile" in res_peak.json()["tools_used"]

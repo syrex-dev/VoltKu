@@ -71,7 +71,7 @@ class LLMStub(LLMClient):
 class GeminiLLMClient(LLMClient):
     """Klien HTTP Gemini REST API (tanpa mencatat API key ke log)."""
 
-    def __init__(self, api_key: str, model: str = "gemini-1.5-flash") -> None:
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash") -> None:
         self._api_key = api_key
         self._model = model
 
@@ -287,8 +287,13 @@ def get_llm_client(settings=None) -> Optional[LLMClient]:
     if not api_key:
         return None
     provider = (getattr(settings, "llm_provider", "gemini") or "gemini").strip().lower()
-    model = (getattr(settings, "llm_model", "gemini-1.5-flash") or "gemini-1.5-flash").strip()
+    model = (getattr(settings, "llm_model", "gemini-2.5-flash") or "gemini-2.5-flash").strip()
+    base_url = (getattr(settings, "llm_base_url", None) or "").strip()
 
-    if provider in ("openai", "openrouter", "openai_compatible"):
-        return OpenAICompatibleLLMClient(api_key=api_key, model=model)
+    if provider in ("openai", "openrouter", "openai_compatible", "groq"):
+        return OpenAICompatibleLLMClient(
+            api_key=api_key,
+            model=model,
+            base_url=base_url or "https://api.openai.com/v1",
+        )
     return GeminiLLMClient(api_key=api_key, model=model)

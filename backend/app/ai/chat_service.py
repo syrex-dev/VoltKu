@@ -6,11 +6,12 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
 from app.ai.llm_client import LLMClient, get_llm_client
-from app.ai.tools import TOOL_SCHEMAS, execute_tool
+from app.ai.tools import TOOL_SCHEMAS, _resolve_range_bounds, execute_tool
 from app.auth import SlidingWindowRateLimiter
 from app.models import ChatLog
 
@@ -91,6 +92,217 @@ def _save_chat_log(
         logger.warning("Gagal mencatat chat_log: %s", err)
 
 
+def _format_rp(amount: int | float) -> str:
+    return f"Rp{int(round(amount)):,}".replace(",", ".")
+
+
+def _detect_range_from_question(q_lower: str) -> str:
+    if any(k in q_lower for k in ("kemarin", "yesterday")):
+        return "yesterday"
+    if any(k in q_lower for k in ("minggu lalu", "pekan lalu")):
+        return "last_week"
+    if any(k in q_lower for k in ("minggu ini", "pekan ini", "7 hari")):
+        return "this_week"
+    if any(k in q_lower for k in ("bulan lalu",)):
+        return "last_month"
+    if any(k in q_lower for k in ("bulan ini", "sebulan")):
+        return "this_month"
+    return "today"
+
+
+def _run_deterministic_assistant(
+    session: Session,
+    question: str,
+    *,
+    user_id: Optional[int],
+    is_admin: bool,
+    now_dt: Optional[datetime],
+) -> tuple[str, list[str]]:
+    """Asisten lokal deterministik berbasis 7 tool DB saat LLM_API_KEY belum diisi."""
+    tools_used: list[str] = ["list_devices"]
+    dev_res = execute_tool(
+        session, "list_devices", {}, user_id=user_id, is_admin=is_admin, now_dt=now_dt
+    )
+    devs = dev_res.get("devices") or []
+    if not devs:
+        return (
+            "Saat ini akun Anda belum memiliki panel listrik yang tertaut. "
+            "Ketuk tombol '+ Tambah Panel' di Beranda untuk memindai/menautkan unit VoltKu "
+            "Anda — setelah terhubung, saya bisa menghitung biaya, kWh, jam paling boros, "
+            "proyeksi tagihan bulan ini, serta anomali listrik secara langsung.",
+            tools_used,
+        )
+
+    q_lower = question.lower()
+    range_name = _detect_range_from_question(q_lower)
+    range_labels = {
+        "today": "hari ini (WIB)",
+        "yesterday": "kemarin (WIB)",
+        "this_week": "minggu ini (WIB)",
+        "last_week": "minggu lalu (WIB)",
+        "this_month": "bulan ini (WIB)",
+        "last_month": "bulan lalu (WIB)",
+    }
+    range_label = range_labels.get(range_name, range_name)
+
+    if any(k in q_lower for k in ("proyeksi", "estimasi", "perkiraan", "akhir bulan")):
+        tools_used.append("get_forecast")
+        fc_res = execute_tool(
+            session, "get_forecast", {}, user_id=user_id, is_admin=is_admin, now_dt=now_dt
+        )
+        lines = []
+        for item in fc_res.get("devices", []):
+            if item.get("available"):
+                lines.append(
+                    f"• {item['name']}: proyeksi akhir bulan sekitar "
+                    f"{_format_rp(item['projected_cost_rp'])} ({item['projected_kwh']} kWh), "
+                    f"rata-rata {item['avg_daily_kwh']} kWh/hari."
+                )
+            else:
+                lines.append(
+                    f"• {item['name']}: data belum cukup untuk proyeksi "
+                    "(butuh minimal 1 hari kalender penuh)."
+                )
+        return "\n".join(lines) if lines else "Data proyeksi belum tersedia.", tools_used
+
+    if any(k in q_lower for k in ("banding", "selisih", "kenapa naik", "naik", "vs")):
+        tools_used.extend(["compare_periods", "get_anomalies"])
+        tz_wib = ZoneInfo("Asia/Jakarta")
+        ref_dt = now_dt.astimezone(tz_wib) if now_dt else datetime.now(tz=tz_wib)
+        a_from, a_to = _resolve_range_bounds("today", now_dt=ref_dt)
+        b_from, b_to = _resolve_range_bounds("yesterday", now_dt=ref_dt)
+        # Samakan jam saat ini untuk perbandingan hari ini vs kemarin yang adil
+        elapsed = max(60, a_to - a_from)
+        b_to_fair = min(b_to, b_from + elapsed)
+        cmp_res = execute_tool(
+            session,
+            "compare_periods",
+            {"a_from": a_from, "a_to": a_to, "b_from": b_from, "b_to": b_to_fair},
+            user_id=user_id,
+            is_admin=is_admin,
+            now_dt=now_dt,
+        )
+        anom_res = execute_tool(
+            session,
+            "get_anomalies",
+            {"range": "this_week"},
+            user_id=user_id,
+            is_admin=is_admin,
+            now_dt=now_dt,
+        )
+        pa = cmp_res["period_a"]
+        pb = cmp_res["period_b"]
+        diff_kwh = cmp_res["diff_kwh"]
+        diff_rp = cmp_res["diff_cost_rp"]
+        trend = "lebih tinggi" if diff_kwh >= 0 else "lebih hemat"
+        peak_h = cmp_res.get("top_contributing_hour_wib") or "-"
+        anom_cnt = anom_res.get("count", 0)
+        return (
+            f"Perbandingan hari ini hingga jam sekarang vs kemarin pada jam yang sama (WIB):\n"
+            f"• Hari ini: {pa['kwh']} kWh ({_format_rp(pa['cost_rp'])})\n"
+            f"• Kemarin: {pb['kwh']} kWh ({_format_rp(pb['cost_rp'])})\n"
+            f"• Selisih: {abs(diff_kwh)} kWh {trend} ({_format_rp(abs(diff_rp))}), "
+            f"perbedaan terbesar di sekitar pukul {peak_h} WIB. Tercatat {anom_cnt} anomali "
+            "dalam minggu ini.",
+            tools_used,
+        )
+
+    if any(k in q_lower for k in ("jam boros", "paling boros", "jam berapa", "profil")):
+        tools_used.append("get_hourly_profile")
+        prof_res = execute_tool(
+            session,
+            "get_hourly_profile",
+            {"range": range_name},
+            user_id=user_id,
+            is_admin=is_admin,
+            now_dt=now_dt,
+        )
+        peak_h = prof_res.get("peak_hour_wib")
+        if not peak_h:
+            return f"Belum ada data rata-rata per jam untuk periode {range_label}.", tools_used
+        hour_key = peak_h.split(":")[0]
+        peak_w = prof_res.get("avg_watt_by_hour_wib", {}).get(hour_key, 0)
+        return (
+            f"Berdasarkan profil per jam pada periode {range_label}, pemakaian rata-rata "
+            f"paling tinggi terjadi pada pukul {peak_h} WIB ({peak_w} W).",
+            tools_used,
+        )
+
+    if any(k in q_lower for k in ("anomali", "peringatan", "gangguan", "lonjakan", "masalah")):
+        tools_used.append("get_anomalies")
+        anom_res = execute_tool(
+            session,
+            "get_anomalies",
+            {"range": "this_week" if range_name == "today" else range_name},
+            user_id=user_id,
+            is_admin=is_admin,
+            now_dt=now_dt,
+        )
+        cnt = anom_res.get("count", 0)
+        if cnt == 0:
+            return "Tidak ada catatan anomali atau peringatan pada periode tersebut.", tools_used
+        top_items = [
+            f"• [{a['time_wib']} WIB] {a['message']}" for a in anom_res["anomalies"][:3]
+        ]
+        return f"Tercatat {cnt} peringatan/anomali:\n" + "\n".join(top_items), tools_used
+
+    if any(k in q_lower for k in ("biaya", "tagihan", "rupiah", "kwh", "pemakaian", "hemat")):
+        tools_used.append("get_summary")
+        sum_res = execute_tool(
+            session,
+            "get_summary",
+            {"range": range_name},
+            user_id=user_id,
+            is_admin=is_admin,
+            now_dt=now_dt,
+        )
+        lines = [
+            f"Ringkasan listrik {range_label}: total {sum_res['total_kwh']} kWh "
+            f"dengan estimasi biaya {_format_rp(sum_res['total_cost_rp'])}."
+        ]
+        for d in sum_res.get("devices", []):
+            pk_time = d.get("peak_time_wib")
+            pk = f", puncak {d['peak_w']} W ({pk_time})" if pk_time else ""
+            lines.append(
+                f"• {d['name']}: {d['kwh']} kWh ({_format_rp(d['cost_rp'])}), "
+                f"rata-rata {d['avg_power_w']} W{pk}"
+            )
+        return "\n".join(lines), tools_used
+
+    if any(k in q_lower for k in ("daftar", "perangkat", "panel", "unit")):
+        lines = [
+            f"• {d['name']} ({d['id']}): status {d['status']}, MCB {d['mcb_watt']} W"
+            for d in devs
+        ]
+        return "Daftar panel Anda:\n" + "\n".join(lines), tools_used
+
+    # Default & pertanyaan real-time (watt, volt, arus, status, sapaan)
+    tools_used.extend(["get_current", "get_summary"])
+    cur_res = execute_tool(
+        session, "get_current", {}, user_id=user_id, is_admin=is_admin, now_dt=now_dt
+    )
+    sum_res = execute_tool(
+        session,
+        "get_summary",
+        {"range": "today"},
+        user_id=user_id,
+        is_admin=is_admin,
+        now_dt=now_dt,
+    )
+    lines = []
+    for d in cur_res.get("devices", []):
+        if d.get("p_w") is not None:
+            lines.append(
+                f"• {d['name']} ({d['status']}): {d['p_w']} W, {d['v']} V, {d['i']} A "
+                f"(update {d['time_wib']} WIB)"
+            )
+        else:
+            lines.append(f"• {d['name']} ({d['status']}): belum ada data pembacaan terbaru.")
+    total_rp = _format_rp(sum_res["total_cost_rp"])
+    lines.append(f"Total hari ini (WIB): {sum_res['total_kwh']} kWh ({total_rp}).")
+    return "\n".join(lines), tools_used
+
+
 async def handle_chat_query(
     session: Session,
     *,
@@ -142,8 +354,15 @@ async def handle_chat_query(
 
     client = llm_client or get_llm_client()
     if client is None:
-        _save_chat_log(session, chat_id, clean_q, [], FALLBACK_MESSAGE, 0)
-        return ChatResult(answer=FALLBACK_MESSAGE, tools_used=[], tokens=0, fallback_used=True)
+        local_answer, local_tools = _run_deterministic_assistant(
+            session,
+            clean_q,
+            user_id=user_id,
+            is_admin=is_admin,
+            now_dt=now_dt,
+        )
+        _save_chat_log(session, chat_id, clean_q, local_tools, local_answer, 0)
+        return ChatResult(answer=local_answer, tools_used=local_tools, tokens=0)
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
