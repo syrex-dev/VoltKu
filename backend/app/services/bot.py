@@ -350,7 +350,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• /perangkat - Daftar perangkat terdaftar\n"
         "• /tarif <Rp/kWh> - Ubah tarif listrik PLN\n"
         "• /batas <Watt> - Ubah batas daya peringatan\n"
-        "• /laporan on|off - Aktifkan/nonaktifkan laporan berkala\n\n"
+        "• /laporan on|off - Aktifkan/nonaktifkan laporan berkala\n"
+        "• /ask <pertanyaan> - Tanya Asisten AI tentang listrik Anda\n\n"
         "Tip: Tanpa parameter [id], bot akan menampilkan ringkasan seluruh perangkat."
     )
     await send_message_rate_limited(context.bot, update.effective_chat.id, msg)
@@ -633,6 +634,33 @@ async def cmd_laporan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await send_message_rate_limited(context.bot, update.effective_chat.id, text)
 
 
+@allowlist_only
+async def cmd_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menjawab pertanyaan bebas pengguna lewat Asisten AI (M6) dengan 7 tool deterministik."""
+    from app.ai.chat_service import handle_chat_query
+
+    question = " ".join(context.args or []).strip()
+    if not question:
+        await send_message_rate_limited(
+            context.bot,
+            update.effective_chat.id,
+            "Contoh: /ask Berapa biaya listrik hari ini?",
+        )
+        return
+
+    chat_id = update.effective_chat.id
+    with SessionLocal() as session:
+        result = await handle_chat_query(
+            session,
+            question=question,
+            chat_id=chat_id,
+            rate_key=f"tg_{chat_id}",
+            user_id=None,
+            is_admin=True,
+        )
+    await send_message_rate_limited(context.bot, chat_id, result.answer)
+
+
 # ==============================================================================
 # LIFECYCLE MANAGEMENT
 # ==============================================================================
@@ -650,6 +678,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("tarif", cmd_tarif))
     app.add_handler(CommandHandler("batas", cmd_batas))
     app.add_handler(CommandHandler("laporan", cmd_laporan))
+    app.add_handler(CommandHandler("ask", cmd_ask))
 
 
 async def init_and_start_bot() -> None:

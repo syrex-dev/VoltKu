@@ -41,6 +41,7 @@ Payload telemetry:
 | `GET /api/devices/{id}/forecast` | Proyeksi kWh dan biaya akhir bulan berdasarkan rata-rata 7 hari penuh terakhir (`samples >= 90% x 8640`). Mengembalikan HTTP `403` untuk akun `user` paket `free` bila `free_forecast_enabled = false`. Respons: `available: bool`, `basis_days`, `low_confidence: bool`, `avg_daily_kwh`, `month_so_far_kwh`, `month_so_far_cost_rp`, `projected_kwh`, `projected_cost_rp`. |
 | `GET /api/devices/{id}/export?days=30` | Mengunduh laporan konsumsi harian perangkat berformat CSV (`text/csv`). Memerlukan fitur ekspor aktif (`pro` atau `free_export_enabled = true` atau `role="admin"`). |
 | `GET /api/anomalies?device_id=&from=` | Daftar anomali (token `user` hanya melihat anomali dari perangkat miliknya). |
+| `POST /api/chat`, `GET /api/chat/history` | Asisten AI Chat (`{"question": "..."}`) dengan tool deterministik, rate limit 20 pesan/jam/user, audit `chat_log`, dan riwayat pertanyaan. Wajib Bearer JWT. |
 | `GET /api/settings` | Pengambilan pengaturan aktif (untuk `user`, memadukan preferensi `user_settings` dengan default global). |
 | `PATCH /api/settings` | Pembaruan pengaturan (`tariff_rp`, `power_limit_w`, `alert_cooldown_min`, `extra_percent`, `report_hour`). Untuk `user`, disimpan per tenant di `user_settings`. |
 | `GET /api/public/access` | Status publik `{"public_read_enabled": bool}` untuk mode Tanpa Login. |

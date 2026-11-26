@@ -13,7 +13,7 @@ from app.auth import api_burst_limiter, get_trusted_client_ip
 from app.config import get_settings, validate_startup_credentials
 from app.db import init_db
 from app.mqtt_ingest import ingest_service
-from app.routers import admin, anomalies, auth, devices, public, users
+from app.routers import admin, anomalies, auth, chat, devices, public, users
 from app.routers import settings as settings_router
 from app.services.bot import init_and_start_bot, stop_bot
 from app.services.scheduler import start_scheduler, stop_scheduler
@@ -166,6 +166,7 @@ app.include_router(admin.router)
 app.include_router(devices.router)
 app.include_router(settings_router.router)
 app.include_router(anomalies.router)
+app.include_router(chat.router)
 
 
 @app.get("/healthz", tags=["Health"])

@@ -36,6 +36,7 @@ import { OnboardingTour } from './components/OnboardingTour'
 import { PlanUpgradeModal } from './components/PlanUpgradeModal'
 import { ProfileModal } from './components/ProfileModal'
 import { ResetPasswordScreen } from './components/ResetPasswordScreen'
+import { AiChatWidget } from './components/AiChatWidget'
 
 const DEFAULT_LOGIN_SUBTITLE = 'Pantau listrik rumah lebih tenang dan akurat'
 const DEFAULT_TERMS_VERSION = '2026-11-v1'
@@ -1452,6 +1453,14 @@ function CustomerPortalRoot() {
         onComplete={finishTour}
         onSkip={finishTour}
       />
+
+      {isAuthenticated && (
+        <AiChatWidget
+          token={userToken}
+          onUnauthorized={handleUnauthorized}
+          hidden={hasForegroundOverlay}
+        />
+      )}
 
       <PwaInstallPrompt hasBottomNav appName={appName} hidden={hasForegroundOverlay} />
     </div>

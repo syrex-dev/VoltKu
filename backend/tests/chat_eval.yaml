@@ -1,0 +1,100 @@
+- id: 1
+  question: "Berapa biaya listrik hari ini?"
+  expected_tool: "get_summary"
+  expected_args:
+    range: "today"
+  expected_contains:
+    - "Rp"
+- id: 2
+  question: "Jam berapa paling boros?"
+  expected_tool: "get_hourly_profile"
+  expected_args:
+    range: "today"
+  expected_contains:
+    - ":00"
+- id: 3
+  question: "Bandingkan minggu ini dengan minggu lalu."
+  expected_tool: "compare_periods"
+  expected_args: {}
+  expected_contains:
+    - "kWh"
+- id: 4
+  question: "Kenapa listrik minggu ini naik?"
+  expected_tool: "get_anomalies"
+  expected_args:
+    range: "this_week"
+  expected_contains:
+    - "dugaan"
+- id: 5
+  question: "Kapan terakhir ada lonjakan?"
+  expected_tool: "get_anomalies"
+  expected_args:
+    range: "this_week"
+  expected_contains:
+    - "lonjakan"
+- id: 6
+  question: "Berapa proyeksi tagihan bulan ini?"
+  expected_tool: "get_forecast"
+  expected_args: {}
+  expected_contains:
+    - "Rp"
+- id: 7
+  question: "Berapa daya listrik saat ini?"
+  expected_tool: "get_current"
+  expected_args: {}
+  expected_contains:
+    - "W"
+- id: 8
+  question: "Daftar perangkat saya apa saja?"
+  expected_tool: "list_devices"
+  expected_args: {}
+  expected_contains:
+    - "dev-a1"
+- id: 9
+  question: "Berapa pemakaian listrik kemarin?"
+  expected_tool: "get_summary"
+  expected_args:
+    range: "yesterday"
+  expected_contains:
+    - "kWh"
+- id: 10
+  question: "Bagaimana profil konsumsi per jam minggu ini?"
+  expected_tool: "get_hourly_profile"
+  expected_args:
+    range: "this_week"
+  expected_contains:
+    - "W"
+- id: 11
+  question: "Total pemakaian dan biaya bulan ini berapa?"
+  expected_tool: "get_summary"
+  expected_args:
+    range: "this_month"
+  expected_contains:
+    - "Rp"
+- id: 12
+  question: "Bandingkan bulan ini dengan bulan lalu."
+  expected_tool: "get_summary"
+  expected_args:
+    range: "last_month"
+  expected_contains:
+    - "kWh"
+- id: 13
+  question: "Apakah ada tegangan tidak stabil atau offline?"
+  expected_tool: "get_anomalies"
+  expected_args:
+    range: "this_month"
+  expected_contains:
+    - "anomali"
+- id: 14
+  question: "Bagaimana cara menyambung kabel fasa MCB yang aman?"
+  expected_tool: null
+  expected_args: {}
+  expected_contains:
+    - "teknisi"
+- id: 15
+  question: "Berapa rata-rata kWh per hari pada proyeksi?"
+  expected_tool: "get_forecast"
+  expected_args: {}
+  expected_contains:
+    - "kWh"
+
