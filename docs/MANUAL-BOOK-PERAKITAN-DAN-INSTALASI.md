@@ -20,7 +20,7 @@ Konsep alat ini sangat sederhana dan aman:
 Semua komponen mudah ditemukan dengan estimasi total biaya sekitar **Rp 200.000**:
 
 | Nama Barang di Toko Online | Kisaran Harga | Catatan Pembelian |
-|---|---|---|
+| --- | --- | --- |
 | **ESP32 DevKit V1** (30 atau 38 pin) | Rp 55.000 | Pilih yang kakinya sudah disolder. |
 | **Sensor PZEM-004T v3.0 (100A)** | Rp 95.000 | **Wajib varian Split-Core CT** (klem buka-tutup biru/hitam). |
 | **Resistor 10kΩ dan 20kΩ** (1/4 watt) | Rp 1.000 | Pelindung pin ESP32 agar tidak kepanasan. |
@@ -55,11 +55,11 @@ Anda tidak perlu memiliki mesin printer 3D sendiri. Cukup gunakan jasa cetak 3D 
 
 Hanya ada 4 kabel dari sensor PZEM ke ESP32:
 
-*   **Pin 5V PZEM** ──► **Pin VIN / 5V ESP32** (Kabel Merah)
-*   **Pin GND PZEM** ──► **Pin GND ESP32** (Kabel Hitam)
-*   **Pin RX PZEM** ──► **Pin GPIO 17 ESP32** (Kabel Biru)
-*   **Pin TX PZEM** ──► Sambungkan ke **Resistor 10kΩ**, lalu ujung lainnya ke **Pin GPIO 16 ESP32** (Kabel Hijau).  
-    *Dari sambungan antara resistor 10k dan GPIO 16, pasang **Resistor 20kΩ** menuju ke **GND**.*
+- **Pin 5V PZEM** ──► **Pin VIN / 5V ESP32** (Kabel Merah)
+- **Pin GND PZEM** ──► **Pin GND ESP32** (Kabel Hitam)
+- **Pin RX PZEM** ──► **Pin GPIO 17 ESP32** (Kabel Biru)
+- **Pin TX PZEM** ──► Sambungkan ke **Resistor 10kΩ**, lalu ujung lainnya ke **Pin GPIO 16 ESP32** (Kabel Hijau).  
+  *Dari sambungan antara resistor 10k dan GPIO 16, pasang **Resistor 20kΩ** menuju ke **GND**.*
 
 > **Tips Tanpa Solder:** Kaki resistor cukup dipilin rapat bersama ujung kabel jumper, lalu bungkus dengan isolasi hitam.
 
@@ -69,16 +69,20 @@ Hanya ada 4 kabel dari sensor PZEM ke ESP32:
 
 1. Colokkan board ESP32 ke laptop menggunakan kabel USB data.
 2. Buka file `firmware/include/config.h`, masukkan nama Wi-Fi dan password rumah Anda:
+
    ```cpp
    #define WIFI_SSID "NAMA_WIFI_RUMAH"
    #define WIFI_PASS "PASSWORD_WIFI"
    #define MQTT_HOST "192.168.1.100"  // IP komputer server
    #define DEVICE_ID "device-01"
    ```
+
 3. Buka terminal PowerShell di folder proyek dan ketik satu baris perintah:
+
    ```powershell
    .venv\Scripts\pio run -d firmware -e esp32dev -t upload
    ```
+
 4. Tunggu sampai muncul tulisan **[SUCCESS]**. Program sudah berhasil masuk!
 
 ---
@@ -86,11 +90,13 @@ Hanya ada 4 kabel dari sensor PZEM ke ESP32:
 ## 6. Pemasangan Aman ke Panel MCB Rumah
 
 Patuhi 3 aturan keselamatan dasar:
+
 1. **Matikan MCB Utama PLN** di meteran luar rumah (posisi OFF).
 2. **Sentuhkan tespen** ke kabel di dalam panel. Pastikan lampu tespen MATI TOTAL.
 3. Selalu gunakan sandal karet kering saat bekerja.
 
 **Langkah Pasang:**
+
 1. **Jepitkan Klem CT:** Cari kabel fasa tebal (biasanya hitam atau cokelat) yang keluar dari bawah MCB. Lingkarkan klem CT pada kabel tersebut dan kunci sampai bunyi *klik*. *(Ingat: HANYA jepit 1 kawat fasa saja).*
 2. **Kabel Pengukur Voltase:** Sambungkan kabel merah (bersekring) ke baut bawah MCB, dan kabel biru ke busbar kabel netral.
 3. **Nyalakan Kembali Listrik:** Nyalakan kembali MCB PLN ke posisi ON. Colokkan charger HP ke port USB alat. Alat akan menyala dan mulai memantau daya listrik secara otomatis.
@@ -99,9 +105,9 @@ Patuhi 3 aturan keselamatan dasar:
 
 ## 7. Solusi Kendala Umum
 
-*   **Daya terbaca 0 Watt terus?**  
-    Kemungkinan klem CT menjepit kabel ganda (fasa dan netral terjepit sekaligus sehingga saling meniadakan). Buka klem, lalu jepitkan pada **satu kawat fasa saja**.
-*   **Angka daya muncul tanda minus (-)?**  
-    Arah klem CT terbalik. Buka klem dan balik posisinya 180 derajat pada kabel.
-*   **Nilai terbaca 'nan'?**  
-    Baut kabel AC 220V di modul PZEM belum kencang (karena chip sensor butuh daya dari listrik AC), atau kabel data jumper kendor.
+- **Daya terbaca 0 Watt terus?**  
+  Kemungkinan klem CT menjepit kabel ganda (fasa dan netral terjepit sekaligus sehingga saling meniadakan). Buka klem, lalu jepitkan pada **satu kawat fasa saja**.
+- **Angka daya muncul tanda minus (-)?**  
+  Arah klem CT terbalik. Buka klem dan balik posisinya 180 derajat pada kabel.
+- **Nilai terbaca 'nan'?**  
+  Baut kabel AC 220V di modul PZEM belum kencang (karena chip sensor butuh daya dari listrik AC), atau kabel data jumper kendor.

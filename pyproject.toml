@@ -20,3 +20,8 @@ ignore = []
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body", "fastapi.Security"]
 
+[tool.pyrefly]
+search-path = ["backend", "backend/tests", "."]
+site-package-path = [".venv/Lib/site-packages"]
+python-version = "3.11"
+
