@@ -17,18 +17,23 @@ Konsep alat ini sangat sederhana dan aman:
 
 ## 2. Daftar Belanja Komponen (Tinggal Cari di Tokopedia / Shopee)
 
-Semua komponen mudah ditemukan secara online:
+Semua komponen mudah ditemukan secara online (total estimasi **Rp 311.244**, sebelum ongkir dan jasa cetak casing 3D):
 
-| Nama Barang di Toko Online | Kisaran Harga | Catatan Pembelian | Link Olshop (Shopee & Tokopedia) |
+| Nama Barang di Toko Online | Harga | Catatan Pembelian | Link Olshop (Shopee & Tokopedia) |
 | --- | --- | --- | --- |
-| **ESP32 DevKit V1** (30 atau 38 pin) | Rp 55.000 | Pilih yang kakinya sudah disolder. | [Shopee](https://shopee.co.id/search?keyword=ESP32%20DevKit%20V1%2030%20pin) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=ESP32%20DevKit%20V1%2030%20pin) |
-| **Sensor PZEM-004T v3.0 / V4.0 (100A)** | Rp 175.000 | V3.0 & V4.0 kompatibel. **Wajib varian Open / Split-Core CT 100A** (klem buka-tutup), bukan donat tertutup & bukan 10A. | [Shopee](https://shopee.co.id/search?keyword=PZEM-004T%20100A%20Open%20CT%20Split%20Core) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=PZEM-004T%20100A%20Open%20CT) |
-| **Resistor 10kΩ dan 20kΩ** (1/4 watt) | Rp 1.000 | Pelindung pin RX ESP32 agar aman. | [Shopee](https://shopee.co.id/search?keyword=resistor%2010k%2020k%201%2F4%20watt) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=resistor%2010k%2020k%201%2F4%20watt) |
-| **Kabel Jumper Dupont Female-to-Female** (20 cm) | Rp 8.000 | Untuk menyambung pin tanpa perlu solder. | [Shopee](https://shopee.co.id/search?keyword=kabel%20jumper%20dupont%20female%20to%20female%2020cm) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=kabel%20jumper%20dupont%20female%20to%20female%2020cm) |
-| **Charger HP 5V + Kabel USB** | Rp 20.000 | Catu daya praktis (1A/2A) sesuai port USB ESP32. | [Shopee](https://shopee.co.id/search?keyword=adaptor%20charger%205V%202A%20kabel%20usb) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=adaptor%20charger%205V%202A%20kabel%20usb) |
-| **Kabel Listrik NYAF 0.75 mm²** (Merah & Biru) | Rp 10.000 | Beli @ 1 meter untuk jalur pengukur voltase. | [Shopee](https://shopee.co.id/search?keyword=kabel%20nyaf%200.75mm%20meteran) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=kabel%20nyaf%200.75mm%20meteran) |
-| **Sekring Kaca 5x20 mm 0.5A + Rumah Sekring** | Rp 4.000 | Pengaman jalur pengukur tegangan (*inline fuse holder*). | [Shopee](https://shopee.co.id/search?keyword=sekring%20kaca%205x20%200.5A%20fuse%20holder) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=sekring%20kaca%205x20%200.5A%20fuse%20holder) |
-| **Baut M3 x 12 mm (4 pcs) & M2.5 x 6 mm (8 pcs)** | Rp 6.000 | Baut penutup casing dan penahan modul board. | [Shopee](https://shopee.co.id/search?keyword=baut%20M3%2012mm%20M2.5%206mm) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=baut%20M3%2012mm%20M2.5%206mm) |
+| **ESP32 DevKit V1** (30 pin) | Rp 70.000 | Pilih varian **30 pin (Micro-USB)** yang kakinya sudah disolder. | [Shopee](https://id.shp.ee/JtLBhy25) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=ESP32%20DevKit%20V1%2030%20pin) |
+| **Sensor PZEM-004T v3.0 / V4.0 (100A)** | Rp 181.560 | V3.0 & V4.0 kompatibel. **Wajib varian Open / Split-Core CT 100A** (klem buka-tutup), bukan donat tertutup & bukan 10A. | [Shopee](https://id.shp.ee/BnUa5bVR) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=PZEM-004T%20100A%20Open%20CT) |
+| **Resistor 10kΩ** (1/4 watt) | Rp 1.500 | Pembagi tegangan pelindung pin RX ESP32. | [Shopee](https://id.shp.ee/e22JYEwS) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=resistor%2010k%201%2F4%20watt) |
+| **Resistor 20kΩ** (1/4 watt) | Rp 3.000 | Pasangan pembagi tegangan (10kΩ + 20kΩ). | [Shopee](https://id.shp.ee/uZE2xT5h) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=resistor%2020k%201%2F4%20watt) |
+| **Kabel Jumper Dupont Female-to-Female** (20 cm) | Rp 6.499 | Untuk menyambung pin tanpa perlu solder. | [Shopee](https://id.shp.ee/xcisrN8J) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=kabel%20jumper%20dupont%20female%20to%20female%2020cm) |
+| **Charger HP 5V** | Rp 17.000 | Adaptor USB 5V (1A/2A) untuk catu daya ESP32. | [Shopee](https://id.shp.ee/cU5BVdNP) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=adaptor%20charger%205V%202A) |
+| **Kabel Micro USB (Data)** | Rp 10.000 | Untuk flash firmware dari laptop dan suplai daya 5V. | [Shopee](https://id.shp.ee/XJb4pVXk) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=kabel%20data%20micro%20usb) |
+| **Kabel Listrik NYAF 0.75 mm² Merah** | Rp 1.900 | Beli 1 meter untuk jalur fasa pengukur voltase. | [Shopee](https://id.shp.ee/xWopGdzV) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=kabel%20nyaf%200.75mm%20merah) |
+| **Kabel Listrik NYAF 0.75 mm² Biru** | Rp 1.900 | Beli 1 meter untuk jalur netral pengukur voltase. | [Shopee](https://id.shp.ee/tcgCYbrz) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=kabel%20nyaf%200.75mm%20biru) |
+| **Sekring Kaca 5x20 mm 0.5A** | Rp 1.775 | Pengaman arus lebih jalur pengukur tegangan AC. | [Shopee](https://id.shp.ee/DrKdi7Ud) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=sekring%20kaca%205x20%200.5A) |
+| **Inline Fuse Holder 5x20 mm** | Rp 910 | Rumah sekring kabel gantung 5x20 mm. | [Shopee](https://id.shp.ee/YB6xA5ik) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=inline%20fuse%20holder%205x20mm) |
+| **Baut M3 x 20 mm (4 pcs)** | Rp 6.000 | Pilih varian panjang **20 mm** (*countersunk*) untuk penutup casing v2.0. | [Shopee](https://id.shp.ee/SJiUeVMY) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=baut%20M3%2020mm%20flat%20head) |
+| **Baut M2.5 x 6 mm (8 pcs)** | Rp 9.200 | Baut penahan board ESP32 dan PZEM ke standoff casing. | [Shopee](https://id.shp.ee/4MSXiWnQ) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=baut%20M2.5%206mm) |
 
 **Alat kerja di rumah:** Obeng kecil (+/-), tespen listrik, gunting/tang potong, dan isolasi listrik hitam ([Shopee](https://shopee.co.id/search?keyword=tespen%20listrik%20obeng%20kecil) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=tespen%20listrik%20obeng%20kecil)).
 
