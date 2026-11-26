@@ -2683,6 +2683,21 @@ html {
   background: rgba(15, 23, 42, 0.48);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-height: 640px) {
+  .auth-hero-backdrop,
+  .modal-overlay {
+    align-items: flex-start !important;
+    padding-top: 10px !important;
+    padding-bottom: 24px !important;
+  }
+
+  .native-welcome-card {
+    margin: 0 auto !important;
+  }
 }
 
 [data-theme="dark"] .modal-overlay {

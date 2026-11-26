@@ -255,6 +255,14 @@ export function LoginModal({
     }
   }
 
+  const handleInputFocus = (e) => {
+    const target = e.currentTarget
+    if (!target || typeof target.scrollIntoView !== 'function') return
+    window.setTimeout(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 240)
+  }
+
   const displayError = localError || error
   const useWebGsi = !Capacitor.isNativePlatform() && googleEnabled && Boolean(googleClientId)
 
@@ -479,6 +487,7 @@ export function LoginModal({
                 placeholder="Contoh: Budi Santoso"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onFocus={handleInputFocus}
                 required
                 autoComplete="name"
               />
@@ -496,9 +505,10 @@ export function LoginModal({
               placeholder="nama@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onFocus={handleInputFocus}
               required
               autoComplete="email"
-              autoFocus={authTab === 'login'}
+              autoFocus={authTab === 'login' && !Capacitor.isNativePlatform()}
             />
           </div>
 
@@ -528,6 +538,7 @@ export function LoginModal({
               placeholder={authTab === 'register' ? 'Minimal 6 karakter' : 'Masukkan kata sandi'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onFocus={handleInputFocus}
               required
               autoComplete={authTab === 'register' ? 'new-password' : 'current-password'}
             />
