@@ -17,20 +17,22 @@ Konsep alat ini sangat sederhana dan aman:
 
 ## 2. Daftar Belanja Komponen (Tinggal Cari di Tokopedia / Shopee)
 
-Semua komponen mudah ditemukan dengan estimasi total biaya sekitar **Rp 200.000**:
+Semua komponen mudah ditemukan secara online:
 
-| Nama Barang di Toko Online | Kisaran Harga | Catatan Pembelian |
-| --- | --- | --- |
-| **ESP32 DevKit V1** (30 atau 38 pin) | Rp 55.000 | Pilih yang kakinya sudah disolder. |
-| **Sensor PZEM-004T v3.0 (100A)** | Rp 95.000 | **Wajib varian Split-Core CT** (klem buka-tutup biru/hitam). |
-| **Resistor 10kΩ dan 20kΩ** (1/4 watt) | Rp 1.000 | Pelindung pin ESP32 agar tidak kepanasan. |
-| **Kabel Jumper Dupont Female-to-Female** (20 cm) | Rp 8.000 | Untuk menyambung pin tanpa perlu solder. |
-| **Charger HP 5V + Kabel USB** | Rp 20.000 | Catu daya paling praktis untuk menyalakan ESP32. |
-| **Kabel Listrik NYAF 0.75 mm²** (Merah & Biru) | Rp 10.000 | Beli @ 1 meter untuk jalur pengukur voltase. |
-| **Sekring Kaca 5x20 mm 0.5A + Rumah Sekring** | Rp 4.000 | Pengaman jalur pengukur tegangan. |
-| **Baut M3 x 12 mm (4 pcs) & M2.5 x 6 mm (8 pcs)** | Rp 6.000 | Baut penutup casing dan penahan modul board. |
+| Nama Barang di Toko Online | Kisaran Harga | Catatan Pembelian | Link Olshop (Shopee & Tokopedia) |
+| --- | --- | --- | --- |
+| **ESP32 DevKit V1** (30 atau 38 pin) | Rp 55.000 | Pilih yang kakinya sudah disolder. | [Shopee](https://shopee.co.id/search?keyword=ESP32%20DevKit%20V1%2030%20pin) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=ESP32%20DevKit%20V1%2030%20pin) |
+| **Sensor PZEM-004T v3.0 / V4.0 (100A)** | Rp 175.000 | V3.0 & V4.0 kompatibel. **Wajib varian Open / Split-Core CT 100A** (klem buka-tutup), bukan donat tertutup & bukan 10A. | [Shopee](https://shopee.co.id/search?keyword=PZEM-004T%20100A%20Open%20CT%20Split%20Core) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=PZEM-004T%20100A%20Open%20CT) |
+| **Resistor 10kΩ dan 20kΩ** (1/4 watt) | Rp 1.000 | Pelindung pin RX ESP32 agar aman. | [Shopee](https://shopee.co.id/search?keyword=resistor%2010k%2020k%201%2F4%20watt) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=resistor%2010k%2020k%201%2F4%20watt) |
+| **Kabel Jumper Dupont Female-to-Female** (20 cm) | Rp 8.000 | Untuk menyambung pin tanpa perlu solder. | [Shopee](https://shopee.co.id/search?keyword=kabel%20jumper%20dupont%20female%20to%20female%2020cm) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=kabel%20jumper%20dupont%20female%20to%20female%2020cm) |
+| **Charger HP 5V + Kabel USB** | Rp 20.000 | Catu daya praktis (1A/2A) sesuai port USB ESP32. | [Shopee](https://shopee.co.id/search?keyword=adaptor%20charger%205V%202A%20kabel%20usb) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=adaptor%20charger%205V%202A%20kabel%20usb) |
+| **Kabel Listrik NYAF 0.75 mm²** (Merah & Biru) | Rp 10.000 | Beli @ 1 meter untuk jalur pengukur voltase. | [Shopee](https://shopee.co.id/search?keyword=kabel%20nyaf%200.75mm%20meteran) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=kabel%20nyaf%200.75mm%20meteran) |
+| **Sekring Kaca 5x20 mm 0.5A + Rumah Sekring** | Rp 4.000 | Pengaman jalur pengukur tegangan (*inline fuse holder*). | [Shopee](https://shopee.co.id/search?keyword=sekring%20kaca%205x20%200.5A%20fuse%20holder) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=sekring%20kaca%205x20%200.5A%20fuse%20holder) |
+| **Baut M3 x 12 mm (4 pcs) & M2.5 x 6 mm (8 pcs)** | Rp 6.000 | Baut penutup casing dan penahan modul board. | [Shopee](https://shopee.co.id/search?keyword=baut%20M3%2012mm%20M2.5%206mm) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=baut%20M3%2012mm%20M2.5%206mm) |
 
-**Alat kerja di rumah:** Obeng kecil (+/-), tespen listrik, gunting/tang potong, dan isolasi listrik hitam.
+**Alat kerja di rumah:** Obeng kecil (+/-), tespen listrik, gunting/tang potong, dan isolasi listrik hitam ([Shopee](https://shopee.co.id/search?keyword=tespen%20listrik%20obeng%20kecil) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=tespen%20listrik%20obeng%20kecil)).
+
+**Jasa cetak 3D print:** [Shopee](https://shopee.co.id/search?keyword=jasa%20cetak%203d%20print) • [Tokopedia](https://www.tokopedia.com/search?st=product&q=jasa%20cetak%203d%20print).
 
 ---
 

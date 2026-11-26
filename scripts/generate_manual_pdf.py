@@ -10,6 +10,7 @@ Didesain dengan pendekatan buku panduan konsumen modern (ala Apple/IKEA/Adafruit
 
 import base64
 import os
+import shutil
 import subprocess
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -19,6 +20,7 @@ HARDWARE_DIR = os.path.join(PROJECT_DIR, "hardware", "casing_3d")
 RENDER_IMG_PATH = os.path.join(HARDWARE_DIR, "render_preview.png")
 HTML_OUTPUT_PATH = os.path.join(DOCS_DIR, "manual_book.html")
 PDF_OUTPUT_PATH = os.path.join(DOCS_DIR, "MANUAL-BOOK-PERAKITAN-DAN-INSTALASI.pdf")
+PDF_SECONDARY_PATH = os.path.join(DOCS_DIR, "Buku-Panduan-Monitor-Listrik-Pintar.pdf")
 
 # Load 3D Render Image as Base64
 img_b64 = ""
@@ -266,6 +268,55 @@ html_content = f"""<!DOCTYPE html>
       padding: 3px 8px;
       border-radius: 6px;
       border: 1px solid #a7f3d0;
+      white-space: nowrap;
+    }}
+
+    /* Tombol Link Marketplace (Klik langsung di PDF) */
+    table.bom-table th {{
+      padding: 8px 10px;
+      font-size: 8.2pt;
+    }}
+
+    table.bom-table td {{
+      padding: 7px 10px;
+      font-size: 8.8pt;
+      line-height: 1.4;
+    }}
+
+    .shop-links {{
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }}
+
+    .shop-links-inline {{
+      display: inline-flex;
+      gap: 6px;
+      vertical-align: middle;
+      margin-left: 6px;
+    }}
+
+    .shop-pill {{
+      display: inline-block;
+      text-decoration: none;
+      font-size: 7.6pt;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 5px;
+      text-align: center;
+      white-space: nowrap;
+    }}
+
+    .shop-shopee {{
+      background: #fff7ed;
+      color: #ea580c;
+      border: 1px solid #fed7aa;
+    }}
+
+    .shop-tokped {{
+      background: #f0fdf4;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
     }}
 
     /* Template Pesan Chat */
@@ -397,7 +448,7 @@ html_content = f"""<!DOCTYPE html>
           </div>
           <div class="meta-box">
             <span>Estimasi Biaya</span>
-            <strong>± Rp 200 Ribuan</strong>
+            <strong>± Rp 270 - 300 Ribu</strong>
           </div>
           <div class="meta-box">
             <span>Metode Sensor</span>
@@ -483,16 +534,17 @@ html_content = f"""<!DOCTYPE html>
       </div>
 
       <h2 class="section-heading">Daftar Belanja Komponen</h2>
-      <p class="lead">
-        Semua barang di bawah ini sangat umum dan dapat langsung Anda beli di Tokopedia atau Shopee.
+      <p class="lead" style="margin-bottom: 12px; font-size: 10pt;">
+        Semua komponen sangat umum dan dapat langsung Anda beli dengan mengklik tombol tautan <strong>Shopee</strong> atau <strong>Tokopedia</strong> di bawah ini.
       </p>
 
-      <table class="clean-table">
+      <table class="clean-table bom-table" style="margin: 8px 0 10px;">
         <thead>
           <tr>
-            <th style="width: 32%;">Nama Komponen</th>
-            <th style="width: 18%;">Harga Estimasi</th>
-            <th style="width: 50%;">Catatan Pembelian (Penting)</th>
+            <th style="width: 24%;">Nama Komponen</th>
+            <th style="width: 14%;">Estimasi</th>
+            <th style="width: 42%;">Catatan Pembelian (Penting)</th>
+            <th style="width: 20%;">Link Belanja</th>
           </tr>
         </thead>
         <tbody>
@@ -500,55 +552,107 @@ html_content = f"""<!DOCTYPE html>
             <td><strong>ESP32 DevKit V1</strong></td>
             <td><span class="tag-price">Rp 55.000</span></td>
             <td>Pilih varian 30 atau 38 pin yang kakinya sudah tersolder rapi.</td>
+            <td>
+              <div class="shop-links">
+                <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=ESP32%20DevKit%20V1%2030%20pin">Shopee &rarr;</a>
+                <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=ESP32%20DevKit%20V1%2030%20pin">Tokopedia &rarr;</a>
+              </div>
+            </td>
           </tr>
           <tr>
-            <td><strong>PZEM-004T v3.0 (100A)</strong></td>
-            <td><span class="tag-price">Rp 95.000</span></td>
-            <td><strong>Wajib pilih varian Split-Core CT</strong> (klem biru/hitam buka-tutup), jangan varian donat tertutup!</td>
+            <td><strong>PZEM-004T v3.0 / V4.0 (100A)</strong></td>
+            <td><span class="tag-price">Rp 175.000</span></td>
+            <td>V3.0 &amp; V4.0 kompatibel. <strong>Wajib varian Open / Split-Core CT 100A</strong> (klem buka-tutup), bukan donat tertutup &amp; bukan 10A!</td>
+            <td>
+              <div class="shop-links">
+                <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=PZEM-004T%20100A%20Open%20CT%20Split%20Core">Shopee &rarr;</a>
+                <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=PZEM-004T%20100A%20Open%20CT">Tokopedia &rarr;</a>
+              </div>
+            </td>
           </tr>
           <tr>
-            <td><strong>Resistor 10kΩ & 20kΩ</strong></td>
+            <td><strong>Resistor 10k&Omega; &amp; 20k&Omega;</strong></td>
             <td><span class="tag-price">Rp 1.000</span></td>
-            <td>Resistor 1/4 watt biasa untuk melindungi pin ESP32 dari lonjakan sinyal.</td>
+            <td>Resistor 1/4 watt biasa untuk melindungi pin RX ESP32 dari sinyal 5V.</td>
+            <td>
+              <div class="shop-links">
+                <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=resistor%2010k%2020k%201%2F4%20watt">Shopee &rarr;</a>
+                <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=resistor%2010k%2020k%201%2F4%20watt">Tokopedia &rarr;</a>
+              </div>
+            </td>
           </tr>
           <tr>
             <td><strong>Kabel Jumper Dupont (F-to-F)</strong></td>
             <td><span class="tag-price">Rp 8.000</span></td>
-            <td>Panjang 20 cm (1 papan isi 10 kabel) untuk menghubungkan pin tanpa solder.</td>
+            <td>Panjang 20 cm (Female-to-Female) untuk menghubungkan pin tanpa solder.</td>
+            <td>
+              <div class="shop-links">
+                <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=kabel%20jumper%20dupont%20female%20to%20female%2020cm">Shopee &rarr;</a>
+                <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=kabel%20jumper%20dupont%20female%20to%20female%2020cm">Tokopedia &rarr;</a>
+              </div>
+            </td>
           </tr>
           <tr>
             <td><strong>Charger HP 5V + Kabel USB</strong></td>
             <td><span class="tag-price">Rp 20.000</span></td>
-            <td>Charger HP biasa (1A atau 2A) untuk menyalakan alat dengan aman.</td>
+            <td>Adaptor 5V (1A/2A) + kabel data USB (sesuai port Micro-USB / Type-C ESP32).</td>
+            <td>
+              <div class="shop-links">
+                <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=adaptor%20charger%205V%202A%20kabel%20usb">Shopee &rarr;</a>
+                <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=adaptor%20charger%205V%202A%20kabel%20usb">Tokopedia &rarr;</a>
+              </div>
+            </td>
           </tr>
           <tr>
-            <td><strong>Kabel Listrik NYAF 0.75 mm²</strong></td>
+            <td><strong>Kabel Listrik NYAF 0.75 mm&sup2;</strong></td>
             <td><span class="tag-price">Rp 10.000</span></td>
             <td>Beli 1 meter kabel merah (fasa) dan 1 meter kabel biru (netral).</td>
+            <td>
+              <div class="shop-links">
+                <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=kabel%20nyaf%200.75mm%20meteran">Shopee &rarr;</a>
+                <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=kabel%20nyaf%200.75mm%20meteran">Tokopedia &rarr;</a>
+              </div>
+            </td>
           </tr>
           <tr>
             <td><strong>Sekring Kaca 5x20mm 0.5A</strong></td>
             <td><span class="tag-price">Rp 4.000</span></td>
-            <td>Lengkap dengan rumah sekring (*inline fuse holder*) sebagai pengaman.</td>
+            <td>Lengkap dengan rumah sekring (<em>inline fuse holder</em>) sebagai pengaman.</td>
+            <td>
+              <div class="shop-links">
+                <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=sekring%20kaca%205x20%200.5A%20fuse%20holder">Shopee &rarr;</a>
+                <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=sekring%20kaca%205x20%200.5A%20fuse%20holder">Tokopedia &rarr;</a>
+              </div>
+            </td>
           </tr>
           <tr>
-            <td><strong>Baut M3 (4 pcs) & M2.5 (8 pcs)</strong></td>
+            <td><strong>Baut M3 (4) &amp; M2.5 (8)</strong></td>
             <td><span class="tag-price">Rp 6.000</span></td>
             <td>M3 x 12mm untuk penutup casing, M2.5 x 6mm untuk penahan board.</td>
+            <td>
+              <div class="shop-links">
+                <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=baut%20M3%2012mm%20M2.5%206mm">Shopee &rarr;</a>
+                <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=baut%20M3%2012mm%20M2.5%206mm">Tokopedia &rarr;</a>
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
 
-      <div style="text-align: right; font-weight: 700; font-size: 9.5pt; color: #2563eb; margin-bottom: 14px;">
-        Total Biaya Komponen: ± Rp 199.000 - Rp 220.000
+      <div style="text-align: right; font-weight: 700; font-size: 9pt; color: #2563eb; margin-bottom: 8px;">
+        Estimasi Total Komponen: &plusmn; Rp 270.000 - Rp 300.000 (paket Open CT 100A)
       </div>
 
-      <div class="card card-accent">
-        <div class="card-title">🔧 Perkakas Rumah Tangga yang Diperlukan:</div>
-        <p style="font-size: 9pt; color: #475569; line-height: 1.5;">
-          • 1 buah <strong>Obeng Plus (+) dan Minus (-) kecil</strong>.<br>
-          • 1 buah <strong>Tespen listrik</strong> (wajib untuk cek arus sebelum pegang panel).<br>
-          • 1 buah <strong>Gunting / tang potong kecil</strong> dan <strong>isolasi listrik hitam</strong>.
+      <div class="card card-accent" style="padding: 11px 14px; margin-bottom: 0;">
+        <div class="card-title" style="font-size: 10pt; margin-bottom: 4px;">
+          🔧 Perkakas Rumah Tangga yang Diperlukan:
+          <span class="shop-links-inline">
+            <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=tespen%20listrik%20obeng%20kecil">Shopee Perkakas &rarr;</a>
+            <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=tespen%20listrik%20obeng%20kecil">Tokopedia Perkakas &rarr;</a>
+          </span>
+        </div>
+        <p style="font-size: 8.6pt; color: #475569; line-height: 1.45;">
+          &bull; 1 buah <strong>Obeng Plus (+) &amp; Minus (-) kecil</strong> &nbsp;&bull;&nbsp; 1 buah <strong>Tespen listrik</strong> (wajib cek arus) &nbsp;&bull;&nbsp; <strong>Tang potong / gunting</strong> &amp; <strong>isolasi listrik hitam</strong>.
         </p>
       </div>
     </div>
@@ -570,7 +674,12 @@ html_content = f"""<!DOCTYPE html>
 
       <h2 class="section-heading">Cara Memesan Cetak Casing 3D</h2>
       <p class="lead">
-        Anda tidak perlu punya printer 3D sendiri. Di Tokopedia atau Shopee ada banyak jasa print 3D dengan biaya terjangkau (sekitar Rp 35.000 - Rp 50.000).
+        Anda tidak perlu punya printer 3D sendiri. Cari jasa print 3D di marketplace
+        <span class="shop-links-inline">
+          <a class="shop-pill shop-shopee" href="https://shopee.co.id/search?keyword=jasa%20cetak%203d%20print">Shopee 3D Print &rarr;</a>
+          <a class="shop-pill shop-tokped" href="https://www.tokopedia.com/search?st=product&q=jasa%20cetak%203d%20print">Tokopedia 3D Print &rarr;</a>
+        </span>
+        dengan biaya sekitar Rp 35.000 - Rp 50.000.
       </p>
 
       <div class="card">
@@ -630,7 +739,7 @@ html_content = f"""<!DOCTYPE html>
         <svg viewBox="0 0 680 230" width="100%" height="auto" style="background:#090d16; border-radius:12px; border:1px solid #1e293b; font-family: -apple-system, sans-serif;">
           <!-- Modul PZEM-004T (Kiri) -->
           <rect x="30" y="30" width="180" height="170" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
-          <text x="120" y="55" fill="#38bdf8" font-size="12" font-weight="800" text-anchor="middle">PZEM-004T v3.0</text>
+          <text x="120" y="55" fill="#38bdf8" font-size="12" font-weight="800" text-anchor="middle">PZEM-004T v3.0 / V4.0</text>
           <text x="120" y="70" fill="#94a3b8" font-size="9" text-anchor="middle">Modul Sensor Listrik</text>
           
           <!-- Pin PZEM -->
@@ -760,7 +869,7 @@ html_content = f"""<!DOCTYPE html>
             Buka PowerShell di laptop Anda, lalu ketikkan perintah berikut dan tekan Enter:
           </p>
           <div style="background:#090d16; color:#34d399; padding:8px 12px; border-radius:6px; font-family:monospace; font-size:8.5pt; font-weight:700; margin-top:6px;">
-            .venv\Scripts\pio run -d firmware -e esp32dev -t upload
+            .venv\\Scripts\\pio run -d firmware -e esp32dev -t upload
           </div>
           <p style="margin-top: 6px;">
             Tunggu sampai proses mencapai 100% dan muncul tulisan hijau: <strong>[SUCCESS]</strong>. Selesai! Program sudah masuk ke dalam chip ESP32 Anda.
@@ -771,7 +880,7 @@ html_content = f"""<!DOCTYPE html>
       <div class="card card-accent" style="margin-top: 14px;">
         <div class="card-title">🔍 Cara Memastikan Program Berjalan Normal:</div>
         <p style="font-size: 9pt; color: #475569;">
-          Ketikkan perintah: <code>.venv\Scripts\pio device monitor -d firmware -b 115200</code><br>
+          Ketikkan perintah: <code>.venv\\Scripts\\pio device monitor -d firmware -b 115200</code><br>
           Jika muncul tulisan: <code>[WiFi] Terhubung!</code> dan <code>[MQTT] Terhubung ke broker!</code>, berarti ESP32 Anda sudah 100% sehat dan siap bekerja!
         </p>
       </div>
@@ -930,5 +1039,13 @@ result = subprocess.run(cmd, capture_output=True, text=True)
 if os.path.exists(PDF_OUTPUT_PATH):
     size_kb = os.path.getsize(PDF_OUTPUT_PATH) / 1024
     print(f"-> SUKSES! PDF berhasil dibuat: {PDF_OUTPUT_PATH} ({size_kb:.1f} KB)")
+    try:
+        shutil.copy2(PDF_OUTPUT_PATH, PDF_SECONDARY_PATH)
+        print(f"-> Salinan PDF sinkron: {PDF_SECONDARY_PATH}")
+    except PermissionError:
+        print(
+            f"-> CATATAN: {PDF_SECONDARY_PATH} sedang dibuka di aplikasi lain; "
+            "tutup PDF viewer lalu jalankan ulang script untuk menyinkronkan file tersebut."
+        )
 else:
     print(f"Gagal membuat PDF: {result.stderr}")
