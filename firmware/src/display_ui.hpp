@@ -105,7 +105,7 @@ class DisplayController {
 public:
     void begin() {
         tft_.init();
-        tft_.setRotation(0);
+        tft_.setRotation(1);  // 90 deg agar modul ST7789 39x27.8mm terpasang horizontal simetris di casing v3.1
         tft_.setBrightness(215);
         tft_.fillScreen(0x0821);
         initialized_ = true;
