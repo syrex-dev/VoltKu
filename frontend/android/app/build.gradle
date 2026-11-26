@@ -7,8 +7,10 @@ android {
         applicationId "com.voltku.energy"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        def envVersionCode = (System.getenv("VOLTKU_VERSION_CODE") ?: project.findProperty("voltkuVersionCode") ?: "1").toInteger()
+        def envVersionName = System.getenv("VOLTKU_VERSION_NAME") ?: project.findProperty("voltkuVersionName") ?: "1.0"
+        versionCode envVersionCode
+        versionName envVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -85,6 +85,9 @@ jobs:
 
       - name: Build Debug APK (siap instal langsung di HP Android)
         working-directory: frontend/android
+        env:
+          VOLTKU_VERSION_CODE: ${{ github.run_number }}
+          VOLTKU_VERSION_NAME: "1.0.${{ github.run_number }}"
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Siapkan berkas VoltKu.apk & baca SHA-1
@@ -121,7 +124,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="voltku-apk"
-          NOTES="Build otomatis APK Android VoltKu dari GitHub Actions.\n\nPackage: \`com.voltku.energy\`\nSigning SHA-1 (untuk Android OAuth Client Google Cloud): \`${{ steps.apk_info.outputs.sha1 }}\`"
+          NOTES="Build otomatis APK Android VoltKu dari GitHub Actions.\n\nVersi: \`1.0.${{ github.run_number }}\` (versionCode: \`${{ github.run_number }}\`)\nPackage: \`com.voltku.energy\`\nSigning SHA-1 (untuk Android OAuth Client Google Cloud): \`${{ steps.apk_info.outputs.sha1 }}\`"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist-apk/VoltKu.apk --clobber
             gh release edit "$TAG" --notes "$(printf '%b' "$NOTES")"
