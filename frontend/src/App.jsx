@@ -1317,6 +1317,11 @@ function CustomerPortalRoot() {
             onOpenAddDevice={handleRequestAddDevice}
             isDeviceOnlineFn={(d) => isDeviceOnlineHelper(d)}
             isAuthenticated={isAuthenticated}
+            currentUser={currentUser}
+            appConfig={publicAppConfig}
+            onOpenPlanModal={openPlanModal}
+            onOpenSettings={() => handleTabChange('settings')}
+            onOpenAlerts={() => handleTabChange('alerts')}
             onOpenLogin={() => {
               setPendingAddDevice(false)
               setLoginError(null)

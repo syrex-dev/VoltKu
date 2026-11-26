@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { Zap, Wifi, WifiOff, Plus, LogIn, ShieldCheck, AlertTriangle, RotateCcw } from 'lucide-react'
+import { HeroBannerCarousel } from './HeroBannerCarousel'
 import { RoomFilterBar } from './RoomFilterBar'
 import { formatNum } from '../utils/formatters'
 
@@ -67,6 +68,11 @@ export function HomeDevicesView({
   isDeviceOnlineFn,
   isAuthenticated = false,
   onOpenLogin,
+  currentUser = null,
+  appConfig = {},
+  onOpenPlanModal,
+  onOpenSettings,
+  onOpenAlerts,
 }) {
   const [viewMode, setViewMode] = useState(() => {
     try {
@@ -163,6 +169,18 @@ export function HomeDevicesView({
 
   return (
     <div className="home-view-clean tab-pane-fade">
+      {/* eWeLink-Style Auto-Scroll Hero Banner Carousel right below navbar */}
+      <HeroBannerCarousel
+        currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
+        appConfig={appConfig}
+        onOpenAddDevice={onOpenAddDevice}
+        onOpenPlanModal={onOpenPlanModal}
+        onOpenSettings={onOpenSettings}
+        onOpenAlerts={onOpenAlerts}
+        onOpenLogin={onOpenLogin}
+      />
+
       {/* eWeLink-Style Room Tabs + Utility Controls */}
       <RoomFilterBar
         rooms={rooms}

@@ -55,6 +55,12 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
     }
   }, [messages, isOpen, sending])
 
+  useEffect(() => {
+    const handleOpenEvent = () => setIsOpen(true)
+    window.addEventListener('voltku:open-ai-chat', handleOpenEvent)
+    return () => window.removeEventListener('voltku:open-ai-chat', handleOpenEvent)
+  }, [])
+
   if (!token || hidden) return null
 
   const sendQuestion = async (rawText) => {
