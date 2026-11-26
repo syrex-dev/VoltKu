@@ -103,6 +103,15 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class UserProfileUpdateRequest(BaseModel):
+    name: str
+
+
+class UserChangePasswordRequest(BaseModel):
+    current_password: Optional[str] = None
+    new_password: str
+
+
 PASSWORD_RESET_TTL_SECONDS = 30 * 60
 
 
@@ -140,6 +149,7 @@ def _serialize_user(
         "email": u.email,
         "role": "user",
         "auth_provider": getattr(u, "auth_provider", "local") or "local",
+        "has_local_password": not str(getattr(u, "password_hash", "") or "").startswith("!"),
         "avatar_url": getattr(u, "avatar_url", None),
         "terms_version_accepted": accepted_ver,
         "terms_accepted_at": getattr(u, "terms_accepted_at", None),
@@ -495,6 +505,87 @@ def get_my_profile(
         session=session,
         cfg_map=cfg_map,
     )
+
+
+@router.patch("/me", response_model=dict[str, Any])
+def update_my_profile(
+    req: UserProfileUpdateRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Memperbarui nama tampilan profil akun pembeli yang sedang login."""
+    if current.get("role") != "user" or current.get("user_id") is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+    user = session.get(User, int(current["user_id"]))
+    if not user:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "User not found")
+
+    clean_name = (req.name or "").strip()
+    if len(clean_name) < 2 or len(clean_name) > 100:
+        raise _api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Nama lengkap harus antara 2 dan 100 karakter.",
+        )
+
+    user.name = clean_name
+    session.commit()
+    session.refresh(user)
+    cfg_map = get_app_config_map(session)
+    active_terms_ver = get_active_terms_version(session, cfg_map)
+    req_consent = cfg_map.get("require_terms_consent", "true").lower() in ("true", "1")
+    return _serialize_user(
+        user,
+        active_terms_version=active_terms_ver,
+        require_terms_consent=req_consent,
+        session=session,
+        cfg_map=cfg_map,
+    )
+
+
+@router.post("/change-password", response_model=dict[str, Any])
+def change_my_password(
+    req: UserChangePasswordRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mengubah kata sandi akun (atau menambah sandi lokal bagi pengguna Google)."""
+    if current.get("role") != "user" or current.get("user_id") is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+    user = session.get(User, int(current["user_id"]))
+    if not user or not user.is_active:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "User not found")
+
+    has_local = not str(user.password_hash or "").startswith("!")
+    if has_local:
+        if not req.current_password or not verify_user_password(
+            req.current_password, user.password_hash
+        ):
+            raise _api_error(status.HTTP_401_UNAUTHORIZED, "Kata sandi saat ini salah.")
+
+    _validate_password_policy(req.new_password)
+    if has_local and req.current_password == req.new_password:
+        raise _api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Kata sandi baru harus berbeda dari kata sandi saat ini.",
+        )
+
+    user.password_hash = hash_password(req.new_password)
+    if (user.auth_provider or "").lower() == "google":
+        user.auth_provider = "both"
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+    session.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now_utc)
+    )
+    session.commit()
+    return {
+        "changed": True,
+        "message": "Kata sandi berhasil diperbarui.",
+    }
 
 
 @router.get("/upgrade-request", response_model=list[dict[str, Any]])

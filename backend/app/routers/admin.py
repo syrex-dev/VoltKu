@@ -285,6 +285,7 @@ def get_admin_overview(session: Session = Depends(get_db)):
         "ingest_queue_size": int(ingest_service.queue.qsize()),
         "scheduler_enabled": bool(cfg.is_scheduler_active),
         "bot_configured": bool(cfg.is_bot_active),
+        "smtp_configured": bool(cfg.smtp_host and cfg.smtp_host.strip()),
     }
 
 

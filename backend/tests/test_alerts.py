@@ -1,6 +1,6 @@
 import json
 
-from app.models import AlertState, Anomaly, Device, Reading, Setting
+from app.models import AlertState, Anomaly, Device, Reading, Setting, User, UserSetting
 from app.services.alert import evaluate_all_alerts
 from app.services.notifier import set_notification_sender
 from mysql_test_helper import open_clean_test_session
@@ -975,4 +975,66 @@ def test_channel_reconfiguration_sends_only_still_active_episodes():
         select(Anomaly).where(Anomaly.device_id == "demo-still-offline")
     )
     assert anom_active.notified == 1
+
+
+def test_alert_respects_tenant_user_power_limit():
+    _, session = get_test_session()
+    sent_msgs: list[str] = []
+    set_notification_sender(lambda m, **kw: sent_msgs.append(m) or True)
+
+    now_ts = 1736001000
+    startup_ts = now_ts - 300
+
+    u1 = User(
+        name="Tenant A",
+        email="ta@example.com",
+        password_hash="!dummy",
+        is_active=1,
+        created_at=now_ts,
+    )
+    u2 = User(
+        name="Tenant B",
+        email="tb@example.com",
+        password_hash="!dummy",
+        is_active=1,
+        created_at=now_ts,
+    )
+    session.add_all([u1, u2])
+    session.commit()
+
+    # Tenant A menyetel batas daya pribadi 1200 W (di bawah global 2200 W)
+    session.add(UserSetting(user_id=u1.id, key="power_limit_w", value="1200"))
+    d1 = Device(
+        id="dev-ta", name="Panel A", owner_user_id=u1.id, mcb_watt=1300, last_seen_at=now_ts
+    )
+    d2 = Device(
+        id="dev-tb", name="Panel B", owner_user_id=u2.id, mcb_watt=2200, last_seen_at=now_ts
+    )
+    session.add_all([d1, d2])
+
+    # Kedua perangkat mencatat daya 1500 W (> 1200 W milik Tenant A, tapi < 2200 W milik Tenant B)
+    for dev_id in ("dev-ta", "dev-tb"):
+        for i in range(6):
+            session.add(
+                Reading(
+                    device_id=dev_id,
+                    ts=now_ts - 10 * i,
+                    v=220.0,
+                    i=6.8,
+                    p=1500.0,
+                    e_kwh=5.0,
+                    delta_kwh=0.05,
+                    f=50.0,
+                    pf=0.98,
+                    rssi=-60,
+                )
+            )
+    session.commit()
+
+    sent = evaluate_all_alerts(session, now_ts=now_ts, startup_ts=startup_ts)
+    assert len(sent) == 1
+    assert "Panel A" in sent[0]
+    assert "1200 W" in sent[0]
+    assert not any("Panel B" in msg for msg in sent)
+
 

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.models import DailyStat, Reading, Setting
+from app.models import DailyStat, Device, Reading, Setting, User, UserSetting
 from app.services.aggregation import get_wib_day, update_daily_stat, update_hourly_stat
 from mysql_test_helper import open_clean_test_session
 
@@ -105,3 +105,42 @@ def test_aggregation_idempotency():
     assert h1.samples == h2.samples == 1
     assert d1.kwh == d2.kwh == 0.015
     assert d1.cost_rp == d2.cost_rp
+
+
+def test_daily_stat_uses_tenant_tariff():
+    session = get_test_session()
+    ts = int(datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc).timestamp())
+
+    owner = User(
+        name="Tenant Tarif",
+        email="tarif@example.com",
+        password_hash="!dummy",
+        is_active=1,
+        created_at=ts,
+    )
+    session.add(owner)
+    session.commit()
+
+    # Tenant mengatur tarif subsidi 450 VA = Rp 415/kWh (41500 sen)
+    session.add(UserSetting(user_id=owner.id, key="tariff_sen_per_kwh", value="41500"))
+    session.add(Device(id="esp_sub", name="Subsidi", owner_user_id=owner.id, mcb_watt=450))
+    session.add(
+        Reading(
+            device_id="esp_sub",
+            ts=ts,
+            v=220.0,
+            i=1.0,
+            p=220.0,
+            e_kwh=10.0,
+            delta_kwh=2.0,
+            f=50.0,
+            pf=1.0,
+            rssi=-60,
+        )
+    )
+    session.commit()
+
+    stat = update_daily_stat(session, "esp_sub", ts)
+    session.commit()
+    assert stat.tariff_sen == 41500
+    assert stat.cost_rp == 830  # 2.0 kWh * Rp 415.00

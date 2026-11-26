@@ -1,6 +1,7 @@
 import hashlib
 import time
 
+from app.auth import create_access_token
 from app.main import app
 from app.models import PasswordResetToken, User
 from fastapi.testclient import TestClient
@@ -207,4 +208,94 @@ def test_admin_edit_email_and_trigger_reset_link(monkeypatch):
         json={"email": "baru@example.com", "password": "PasswordBaru88"},
     )
     assert login_ok.status_code == 200
+    session.close()
+
+
+def test_user_profile_update_change_password_and_overview_smtp():
+    _, session = open_clean_test_session()
+
+    reg = client.post(
+        "/api/users/register",
+        json={
+            "name": "Budi Santoso",
+            "email": "budi@example.com",
+            "password": "PasswordLama9",
+            "accept_terms": True,
+        },
+    )
+    assert reg.status_code == 201
+    tok = reg.json()["token"]
+    headers = {"Authorization": f"Bearer {tok}"}
+
+    # 1. Ubah nama profil mandiri
+    bad_name = client.patch("/api/users/me", headers=headers, json={"name": "A"})
+    assert bad_name.status_code == 422
+
+    upd_name = client.patch("/api/users/me", headers=headers, json={"name": "Budi Pratama"})
+    assert upd_name.status_code == 200
+    assert upd_name.json()["name"] == "Budi Pratama"
+    assert upd_name.json()["has_local_password"] is True
+
+    # 2. Ganti kata sandi (gagal jika sandi lama salah)
+    wrong_pw = client.post(
+        "/api/users/change-password",
+        headers=headers,
+        json={"current_password": "SalahPassword1", "new_password": "PasswordBaru99"},
+    )
+    assert wrong_pw.status_code == 401
+
+    ok_pw = client.post(
+        "/api/users/change-password",
+        headers=headers,
+        json={"current_password": "PasswordLama9", "new_password": "PasswordBaru99"},
+    )
+    assert ok_pw.status_code == 200
+    assert ok_pw.json()["changed"] is True
+
+    # Login dengan sandi baru berhasil, sandi lama gagal
+    assert (
+        client.post(
+            "/api/users/login",
+            json={"email": "budi@example.com", "password": "PasswordLama9"},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/api/users/login",
+            json={"email": "budi@example.com", "password": "PasswordBaru99"},
+        ).status_code
+        == 200
+    )
+
+    # 3. Pengguna Google-only bisa menambahkan kata sandi lokal
+    g_user = User(
+        name="Akun Google",
+        email="googleonly@example.com",
+        password_hash="!google_oauth_only",
+        auth_provider="google",
+        is_active=1,
+        created_at=int(time.time()),
+    )
+    session.add(g_user)
+    session.commit()
+    g_tok = create_access_token(subject="googleonly@example.com", role="user", user_id=g_user.id)
+    g_headers = {"Authorization": f"Bearer {g_tok}"}
+    g_set_pw = client.post(
+        "/api/users/change-password",
+        headers=g_headers,
+        json={"new_password": "SandiGoogle77"},
+    )
+    assert g_set_pw.status_code == 200
+    me_g = client.get("/api/users/me", headers=g_headers).json()
+    assert me_g["auth_provider"] == "both"
+    assert me_g["has_local_password"] is True
+
+    # 4. Overview admin memuat indikator kesiapan SMTP
+    adm_tok = create_access_token(subject="admin", role="admin")
+    ov = client.get("/api/admin/overview", headers={"Authorization": f"Bearer {adm_tok}"})
+    assert ov.status_code == 200
+    assert "smtp_configured" in ov.json()
+    assert isinstance(ov.json()["smtp_configured"], bool)
+
     session.close()

@@ -414,6 +414,12 @@ export function AdminPanel({
                           {overview.bot_configured ? 'Siap' : 'Belum Diatur'}
                         </span>
                       </div>
+                      <div className="admin-service-item">
+                        <span>Email SMTP (Reset Sandi)</span>
+                        <span className={`admin-pill ${overview.smtp_configured ? 'ok' : 'warn'}`}>
+                          {overview.smtp_configured ? 'Siap' : 'Belum Diatur'}
+                        </span>
+                      </div>
                     </div>
                   </section>
                 </div>
@@ -468,9 +474,15 @@ export function AdminPanel({
 
                   <div className="admin-filter-pills">
                     {[
-                      { id: '', label: 'Semua' },
-                      { id: 'critical', label: 'Critical' },
-                      { id: 'warning', label: 'Warning' },
+                      { id: '', label: `Semua (${anomalies.length})` },
+                      {
+                        id: 'critical',
+                        label: `Kritis (${anomalies.filter((a) => (a.severity || '').toLowerCase() === 'critical').length})`,
+                      },
+                      {
+                        id: 'warning',
+                        label: `Peringatan (${anomalies.filter((a) => (a.severity || '').toLowerCase() !== 'critical').length})`,
+                      },
                     ].map((s) => (
                       <button
                         key={s.id || 'all'}

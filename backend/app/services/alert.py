@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import SessionLocal
-from app.models import AlertState, Anomaly, Device, Reading, Setting
+from app.models import AlertState, Anomaly, Device, Reading, Setting, UserSetting
 from app.services.notifier import is_channel_configured, send_alert_notification
 
 logger = logging.getLogger(__name__)
@@ -357,10 +357,9 @@ def evaluate_device_alerts(
                 or (now_ts - power_state.last_notified_at) >= cooldown_seconds
             ):
                 if power_state.last_notified_at == 0:
-                    limit_p = device.mcb_watt or settings.default_mcb_watt
                     msg = (
                         f"[PERINGATAN] {device.name} - Daya melebihi batas: "
-                        f"{avg_p} W > {limit_p} W"
+                        f"{avg_p} W > {power_limit_w} W"
                     )
                     evt_key = f"alert:{device.id}:power_limit:{power_state.since}:0"
                     if send_alert_notification(msg, event_key=evt_key):
@@ -770,8 +769,17 @@ def evaluate_all_alerts(
         if p.strip()
     ]
 
-    power_limit_w = _get_setting_int(session, "power_limit_w", settings.default_mcb_watt)
-    alert_cooldown_min = _get_setting_int(session, "alert_cooldown_min", 30)
+    global_power_limit_w = _get_setting_int(session, "power_limit_w", settings.default_mcb_watt)
+    global_cooldown_min = _get_setting_int(session, "alert_cooldown_min", 30)
+
+    user_settings_map: dict[tuple[int, str], int] = {}
+    for us in session.scalars(
+        select(UserSetting).where(UserSetting.key.in_(("power_limit_w", "alert_cooldown_min")))
+    ).all():
+        try:
+            user_settings_map[(int(us.user_id), str(us.key))] = int(us.value)
+        except (TypeError, ValueError):
+            pass
 
     all_sent: list[str] = []
 
@@ -780,12 +788,24 @@ def evaluate_all_alerts(
         if any(dev.id.startswith(prefix) for prefix in exclude_prefixes):
             continue
 
+        uid = getattr(dev, "owner_user_id", None)
+        dev_power_limit_w = (
+            user_settings_map.get((int(uid), "power_limit_w"), global_power_limit_w)
+            if uid is not None
+            else global_power_limit_w
+        )
+        dev_cooldown_min = (
+            user_settings_map.get((int(uid), "alert_cooldown_min"), global_cooldown_min)
+            if uid is not None
+            else global_cooldown_min
+        )
+
         sent = evaluate_device_alerts(
             session=session,
             device=dev,
             now_ts=now_ts,
-            power_limit_w=power_limit_w,
-            alert_cooldown_min=alert_cooldown_min,
+            power_limit_w=dev_power_limit_w,
+            alert_cooldown_min=dev_cooldown_min,
         )
         all_sent.extend(sent)
 

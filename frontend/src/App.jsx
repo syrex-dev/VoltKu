@@ -1395,9 +1395,11 @@ function CustomerPortalRoot() {
           isOpen={isProfileModalOpen}
           onClose={() => setIsProfileModalOpen(false)}
           currentUser={currentUser}
+          token={userToken}
+          onLogout={handleLogout}
+          onUserUpdated={(updatedUser) => setCurrentUser(updatedUser)}
           theme={theme}
           onToggleTheme={toggleTheme}
-          onLogout={handleLogout}
           onReplayTour={() => {
             setActiveDeviceId('')
             setActiveTab('home')

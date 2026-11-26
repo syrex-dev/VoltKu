@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   ShieldCheck,
   AlertCircle,
@@ -47,7 +47,22 @@ export function AnomaliesList({
   showDeviceLabel = false,
   deviceNamesById = {},
 }) {
-  const list = anomalies || []
+  const [sevFilter, setSevFilter] = useState('all')
+  const list = useMemo(() => anomalies || [], [anomalies])
+  const critCount = useMemo(
+    () => list.filter((a) => (a.severity || '').toLowerCase() === 'critical').length,
+    [list]
+  )
+  const warnCount = list.length - critCount
+  const visibleList = useMemo(() => {
+    if (sevFilter === 'critical') {
+      return list.filter((a) => (a.severity || '').toLowerCase() === 'critical')
+    }
+    if (sevFilter === 'warning') {
+      return list.filter((a) => (a.severity || '').toLowerCase() !== 'critical')
+    }
+    return list
+  }, [list, sevFilter])
 
   return (
     <section className="clean-sheet anomaly-feed-sheet">
@@ -63,21 +78,42 @@ export function AnomaliesList({
         )}
       </div>
 
-      {list.length === 0 ? (
+      {list.length > 0 && (
+        <div className="anomaly-filter-bar">
+          {[
+            { id: 'all', label: `Semua (${list.length})` },
+            { id: 'critical', label: `Kritis (${critCount})` },
+            { id: 'warning', label: `Peringatan (${warnCount})` },
+          ].map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className={`admin-filter-pill ${sevFilter === f.id ? 'active' : ''}`}
+              onClick={() => setSevFilter(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {visibleList.length === 0 ? (
         <div className="empty-healthy-card">
           <div className="healthy-icon-wrap">
             <ShieldCheck size={26} />
           </div>
           <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-main)' }}>
-            Semua Berjalan Normal
+            {list.length === 0 ? 'Semua Berjalan Normal' : 'Tidak Ada Catatan pada Filter Ini'}
           </div>
           <div style={{ fontSize: 13 }}>
-            Belum ada catatan gangguan atau lonjakan listrik dalam 7 hari terakhir.
+            {list.length === 0
+              ? 'Belum ada catatan gangguan atau lonjakan listrik dalam 7 hari terakhir.'
+              : 'Coba pilih filter "Semua" untuk melihat catatan peringatan lainnya.'}
           </div>
         </div>
       ) : (
         <div className="anomaly-feed-list">
-          {list.map((item) => {
+          {visibleList.map((item) => {
             const isCrit = item.severity === 'critical'
             const { title, desc, Icon } = getAnomalyMeta(item)
             const devName = showDeviceLabel && item.device_id

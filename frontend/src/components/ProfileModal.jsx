@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   X,
   Crown,
@@ -14,7 +14,13 @@ import {
   Send,
   Mail,
   Info,
+  UserCog,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Save,
 } from 'lucide-react'
+import { apiRequest } from '../api/client'
 import { formatRp, formatTimeWIB } from '../utils/formatters'
 
 function normalizeWaHref(raw = '') {
@@ -28,6 +34,8 @@ export function ProfileModal({
   isOpen,
   onClose,
   currentUser = null,
+  token = '',
+  onUserUpdated,
   theme = 'light',
   onToggleTheme,
   onLogout,
@@ -38,8 +46,106 @@ export function ProfileModal({
   appConfig = {},
 }) {
   const [showAboutDetail, setShowAboutDetail] = useState(false)
+  const [showAccountEditor, setShowAccountEditor] = useState(false)
+  const [editName, setEditName] = useState(currentUser?.name || '')
+  const [savingName, setSavingName] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPasswords, setShowPasswords] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
+  const [accountMsg, setAccountMsg] = useState(null)
+
+  useEffect(() => {
+    if (isOpen) {
+      setEditName(currentUser?.name || '')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setAccountMsg(null)
+    }
+  }, [isOpen, currentUser?.name])
 
   if (!isOpen) return null
+
+  const hasLocalPassword = currentUser?.has_local_password !== false
+
+  const handleSaveName = async (e) => {
+    e.preventDefault()
+    if (!token) return
+    const trimmed = (editName || '').trim()
+    if (trimmed.length < 2) {
+      setAccountMsg({ type: 'error', text: 'Nama lengkap minimal 2 karakter.' })
+      return
+    }
+    setSavingName(true)
+    setAccountMsg(null)
+    try {
+      const updated = await apiRequest(
+        '/api/users/me',
+        { method: 'PATCH', body: { name: trimmed } },
+        token,
+        onLogout
+      )
+      if (onUserUpdated) onUserUpdated(updated)
+      setAccountMsg({ type: 'success', text: 'Nama profil berhasil diperbarui.' })
+    } catch (err) {
+      setAccountMsg({ type: 'error', text: err.message || 'Gagal memperbarui nama.' })
+    } finally {
+      setSavingName(false)
+    }
+  }
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    if (!token) return
+    if (hasLocalPassword && !currentPassword) {
+      setAccountMsg({ type: 'error', text: 'Masukkan kata sandi saat ini terlebih dahulu.' })
+      return
+    }
+    if (newPassword.length < 6) {
+      setAccountMsg({ type: 'error', text: 'Kata sandi baru minimal 6 karakter.' })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setAccountMsg({ type: 'error', text: 'Konfirmasi kata sandi baru tidak cocok.' })
+      return
+    }
+    setSavingPassword(true)
+    setAccountMsg(null)
+    try {
+      const res = await apiRequest(
+        '/api/users/change-password',
+        {
+          method: 'POST',
+          body: {
+            current_password: hasLocalPassword ? currentPassword : null,
+            new_password: newPassword,
+          },
+        },
+        token,
+        onLogout
+      )
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      if (onUserUpdated && currentUser) {
+        onUserUpdated({
+          ...currentUser,
+          has_local_password: true,
+          auth_provider: currentUser.auth_provider === 'google' ? 'both' : currentUser.auth_provider,
+        })
+      }
+      setAccountMsg({
+        type: 'success',
+        text: res?.message || 'Kata sandi berhasil diperbarui.',
+      })
+    } catch (err) {
+      setAccountMsg({ type: 'error', text: err.message || 'Gagal mengubah kata sandi.' })
+    } finally {
+      setSavingPassword(false)
+    }
+  }
 
   const appName = appConfig.app_name || 'VoltKu'
   const appTagline = appConfig.app_tagline || 'Pantau listrik rumah lebih tenang dan akurat'
@@ -207,6 +313,118 @@ export function ProfileModal({
         {/* Grouped Menu Cards */}
         <div className="profile-ref-body">
           <section className="profile-ref-card-group">
+            <button
+              type="button"
+              className="profile-ref-row"
+              onClick={() => {
+                setShowAccountEditor((prev) => !prev)
+                setAccountMsg(null)
+              }}
+            >
+              <span className="profile-ref-row-icon">
+                <UserCog size={18} />
+              </span>
+              <span className="profile-ref-row-title">Kelola Akun &amp; Kata Sandi</span>
+              <ChevronRight
+                size={16}
+                className={`profile-ref-chevron ${showAccountEditor ? 'rotated' : ''}`}
+              />
+            </button>
+
+            {showAccountEditor && (
+              <div className="profile-account-panel">
+                {accountMsg && (
+                  <div className={`feedback-msg ${accountMsg.type === 'error' ? 'error' : 'success'}`}>
+                    {accountMsg.text}
+                  </div>
+                )}
+
+                <form onSubmit={handleSaveName} className="profile-account-form">
+                  <label className="field-label" htmlFor="prof-edit-name">
+                    Nama Tampilan
+                  </label>
+                  <div className="profile-account-inline-row">
+                    <input
+                      id="prof-edit-name"
+                      type="text"
+                      className="modern-input"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      minLength={2}
+                      maxLength={100}
+                      required
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn-primary btn-compact"
+                      disabled={savingName}
+                    >
+                      <Save size={14} />
+                      <span>{savingName ? 'Menyimpan...' : 'Simpan'}</span>
+                    </button>
+                  </div>
+                </form>
+
+                <form onSubmit={handleChangePassword} className="profile-account-form" style={{ marginTop: 12 }}>
+                  <div className="profile-account-sec-head">
+                    <KeyRound size={13} />
+                    <span>{hasLocalPassword ? 'Ganti Kata Sandi' : 'Buat Kata Sandi Lokal'}</span>
+                    <button
+                      type="button"
+                      className="profile-account-eye-btn"
+                      onClick={() => setShowPasswords((p) => !p)}
+                      aria-label={showPasswords ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                    >
+                      {showPasswords ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+
+                  {hasLocalPassword && (
+                    <input
+                      type={showPasswords ? 'text' : 'password'}
+                      className="modern-input"
+                      placeholder="Kata sandi saat ini"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      autoComplete="current-password"
+                    />
+                  )}
+                  <input
+                    type={showPasswords ? 'text' : 'password'}
+                    className="modern-input"
+                    placeholder="Kata sandi baru (min. 6 karakter)"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    minLength={6}
+                    autoComplete="new-password"
+                  />
+                  <input
+                    type={showPasswords ? 'text' : 'password'}
+                    className="modern-input"
+                    placeholder="Ulangi kata sandi baru"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    minLength={6}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn-secondary btn-compact"
+                    disabled={savingPassword}
+                  >
+                    <KeyRound size={14} />
+                    <span>
+                      {savingPassword
+                        ? 'Memperbarui...'
+                        : hasLocalPassword
+                          ? 'Perbarui Kata Sandi'
+                          : 'Simpan Kata Sandi'}
+                    </span>
+                  </button>
+                </form>
+              </div>
+            )}
+
             {onOpenSettings && (
               <button
                 type="button"
