@@ -139,7 +139,7 @@ export async function signInWithGoogleForIdToken(webClientId) {
   await ensureGoogleAuthInitialized(cleanId)
 
   const loginOptions = Capacitor.isNativePlatform()
-    ? { style: 'standard' }
+    ? { style: 'standard', filterByAuthorizedAccounts: false, autoSelectEnabled: false }
     : { scopes: ['profile', 'email'], prompt: 'select_account' }
 
   try {
@@ -164,6 +164,17 @@ export async function signInWithGoogleForIdToken(webClientId) {
       rawMsg.includes('closed')
     ) {
       throw new Error('Login Google dibatalkan.')
+    }
+    if (
+      Capacitor.isNativePlatform() &&
+      (rawMsg.includes('reauth failed') ||
+        rawMsg.includes('[16]') ||
+        rawMsg.includes('not configured') ||
+        rawMsg.includes('developer console'))
+    ) {
+      throw new Error(
+        'Login Google APK ditolak Google Cloud OAuth ([16]). Pastikan Android OAuth Client (package com.voltku.energy + SHA-1 APK) sudah terdaftar di Google Cloud Console & OAuth Consent Screen berstatus Published atau email Anda terdaftar di Test Users.'
+      )
     }
     throw err
   }

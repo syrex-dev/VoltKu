@@ -42,6 +42,21 @@ jobs:
       - name: Setup Gradle & Cache
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Siapkan Android Debug Keystore persisten (agar SHA-1 Google Sign-In stabil)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: voltku-android-debug-keystore-v1
+
+      - name: Pulihkan keystore dari Secret (opsional)
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_B64" ]; then
+            mkdir -p ~/.android
+            echo "$ANDROID_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+          fi
+
       - name: Install dependencies frontend
         working-directory: frontend
         run: npm ci
@@ -63,13 +78,17 @@ jobs:
         working-directory: frontend/android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Siapkan berkas VoltKu.apk
+      - name: Siapkan berkas VoltKu.apk & baca SHA-1
+        id: apk_info
         run: |
           mkdir -p dist-apk
           APK_FILE=$(find frontend/android/app/build/outputs/apk/debug -maxdepth 2 -name "*.apk" | head -n 1)
           test -n "$APK_FILE"
           cp "$APK_FILE" dist-apk/VoltKu.apk
           ls -lh dist-apk/VoltKu.apk
+          SHA1=$(keytool -printcert -jarfile dist-apk/VoltKu.apk | awk '/SHA1:/ {print $2; exit}')
+          echo "sha1=$SHA1" >> "$GITHUB_OUTPUT"
+          echo "APK Signing SHA-1: $SHA1"
 
       - name: Upload VoltKu.apk Artifact
         uses: actions/upload-artifact@v4
@@ -83,10 +102,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="voltku-apk"
+          NOTES="Build otomatis APK Android VoltKu dari GitHub Actions.\n\nPackage: \`com.voltku.energy\`\nSigning SHA-1 (untuk Android OAuth Client Google Cloud): \`${{ steps.apk_info.outputs.sha1 }}\`"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist-apk/VoltKu.apk --clobber
+            gh release edit "$TAG" --notes "$(printf '%b' "$NOTES")"
           else
             gh release create "$TAG" dist-apk/VoltKu.apk \
               --title "VoltKu Android APK" \
-              --notes "Build otomatis APK Android VoltKu langsung dari GitHub Actions."
+              --notes "$(printf '%b' "$NOTES")"
           fi
