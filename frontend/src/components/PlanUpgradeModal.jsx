@@ -18,6 +18,9 @@ import {
   RotateCcw,
   Sparkles,
   ShieldCheck,
+  ArrowLeft,
+  ArrowRight,
+  CalendarDays,
 } from 'lucide-react'
 import { apiRequest, buildApiUrl } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
@@ -49,6 +52,8 @@ export function PlanUpgradeModal({
   onUpgradeSubmitted,
   lockedReason = '',
 }) {
+  // 'tier' (Pilih Gratis / Pro) -> 'cycle' (Bulanan / Tahunan) -> 'method' (Pilih Pembayaran)
+  const [browseStage, setBrowseStage] = useState('tier')
   const [billingCycle, setBillingCycle] = useState('monthly')
   const [paymentMethods, setPaymentMethods] = useState([])
   const [methodsLoading, setMethodsLoading] = useState(false)
@@ -94,15 +99,18 @@ export function PlanUpgradeModal({
       : 0
 
   const checkoutStepNum = useMemo(() => {
-    if (isPro) return 4
-    if (activeStepStatus === 'verifying') return 3
-    if (activeStepStatus === 'awaiting_payment' || activeStepStatus === 'pending') return 2
+    if (isPro) return 5
+    if (activeStepStatus === 'verifying') return 4
+    if (activeStepStatus === 'awaiting_payment' || activeStepStatus === 'pending') return 3
+    if (browseStage === 'method') return 3
+    if (browseStage === 'cycle') return 2
     return 1
-  }, [isPro, activeStepStatus])
+  }, [isPro, activeStepStatus, browseStage])
 
   // Reset saat modal dibuka/ditutup dan muat daftar metode pembayaran aktif
   useEffect(() => {
     if (!isOpen) {
+      setBrowseStage('tier')
       setFeedback(null)
       setProofBase64('')
       setProofName('')
@@ -110,6 +118,7 @@ export function PlanUpgradeModal({
       setLocalPending(undefined)
       return
     }
+    setBrowseStage('tier')
     setLocalPending(undefined)
     let cancelled = false
     setMethodsLoading(true)
@@ -299,6 +308,7 @@ export function PlanUpgradeModal({
         onLogout
       )
       setLocalPending(null)
+      setBrowseStage('method')
       setProofBase64('')
       setProofName('')
       setFeedback({
@@ -322,67 +332,91 @@ export function PlanUpgradeModal({
         className="modal-dialog-modern pwa-guide-sheet plan-modal-dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="pwa-guide-head">
-          <div className="plan-modal-head-left">
-            <span className={`plan-crown-badge ${isPro ? 'is-pro' : ''}`}>
-              <Crown size={18} />
-            </span>
-            <div>
-              <h3 className="pwa-guide-title">
-                {pending
-                  ? `Pembayaran ${proName}`
-                  : `Paket & Fitur ${appConfig?.app_name || 'VoltKu'}`}
-              </h3>
-              <p className="pwa-guide-sub">
-                {isPro
-                  ? `Langganan ${proName} Anda sedang aktif`
-                  : pending
-                    ? `Tagihan ${pending.order_code || `#${pending.id}`}`
-                    : `Tingkatkan ke ${proName} untuk kendali energi lengkap`}
-              </p>
+        <div className="plan-sticky-head">
+          <div className="pwa-guide-head" style={{ marginBottom: !isPro ? 10 : 0 }}>
+            <div className="plan-modal-head-left">
+              <span className={`plan-crown-badge ${isPro ? 'is-pro' : ''}`}>
+                <Crown size={18} />
+              </span>
+              <div>
+                <h3 className="pwa-guide-title">
+                  {pending
+                    ? `Pembayaran ${proName}`
+                    : checkoutStepNum === 2
+                      ? `Pilih Durasi ${proName}`
+                      : checkoutStepNum === 3
+                        ? `Metode Pembayaran`
+                        : `Pilih Paket ${appConfig?.app_name || 'VoltKu'}`}
+                </h3>
+                <p className="pwa-guide-sub">
+                  {isPro
+                    ? `Langganan ${proName} Anda sedang aktif`
+                    : pending
+                      ? `Tagihan ${pending.order_code || `#${pending.id}`}`
+                      : checkoutStepNum === 2
+                        ? 'Pilih siklus langganan bulanan atau tahunan'
+                        : checkoutStepNum === 3
+                          ? 'Pilih metode transfer atau QRIS yang diinginkan'
+                          : `Bandingkan fitur paket ${freeName} dan ${proName}`}
+                </p>
+              </div>
             </div>
+            <button type="button" className="btn-icon-close" onClick={onClose} aria-label="Tutup">
+              <X size={18} />
+            </button>
           </div>
-          <button type="button" className="btn-icon-close" onClick={onClose} aria-label="Tutup">
-            <X size={18} />
-          </button>
+
+          {/* Stepper 4-Tahap alur upgrade: Paket -> Durasi -> Pembayaran -> Verifikasi */}
+          {!isPro && (
+            <div className="plan-steps-bar" aria-label="Tahapan Upgrade Paket">
+              {[
+                { num: 1, label: 'Paket', stage: 'tier' },
+                { num: 2, label: 'Durasi', stage: 'cycle' },
+                { num: 3, label: 'Bayar', stage: 'method' },
+                { num: 4, label: 'Verifikasi', stage: null },
+              ].map((s, idx) => {
+                const isDone = checkoutStepNum > s.num
+                const isActive = checkoutStepNum === s.num
+                const canJumpBack = Boolean(!pending && s.stage && isDone)
+                return (
+                  <React.Fragment key={s.num}>
+                    {idx > 0 && <span className="plan-step-sep" aria-hidden="true" />}
+                    <button
+                      type="button"
+                      disabled={!canJumpBack}
+                      className={`plan-step-pill ${isActive ? 'active' : isDone ? 'done' : ''} ${
+                        canJumpBack ? 'is-clickable' : ''
+                      }`}
+                      onClick={() => {
+                        if (canJumpBack && s.stage) {
+                          setFeedback(null)
+                          setBrowseStage(s.stage)
+                        }
+                      }}
+                    >
+                      <span className="plan-step-num">{isDone ? '✓' : s.num}</span>
+                      <span>{s.label}</span>
+                    </button>
+                  </React.Fragment>
+                )
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Stepper alur upgrade manual untuk pengguna non-Pro */}
-        {!isPro && (
-          <div className="plan-steps-bar" aria-label="Tahapan Pembayaran">
-            <div className={`plan-step-pill ${checkoutStepNum === 1 ? 'active' : 'done'}`}>
-              <span className="plan-step-num">{checkoutStepNum > 1 ? '✓' : '1'}</span>
-              <span>Pilih Paket</span>
+        <div className="plan-scroll-body">
+          {lockedReason && (
+            <div className="plan-locked-banner">
+              <Lock size={15} />
+              <span>{lockedReason}</span>
             </div>
-            <span className="plan-step-sep" aria-hidden="true" />
-            <div
-              className={`plan-step-pill ${
-                checkoutStepNum === 2 ? 'active' : checkoutStepNum > 2 ? 'done' : ''
-              }`}
-            >
-              <span className="plan-step-num">{checkoutStepNum > 2 ? '✓' : '2'}</span>
-              <span>Bayar &amp; Bukti</span>
-            </div>
-            <span className="plan-step-sep" aria-hidden="true" />
-            <div className={`plan-step-pill ${checkoutStepNum === 3 ? 'active' : ''}`}>
-              <span className="plan-step-num">3</span>
-              <span>Verifikasi</span>
-            </div>
-          </div>
-        )}
+          )}
 
-        {lockedReason && (
-          <div className="plan-locked-banner">
-            <Lock size={15} />
-            <span>{lockedReason}</span>
-          </div>
-        )}
-
-        {feedback && (
-          <div className={`feedback-msg ${feedback.type === 'error' ? 'error' : 'success'}`}>
-            {feedback.text}
-          </div>
-        )}
+          {feedback && (
+            <div className={`feedback-msg ${feedback.type === 'error' ? 'error' : 'success'}`}>
+              {feedback.text}
+            </div>
+          )}
 
         {/* 1. User sudah Pro */}
         {isPro && (
@@ -695,10 +729,10 @@ export function PlanUpgradeModal({
           </div>
         )}
 
-        {/* 4. Pilih Paket & Metode Pembayaran Baru */}
+        {/* 4. Alur Pemilihan Paket -> Durasi -> Metode Pembayaran */}
         {!isPro && !pending && (
           <>
-            {latestUpgrade?.status === 'rejected' && (
+            {latestUpgrade?.status === 'rejected' && browseStage === 'tier' && (
               <div className="pay-rejected-alert">
                 <XCircle size={16} />
                 <div>
@@ -713,213 +747,365 @@ export function PlanUpgradeModal({
               </div>
             )}
 
-            {/* Toggle Periode Langganan di atas agar harga kartu langsung mencerminkan pilihan */}
-            <div className="plan-cycle-toggle">
-              <button
-                type="button"
-                className={`plan-cycle-btn ${billingCycle === 'monthly' ? 'active' : ''}`}
-                onClick={() => setBillingCycle('monthly')}
-              >
-                <span>Bulanan</span>
-                <strong className="num-tabular">{formatRp(monthlyPrice)}</strong>
-              </button>
-              <button
-                type="button"
-                className={`plan-cycle-btn ${billingCycle === 'yearly' ? 'active' : ''}`}
-                onClick={() => setBillingCycle('yearly')}
-              >
-                <span className="plan-cycle-title-row">
-                  <span>Tahunan</span>
-                  {yearlySavingsPct > 0 && (
-                    <span className="plan-save-chip">Hemat {yearlySavingsPct}%</span>
-                  )}
-                </span>
-                <strong className="num-tabular">{formatRp(yearlyPrice)}</strong>
-              </button>
-            </div>
+            {/* TAHAP 1: Hanya Tampilkan Kartu Gratis & Pro (bisa diklik) */}
+            {browseStage === 'tier' && (
+              <div className="plan-compare-grid">
+                <button
+                  type="button"
+                  className="plan-tier-card is-current is-clickable-card"
+                  onClick={() => {
+                    setFeedback({
+                      type: 'success',
+                      text: `Anda saat ini sudah aktif menggunakan paket ${freeName}. Pilih ${proName} untuk upgrade.`,
+                    })
+                  }}
+                >
+                  <div className="plan-tier-head">
+                    <span className="plan-tier-name">{freeName}</span>
+                    <span className="plan-tier-badge current">Aktif</span>
+                  </div>
+                  <div className="plan-tier-price num-tabular">
+                    Rp 0<span className="plan-tier-unit">/selamanya</span>
+                  </div>
+                  <div className="plan-alt-price">Cocok untuk coba 1 panel rumah</div>
+                  <ul className="plan-feature-list">
+                    <li>
+                      <Check size={14} className="plan-check-icon" />
+                      <span>Maks. {freeMaxDevices} panel aktif</span>
+                    </li>
+                    <li>
+                      <Check size={14} className="plan-check-icon" />
+                      <span>Pantau Live real-time 10 detik</span>
+                    </li>
+                    <li>
+                      <Check size={14} className="plan-check-icon" />
+                      <span>Grafik hingga {freeHistoryDays} hari</span>
+                    </li>
+                    <li>
+                      {freeCfg.forecast_enabled ? (
+                        <Check size={14} className="plan-check-icon" />
+                      ) : (
+                        <Lock size={14} className="plan-lock-icon" />
+                      )}
+                      <span className={!freeCfg.forecast_enabled ? 'plan-feat-locked' : ''}>
+                        Proyeksi tagihan akhir bulan
+                      </span>
+                    </li>
+                    <li>
+                      {freeCfg.export_enabled ? (
+                        <Check size={14} className="plan-check-icon" />
+                      ) : (
+                        <Lock size={14} className="plan-lock-icon" />
+                      )}
+                      <span className={!freeCfg.export_enabled ? 'plan-feat-locked' : ''}>
+                        Ekspor laporan CSV
+                      </span>
+                    </li>
+                  </ul>
+                  <div className="plan-tier-footer-cta is-current">
+                    <Check size={14} />
+                    <span>Paket Anda Saat Ini</span>
+                  </div>
+                </button>
 
-            <div className="plan-compare-grid">
-              <div className="plan-tier-card is-current">
-                <div className="plan-tier-head">
-                  <span className="plan-tier-name">{freeName}</span>
-                  <span className="plan-tier-badge current">Aktif</span>
-                </div>
-                <div className="plan-tier-price num-tabular">
-                  Rp 0<span className="plan-tier-unit">/selamanya</span>
-                </div>
-                <div className="plan-alt-price">Cocok untuk coba 1 panel rumah</div>
-                <ul className="plan-feature-list">
-                  <li>
-                    <Check size={14} className="plan-check-icon" />
-                    <span>Maks. {freeMaxDevices} panel aktif</span>
-                  </li>
-                  <li>
-                    <Check size={14} className="plan-check-icon" />
-                    <span>Pantau Live real-time 10 detik</span>
-                  </li>
-                  <li>
-                    <Check size={14} className="plan-check-icon" />
-                    <span>Grafik hingga {freeHistoryDays} hari</span>
-                  </li>
-                  <li>
-                    {freeCfg.forecast_enabled ? (
-                      <Check size={14} className="plan-check-icon" />
-                    ) : (
-                      <Lock size={14} className="plan-lock-icon" />
-                    )}
-                    <span className={!freeCfg.forecast_enabled ? 'plan-feat-locked' : ''}>
-                      Proyeksi tagihan akhir bulan
+                <button
+                  type="button"
+                  className="plan-tier-card is-pro is-clickable-card"
+                  onClick={() => {
+                    setFeedback(null)
+                    setBrowseStage('cycle')
+                  }}
+                >
+                  <div className="plan-tier-head">
+                    <span className="plan-tier-name">
+                      <Crown size={14} className="plan-pro-crown" /> {proName}
                     </span>
-                  </li>
-                  <li>
-                    {freeCfg.export_enabled ? (
-                      <Check size={14} className="plan-check-icon" />
-                    ) : (
-                      <Lock size={14} className="plan-lock-icon" />
-                    )}
-                    <span className={!freeCfg.export_enabled ? 'plan-feat-locked' : ''}>
-                      Ekspor laporan CSV
+                    <span className="plan-tier-badge pro">
+                      <Sparkles size={10} /> Rekomendasi
                     </span>
-                  </li>
-                </ul>
+                  </div>
+                  <div className="plan-tier-price num-tabular">
+                    <span className="plan-tier-prefix">Mulai</span> {formatRp(monthlyPrice)}
+                    <span className="plan-tier-unit">/bulan</span>
+                  </div>
+                  <div className="plan-alt-price num-tabular">
+                    {yearlySavingsPct > 0
+                      ? `Atau ${formatRp(yearlyPrice)}/tahun (hemat ${yearlySavingsPct}%)`
+                      : `Atau ${formatRp(yearlyPrice)}/tahun`}
+                  </div>
+                  <ul className="plan-feature-list">
+                    <li>
+                      <Check size={14} className="plan-check-icon" />
+                      <span>
+                        {proMaxDevices < 0
+                          ? 'Panel aktif tanpa batas'
+                          : `Hingga ${proMaxDevices} panel aktif`}
+                      </span>
+                    </li>
+                    <li>
+                      <Check size={14} className="plan-check-icon" />
+                      <span>Grafik historis hingga {proHistoryDays} hari</span>
+                    </li>
+                    <li>
+                      <Check size={14} className="plan-check-icon" />
+                      <span>Proyeksi tagihan akhir bulan otomatis</span>
+                    </li>
+                    <li>
+                      <Check size={14} className="plan-check-icon" />
+                      <span>Ekspor laporan konsumsi CSV</span>
+                    </li>
+                    <li>
+                      <Check size={14} className="plan-check-icon" />
+                      <span>Deteksi anomali lengkap L2/L3</span>
+                    </li>
+                  </ul>
+                  <div className="plan-tier-footer-cta is-pro">
+                    <span>Pilih {proName}</span>
+                    <ArrowRight size={15} />
+                  </div>
+                </button>
               </div>
+            )}
 
-              <div className="plan-tier-card is-pro">
-                <div className="plan-tier-head">
-                  <span className="plan-tier-name">
-                    <Crown size={14} className="plan-pro-crown" /> {proName}
-                  </span>
-                  <span className="plan-tier-badge pro">
-                    <Sparkles size={10} /> Rekomendasi
-                  </span>
-                </div>
-                <div className="plan-tier-price num-tabular">
-                  {formatRp(selectedPrice)}
-                  <span className="plan-tier-unit">
-                    /{billingCycle === 'yearly' ? 'tahun' : 'bulan'}
-                  </span>
-                </div>
-                <div className="plan-alt-price num-tabular">
-                  {billingCycle === 'yearly' && yearlySavingsRp > 0
-                    ? `Hemat ${formatRp(yearlySavingsRp)}/thn (${formatRp(Math.round(yearlyPrice / 12))}/bln)`
-                    : `atau ${formatRp(yearlyPrice)}/tahun`}
-                </div>
-                <ul className="plan-feature-list">
-                  <li>
-                    <Check size={14} className="plan-check-icon" />
+            {/* TAHAP 2: Pilih Siklus Bulanan / Tahunan */}
+            {browseStage === 'cycle' && (
+              <div className="plan-stage-stack">
+                <div className="plan-selected-bar">
+                  <div className="plan-selected-bar-copy">
+                    <Crown size={15} className="plan-pro-crown" />
                     <span>
-                      {proMaxDevices < 0
-                        ? 'Panel aktif tanpa batas'
-                        : `Hingga ${proMaxDevices} panel aktif`}
+                      Paket dipilih: <strong>{proName}</strong>
                     </span>
-                  </li>
-                  <li>
-                    <Check size={14} className="plan-check-icon" />
-                    <span>Grafik historis hingga {proHistoryDays} hari</span>
-                  </li>
-                  <li>
-                    <Check size={14} className="plan-check-icon" />
-                    <span>Proyeksi tagihan akhir bulan otomatis</span>
-                  </li>
-                  <li>
-                    <Check size={14} className="plan-check-icon" />
-                    <span>Ekspor laporan konsumsi CSV</span>
-                  </li>
-                  <li>
-                    <Check size={14} className="plan-check-icon" />
-                    <span>Deteksi anomali lengkap L2/L3</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Pilihan Metode Pembayaran Manual */}
-            <div className="pay-methods-section">
-              <div className="pay-methods-head">
-                <span className="pay-methods-title">Pilih Metode Pembayaran Manual</span>
-                <span className="pay-methods-sub">Verifikasi cepat oleh Admin VoltKu</span>
-              </div>
-              {methodsLoading ? (
-                <div className="pay-methods-loading">Memuat metode pembayaran...</div>
-              ) : paymentMethods.length === 0 ? (
-                <div className="pay-methods-empty">
-                  {instructions ||
-                    'Pembayaran dilakukan via konfirmasi manual ke pengelola (QRIS / Transfer / WhatsApp). Klik tombol di bawah untuk membuat pengajuan.'}
+                  </div>
+                  <button
+                    type="button"
+                    className="plan-change-link"
+                    onClick={() => {
+                      setFeedback(null)
+                      setBrowseStage('tier')
+                    }}
+                  >
+                    Ubah Paket
+                  </button>
                 </div>
-              ) : (
-                <div className="pay-method-grid">
-                  {paymentMethods.map((pm) => {
-                    const meta = TYPE_META[pm.type] || TYPE_META.bank
-                    const Icon = meta.icon
-                    const isSelected = selectedMethodId === pm.id
-                    return (
-                      <button
-                        key={pm.id}
-                        type="button"
-                        className={`pay-method-card ${isSelected ? 'selected' : ''}`}
-                        onClick={() => setSelectedMethodId(pm.id)}
-                      >
-                        <div className="pay-method-card-top">
-                          <span className="pay-method-icon-box">
-                            <Icon size={15} />
+
+                <div className="plan-duration-grid">
+                  <button
+                    type="button"
+                    className={`plan-duration-card ${billingCycle === 'monthly' ? 'selected' : ''}`}
+                    onClick={() => setBillingCycle('monthly')}
+                  >
+                    <div className="plan-duration-top">
+                      <span className="plan-duration-radio" aria-hidden="true">
+                        {billingCycle === 'monthly' && <Check size={11} strokeWidth={3} />}
+                      </span>
+                      <div className="plan-duration-meta">
+                        <span className="plan-duration-name">
+                          <CalendarDays size={14} /> Paket Bulanan
+                        </span>
+                        <span className="plan-duration-desc">Aktif 30 hari · Bayar fleksibel tiap bulan</span>
+                      </div>
+                    </div>
+                    <div className="plan-duration-price-row num-tabular">
+                      <strong>{formatRp(monthlyPrice)}</strong>
+                      <span>/bulan</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`plan-duration-card is-best ${billingCycle === 'yearly' ? 'selected' : ''}`}
+                    onClick={() => setBillingCycle('yearly')}
+                  >
+                    <div className="plan-duration-top">
+                      <span className="plan-duration-radio" aria-hidden="true">
+                        {billingCycle === 'yearly' && <Check size={11} strokeWidth={3} />}
+                      </span>
+                      <div className="plan-duration-meta">
+                        <div className="plan-duration-title-row">
+                          <span className="plan-duration-name">
+                            <Sparkles size={14} /> Paket Tahunan
                           </span>
-                          <span className="pay-method-type-text">{meta.label}</span>
-                          {isSelected && (
-                            <span className="pay-method-check">
-                              <Check size={12} />
-                            </span>
+                          {yearlySavingsPct > 0 && (
+                            <span className="plan-save-chip">Hemat {yearlySavingsPct}%</span>
                           )}
                         </div>
-                        <div className="pay-method-label">{pm.label}</div>
-                        {(pm.account_number || pm.account_holder) && (
-                          <div className="pay-method-sub">
-                            {pm.account_number ? pm.account_number : `a.n. ${pm.account_holder}`}
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })}
+                        <span className="plan-duration-desc">
+                          {yearlySavingsRp > 0
+                            ? `Aktif 1 tahun penuh · Hemat ${formatRp(yearlySavingsRp)} (${formatRp(
+                                Math.round(yearlyPrice / 12)
+                              )}/bln)`
+                            : 'Aktif 1 tahun penuh (365 hari)'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="plan-duration-price-row num-tabular">
+                      <strong>{formatRp(yearlyPrice)}</strong>
+                      <span>/tahun</span>
+                    </div>
+                  </button>
                 </div>
-              )}
-            </div>
 
-            <div className="form-field-group" style={{ marginTop: 10, marginBottom: 12 }}>
-              <input
-                id="upgrade-user-note"
-                type="text"
-                className="modern-input"
-                maxLength={140}
-                placeholder="Catatan konfirmasi (opsional, mis. nama pengirim transfer/QRIS)"
-                value={userNote}
-                onChange={(e) => setUserNote(e.target.value)}
-              />
-            </div>
+                <div className="plan-stage-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary plan-btn-back"
+                    onClick={() => {
+                      setFeedback(null)
+                      setBrowseStage('tier')
+                    }}
+                  >
+                    <ArrowLeft size={15} />
+                    <span>Kembali</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary plan-btn-next"
+                    onClick={() => {
+                      setFeedback(null)
+                      setBrowseStage('method')
+                    }}
+                  >
+                    <span>Lanjut ke Pembayaran</span>
+                    <ArrowRight size={15} />
+                  </button>
+                </div>
+              </div>
+            )}
 
-            <div className="plan-cta-row">
-              <button
-                type="button"
-                className="btn btn-primary plan-cta-primary"
-                disabled={submitting}
-                onClick={handleCreateOrder}
-              >
-                <Crown size={15} />
-                <span>
-                  {submitting
-                    ? 'Membuat Tagihan...'
-                    : selectedMethod
-                      ? `Bayar ${formatRp(selectedPrice)} via ${selectedMethod.label}`
-                      : `Ajukan Upgrade (${formatRp(selectedPrice)})`}
-                </span>
-              </button>
-              {waHref && (
-                <a href={waHref} target="_blank" rel="noreferrer" className="btn btn-ghost">
-                  <MessageCircle size={15} />
-                  <span>WhatsApp</span>
-                </a>
-              )}
-            </div>
+            {/* TAHAP 3A: Pilih Metode Pembayaran & Buat Tagihan */}
+            {browseStage === 'method' && (
+              <div className="plan-stage-stack">
+                <div className="plan-order-summary-card">
+                  <div className="plan-order-summary-left">
+                    <span className="plan-order-summary-label">Ringkasan Pesanan</span>
+                    <div className="plan-order-summary-name">
+                      {proName} · {billingCycle === 'yearly' ? 'Tahunan (12 Bulan)' : 'Bulanan (1 Bulan)'}
+                    </div>
+                  </div>
+                  <div className="plan-order-summary-right num-tabular">
+                    <strong className="plan-order-summary-total">{formatRp(selectedPrice)}</strong>
+                    <button
+                      type="button"
+                      className="plan-change-link"
+                      onClick={() => {
+                        setFeedback(null)
+                        setBrowseStage('cycle')
+                      }}
+                    >
+                      Ubah Durasi
+                    </button>
+                  </div>
+                </div>
+
+                {/* Pilihan Metode Pembayaran Manual */}
+                <div className="pay-methods-section">
+                  <div className="pay-methods-head">
+                    <span className="pay-methods-title">Pilih Metode Pembayaran Manual</span>
+                    <span className="pay-methods-sub">Verifikasi cepat oleh Admin VoltKu</span>
+                  </div>
+                  {methodsLoading ? (
+                    <div className="pay-methods-loading">Memuat metode pembayaran...</div>
+                  ) : paymentMethods.length === 0 ? (
+                    <div className="pay-methods-empty">
+                      {instructions ||
+                        'Pembayaran dilakukan via konfirmasi manual ke pengelola (QRIS / Transfer / WhatsApp). Klik tombol di bawah untuk membuat tagihan.'}
+                    </div>
+                  ) : (
+                    <div className="pay-method-grid">
+                      {paymentMethods.map((pm) => {
+                        const meta = TYPE_META[pm.type] || TYPE_META.bank
+                        const Icon = meta.icon
+                        const isSelected = selectedMethodId === pm.id
+                        return (
+                          <button
+                            key={pm.id}
+                            type="button"
+                            className={`pay-method-card ${isSelected ? 'selected' : ''}`}
+                            onClick={() => setSelectedMethodId(pm.id)}
+                          >
+                            <div className="pay-method-card-top">
+                              <span className="pay-method-icon-box">
+                                <Icon size={15} />
+                              </span>
+                              <span className="pay-method-type-text">{meta.label}</span>
+                              {isSelected && (
+                                <span className="pay-method-check">
+                                  <Check size={12} />
+                                </span>
+                              )}
+                            </div>
+                            <div className="pay-method-label">{pm.label}</div>
+                            {(pm.account_number || pm.account_holder) && (
+                              <div className="pay-method-sub">
+                                {pm.account_number ? pm.account_number : `a.n. ${pm.account_holder}`}
+                              </div>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-field-group" style={{ marginBottom: 0 }}>
+                  <input
+                    id="upgrade-user-note"
+                    type="text"
+                    className="modern-input"
+                    maxLength={140}
+                    placeholder="Catatan konfirmasi (opsional, mis. nama pengirim transfer/QRIS)"
+                    value={userNote}
+                    onChange={(e) => setUserNote(e.target.value)}
+                  />
+                </div>
+
+                <div className="plan-stage-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary plan-btn-back"
+                    disabled={submitting}
+                    onClick={() => {
+                      setFeedback(null)
+                      setBrowseStage('cycle')
+                    }}
+                  >
+                    <ArrowLeft size={15} />
+                    <span>Kembali</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary plan-btn-next"
+                    disabled={submitting}
+                    onClick={handleCreateOrder}
+                  >
+                    <Crown size={15} />
+                    <span>
+                      {submitting
+                        ? 'Membuat Tagihan...'
+                        : selectedMethod
+                          ? `Bayar ${formatRp(selectedPrice)} via ${selectedMethod.label}`
+                          : `Buat Tagihan (${formatRp(selectedPrice)})`}
+                    </span>
+                  </button>
+                  {waHref && (
+                    <a
+                      href={waHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-ghost plan-wa-icon-btn"
+                      title="Tanya Admin via WhatsApp"
+                      aria-label="Tanya Admin via WhatsApp"
+                    >
+                      <MessageCircle size={16} />
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
+        </div>
       </div>
 
       {/* Lightbox Zoom Gambar QRIS / Bukti Transfer */}

@@ -5827,8 +5827,38 @@ button,
 
 .plan-modal-dialog {
   max-width: 650px;
-  max-height: calc(100dvh - 28px);
+  width: 100%;
+  max-height: calc(100dvh - max(28px, env(safe-area-inset-top, 14px) + env(safe-area-inset-bottom, 14px) + 12px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.plan-sticky-head {
+  flex-shrink: 0;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+}
+
+.plan-scroll-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 18px 18px;
+}
+
+@media (max-width: 520px) {
+  .plan-sticky-head {
+    padding: 14px 14px 10px;
+  }
+
+  .plan-scroll-body {
+    padding: 12px 14px 16px;
+  }
 }
 
 .plan-modal-head-left {
@@ -5865,10 +5895,10 @@ button,
 .plan-steps-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding: 8px 10px;
-  border-radius: 11px;
+  gap: 5px;
+  margin-bottom: 0;
+  padding: 7px 9px;
+  border-radius: 12px;
   background: var(--surface-inset);
   border: 1px solid var(--border-subtle);
 }
@@ -5876,11 +5906,24 @@ button,
 .plan-step-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
+  gap: 5px;
+  padding: 2px 3px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
+  cursor: default;
+}
+
+.plan-step-pill.is-clickable {
+  cursor: pointer;
+}
+
+.plan-step-pill.is-clickable:hover {
+  text-decoration: underline;
 }
 
 .plan-step-num {
@@ -6699,18 +6742,279 @@ button,
 }
 
 .plan-tier-card {
-  padding: 14px;
-  border-radius: 14px;
+  padding: 15px;
+  border-radius: 16px;
   background: var(--surface-inset);
   border: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
+  text-align: left;
+  font-family: var(--font-sans);
+}
+
+.plan-tier-card.is-clickable-card {
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.plan-tier-card.is-clickable-card:active {
+  transform: scale(0.985);
 }
 
 .plan-tier-card.is-pro {
-  border-color: rgba(22, 119, 255, 0.45);
-  background: linear-gradient(160deg, rgba(22, 119, 255, 0.08) 0%, rgba(245, 158, 11, 0.04) 100%);
-  box-shadow: 0 4px 14px rgba(22, 119, 255, 0.08);
+  border: 1.5px solid rgba(22, 119, 255, 0.5);
+  background: linear-gradient(160deg, rgba(22, 119, 255, 0.09) 0%, rgba(245, 158, 11, 0.05) 100%);
+  box-shadow: 0 8px 22px rgba(22, 119, 255, 0.12);
+}
+
+.plan-tier-card.is-pro.is-clickable-card:hover {
+  border-color: #1677ff;
+  box-shadow: 0 10px 26px rgba(22, 119, 255, 0.2);
+}
+
+.plan-tier-prefix {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.plan-tier-footer-cta {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.plan-tier-footer-cta.is-current {
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.plan-tier-footer-cta.is-pro {
+  background: linear-gradient(135deg, #3b82f6 0%, #1677ff 100%);
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(22, 119, 255, 0.28);
+}
+
+/* Stage 2 & 3: Duration Selection & Order Summary */
+.plan-stage-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.plan-selected-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+}
+
+.plan-selected-bar-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.plan-selected-bar-copy strong {
+  color: var(--text-main);
+}
+
+.plan-change-link {
+  border: none;
+  background: transparent;
+  color: #1677ff;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.plan-duration-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plan-duration-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 15px;
+  border-radius: 15px;
+  border: 1.5px solid var(--border-subtle);
+  background: var(--surface-inset);
+  text-align: left;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.plan-duration-card.selected {
+  border-color: #1677ff;
+  background: rgba(22, 119, 255, 0.08);
+  box-shadow: 0 6px 18px rgba(22, 119, 255, 0.12);
+}
+
+.plan-duration-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.plan-duration-radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-hover);
+  background: var(--surface-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.plan-duration-card.selected .plan-duration-radio {
+  border-color: #1677ff;
+  background: #1677ff;
+}
+
+.plan-duration-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.plan-duration-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plan-duration-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.plan-duration-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.plan-duration-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding-left: 31px;
+}
+
+.plan-duration-price-row strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.plan-duration-price-row span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.plan-order-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(22, 119, 255, 0.08);
+  border: 1px solid rgba(22, 119, 255, 0.25);
+}
+
+.plan-order-summary-left {
+  min-width: 0;
+}
+
+.plan-order-summary-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  display: block;
+}
+
+.plan-order-summary-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-top: 2px;
+}
+
+.plan-order-summary-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.plan-order-summary-total {
+  font-size: 16px;
+  font-weight: 800;
+  color: #1677ff;
+}
+
+.plan-stage-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.plan-btn-back {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 9px 14px;
+  border-radius: 11px;
+}
+
+.plan-btn-next {
+  flex: 1 1 auto;
+  min-height: 42px;
+  justify-content: center;
+  border-radius: 11px;
+}
+
+.plan-wa-icon-btn {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 11px;
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .plan-tier-card.is-current {
