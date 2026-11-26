@@ -1,5 +1,6 @@
 import React from 'react'
 import { Home, Zap, BarChart3, ShieldAlert, Sliders, Bell, Settings2 } from 'lucide-react'
+import { getUiText, useUserPrefs } from '../utils/userPrefs'
 
 export function BottomNav({
   activeTab,
@@ -8,18 +9,21 @@ export function BottomNav({
   deviceAnomalyCount = 0,
   globalAnomalyCount = 0,
 }) {
+  const { prefs } = useUserPrefs()
+  const loc = prefs.locale
+
   const homeTabs = [
-    { id: 'alerts', label: 'Peringatan', icon: Bell, badge: globalAnomalyCount },
-    { id: 'home', label: 'Beranda', icon: Home, isCenterHome: true },
-    { id: 'settings', label: 'Setelan', icon: Sliders },
+    { id: 'alerts', label: getUiText(loc, 'navAlerts'), icon: Bell, badge: globalAnomalyCount },
+    { id: 'home', label: getUiText(loc, 'navHome'), icon: Home, isCenterHome: true },
+    { id: 'settings', label: getUiText(loc, 'navSettings'), icon: Sliders },
   ]
 
   const deviceTabs = [
-    { id: 'live', label: 'Live', icon: Zap },
-    { id: 'charts', label: 'Konsumsi', icon: BarChart3 },
-    { id: 'home', label: 'Beranda', icon: Home, isCenterHome: true },
-    { id: 'anomalies', label: 'Anomali', icon: ShieldAlert, badge: deviceAnomalyCount },
-    { id: 'device_settings', label: 'Atur Alat', icon: Settings2 },
+    { id: 'live', label: getUiText(loc, 'navLive'), icon: Zap },
+    { id: 'charts', label: getUiText(loc, 'navCharts'), icon: BarChart3 },
+    { id: 'home', label: getUiText(loc, 'navHome'), icon: Home, isCenterHome: true },
+    { id: 'anomalies', label: getUiText(loc, 'navAnomalies'), icon: ShieldAlert, badge: deviceAnomalyCount },
+    { id: 'device_settings', label: getUiText(loc, 'navDeviceSettings'), icon: Settings2 },
   ]
 
   const tabs = isDeviceScope ? deviceTabs : homeTabs

@@ -1,4 +1,6 @@
-// Formatters (Strict Intl Asia/Jakarta)
+import { getPreferredTimeZone } from './userPrefs'
+
+// Formatters (Default strict Intl Asia/Jakarta, mendukung preferensi zona tampilan user)
 export const formatRp = (val) => {
   if (val === null || val === undefined || isNaN(val)) return 'Rp -'
   return new Intl.NumberFormat('id-ID', {
@@ -20,7 +22,7 @@ export const formatNum = (val, decimals = 1) => {
 export const formatTimeWIB = (epochSec) => {
   if (!epochSec) return '-'
   return new Intl.DateTimeFormat('id-ID', {
-    timeZone: 'Asia/Jakarta',
+    timeZone: getPreferredTimeZone(),
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -30,7 +32,7 @@ export const formatTimeWIB = (epochSec) => {
 export const formatDateTimeWIB = (epochSec) => {
   if (!epochSec) return '-'
   return new Intl.DateTimeFormat('id-ID', {
-    timeZone: 'Asia/Jakarta',
+    timeZone: getPreferredTimeZone(),
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
@@ -41,7 +43,7 @@ export const formatDateTimeWIB = (epochSec) => {
 export const formatDateWIB = (epochSec) => {
   if (!epochSec) return '-'
   return new Intl.DateTimeFormat('id-ID', {
-    timeZone: 'Asia/Jakarta',
+    timeZone: getPreferredTimeZone(),
     day: 'numeric',
     month: 'short',
   }).format(new Date(epochSec * 1000))

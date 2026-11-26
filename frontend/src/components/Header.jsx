@@ -16,6 +16,7 @@ import {
   Megaphone,
 } from 'lucide-react'
 import { formatNum } from '../utils/formatters'
+import { getUiText, useUserPrefs } from '../utils/userPrefs'
 import { BrandLogo } from './BrandLogo'
 import { NotificationBell } from './NotificationBell'
 
@@ -217,31 +218,33 @@ export function Header({
   onMarkNotificationRead,
   onSelectNotification,
 }) {
+  const { prefs } = useUserPrefs()
+  const loc = prefs.locale
   const appName = appConfig.app_name || 'VoltKu'
   const brandDisplay = appConfig.navbar_brand_display || 'logo_only'
   const mobileTitle =
     isDeviceScope && activeDevice
       ? activeDevice.name || activeDevice.id
       : activeTab === 'alerts'
-      ? 'Peringatan'
+      ? getUiText(loc, 'navAlerts')
       : activeTab === 'settings'
-      ? 'Setelan'
+      ? getUiText(loc, 'navSettings')
       : ''
 
   const mobileSub = isDeviceScope && activeDevice ? activeDevice.location || '' : ''
 
   const homeNav = [
-    { id: 'alerts', label: 'Peringatan', icon: Bell, badge: globalAnomalyCount },
-    { id: 'home', label: 'Beranda', icon: Home, isCenterHome: true },
-    { id: 'settings', label: 'Setelan', icon: Sliders },
+    { id: 'alerts', label: getUiText(loc, 'navAlerts'), icon: Bell, badge: globalAnomalyCount },
+    { id: 'home', label: getUiText(loc, 'navHome'), icon: Home, isCenterHome: true },
+    { id: 'settings', label: getUiText(loc, 'navSettings'), icon: Sliders },
   ]
 
   const deviceNav = [
-    { id: 'live', label: 'Live', icon: Zap },
-    { id: 'charts', label: 'Konsumsi', icon: BarChart3 },
-    { id: 'home', label: 'Beranda', icon: Home, isCenterHome: true },
-    { id: 'anomalies', label: 'Anomali', icon: ShieldAlert, badge: deviceAnomalyCount },
-    { id: 'device_settings', label: 'Atur Alat', icon: Settings2 },
+    { id: 'live', label: getUiText(loc, 'navLive'), icon: Zap },
+    { id: 'charts', label: getUiText(loc, 'navCharts'), icon: BarChart3 },
+    { id: 'home', label: getUiText(loc, 'navHome'), icon: Home, isCenterHome: true },
+    { id: 'anomalies', label: getUiText(loc, 'navAnomalies'), icon: ShieldAlert, badge: deviceAnomalyCount },
+    { id: 'device_settings', label: getUiText(loc, 'navDeviceSettings'), icon: Settings2 },
   ]
 
   const desktopTabs = isDeviceScope ? deviceNav : homeNav

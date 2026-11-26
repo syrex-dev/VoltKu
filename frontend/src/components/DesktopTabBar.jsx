@@ -1,13 +1,17 @@
 import React from 'react'
 import { Home, Zap, BarChart3, ShieldAlert, Sliders } from 'lucide-react'
+import { getUiText, useUserPrefs } from '../utils/userPrefs'
 
 export function DesktopTabBar({ activeTab, onTabChange, anomalyCount = 0, hasDevice = true }) {
+  const { prefs } = useUserPrefs()
+  const loc = prefs.locale
+
   const tabs = [
-    { id: 'home', label: 'Beranda', icon: Home },
-    { id: 'live', label: 'Live', icon: Zap, needsDevice: true },
-    { id: 'charts', label: 'Konsumsi & Grafik', icon: BarChart3, needsDevice: true },
-    { id: 'anomalies', label: 'Anomali', icon: ShieldAlert, badge: anomalyCount, needsDevice: true },
-    { id: 'settings', label: 'Setelan', icon: Sliders },
+    { id: 'home', label: getUiText(loc, 'navHome'), icon: Home },
+    { id: 'live', label: getUiText(loc, 'navLive'), icon: Zap, needsDevice: true },
+    { id: 'charts', label: getUiText(loc, 'navChartsDesktop'), icon: BarChart3, needsDevice: true },
+    { id: 'anomalies', label: getUiText(loc, 'navAnomalies'), icon: ShieldAlert, badge: anomalyCount, needsDevice: true },
+    { id: 'settings', label: getUiText(loc, 'navSettings'), icon: Sliders },
   ]
 
   return (

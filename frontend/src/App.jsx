@@ -38,6 +38,14 @@ import { PlanUpgradeModal } from './components/PlanUpgradeModal'
 import { ProfileModal } from './components/ProfileModal'
 import { ResetPasswordScreen } from './components/ResetPasswordScreen'
 import { AiChatWidget } from './components/AiChatWidget'
+import { BrandLogo } from './components/BrandLogo'
+import { AppLockOverlay } from './components/PatternLockGrid'
+import {
+  clearPatternLock,
+  getPatternLockConfig,
+  useUserPrefs,
+  verifyPatternLock,
+} from './utils/userPrefs'
 import {
   fetchAndNotifyNewInboxItems,
   registerDeviceNotifications,
@@ -219,6 +227,10 @@ function AdminPortalRoot() {
 function CustomerPortalRoot() {
   const [publicAppConfig, setPublicAppConfig] = useState(DEFAULT_APP_CONFIG)
   const { theme, toggleTheme } = useThemePreference(publicAppConfig.default_theme)
+  const { prefs } = useUserPrefs()
+  const [isAppLocked, setIsAppLocked] = useState(() =>
+    Boolean(getStoredUserToken() && getPatternLockConfig().enabled)
+  )
 
   const [userToken, setUserToken] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search)
@@ -357,6 +369,7 @@ function CustomerPortalRoot() {
       setWelcomeSeen(true)
       setShowLoginModal(false)
       setLoginModalSubtitle('')
+      setIsAppLocked(false)
       setActiveDeviceId('')
       setActiveTab('home')
     },
@@ -368,6 +381,7 @@ function CustomerPortalRoot() {
     setUserToken('')
     setCurrentUser(null)
     setStoredUserToken('')
+    setIsAppLocked(false)
     setUserNotifications([])
     setUnreadNotificationCount(0)
     signOutGoogleIfInitialized()
@@ -1271,6 +1285,7 @@ function CustomerPortalRoot() {
 
   const hasForegroundOverlay =
     (showLoginModal && !userToken) ||
+    (isAuthenticated && isAppLocked) ||
     (isAuthenticated && isAddDeviceOpen) ||
     showUsageGuide ||
     isPlanModalOpen ||
@@ -1279,7 +1294,11 @@ function CustomerPortalRoot() {
     (showTour && !isDeviceScope && activeTab === 'home')
 
   return (
-    <div className={`app-layout ${hasForegroundOverlay ? 'has-modal-open' : ''}`}>
+    <div
+      className={`app-layout ${hasForegroundOverlay ? 'has-modal-open' : ''} ${
+        prefs.labs?.compactCards ? 'app-compact-cards' : ''
+      }`}
+    >
       <Header
         activeTab={activeTab}
         onTabChange={handleTabChange}
@@ -1517,9 +1536,17 @@ function CustomerPortalRoot() {
             setActiveTab('home')
             setShowTour(true)
           }}
+          onOpenUsageGuide={() => setShowUsageGuide(true)}
           onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
           onOpenPlanModal={openPlanModal}
           onOpenSettings={() => handleTabChange('settings')}
+          onOpenAddDevice={handleRequestAddDevice}
+          onSelectDevice={handleOpenDeviceDetail}
+          devices={devices}
+          settings={settings}
+          onSaveSettings={handleSaveSettings}
+          isDeviceOnlineFn={(d) => isDeviceOnlineHelper(d)}
+          onTriggerAppLock={() => setIsAppLocked(true)}
           appConfig={publicAppConfig}
         />
       )}
@@ -1585,6 +1612,22 @@ function CustomerPortalRoot() {
       )}
 
       <PwaInstallPrompt hasBottomNav appName={appName} hidden={hasForegroundOverlay} />
+
+      <AppLockOverlay
+        isOpen={Boolean(isAuthenticated && isAppLocked)}
+        userName={currentUser?.name || `Pengguna ${appName}`}
+        userEmail={currentUser?.email || ''}
+        appName={appName}
+        theme={theme}
+        BrandLogoComponent={BrandLogo}
+        verifyPatternFn={verifyPatternLock}
+        onUnlock={() => setIsAppLocked(false)}
+        onResetAndLogout={() => {
+          clearPatternLock()
+          setIsAppLocked(false)
+          handleLogout()
+        }}
+      />
     </div>
   )
 }
