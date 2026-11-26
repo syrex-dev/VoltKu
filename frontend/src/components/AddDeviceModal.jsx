@@ -488,7 +488,7 @@ export function AddDeviceModal({
 
             <div className="form-field-group" style={{ marginBottom: 0 }}>
               <label className="field-label">Lokasi / Ruangan</label>
-              <div className="room-chips-row">
+              <div className="room-chips-row cols-3">
                 {DEFAULT_ROOMS.map((room) => (
                   <button
                     key={room}
@@ -515,7 +515,7 @@ export function AddDeviceModal({
 
             <div className="form-field-group" style={{ marginBottom: 0 }}>
               <label className="field-label">Batas Daya Meteran PLN / MCB</label>
-              <div className="room-chips-row">
+              <div className="room-chips-row cols-3">
                 {MCB_OPTIONS.map((w) => (
                   <button
                     key={w}

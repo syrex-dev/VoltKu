@@ -485,7 +485,7 @@ export function SettingsView({
                 Ruangan
               </label>
               {isAuthenticated && (
-                <div className="room-chips-row" style={{ marginBottom: 8 }}>
+                <div className="room-chips-row cols-3" style={{ marginBottom: 8 }}>
                   {PRESET_ROOMS.map((r) => (
                     <button
                       key={r}
@@ -514,7 +514,7 @@ export function SettingsView({
                 Batas MCB Alat
               </label>
               {isAuthenticated && (
-                <div className="room-chips-row" style={{ marginBottom: 8 }}>
+                <div className="room-chips-row cols-4" style={{ marginBottom: 8 }}>
                   {POWER_PRESETS.map((w) => (
                     <button
                       key={w}
@@ -739,7 +739,7 @@ export function SettingsView({
             <label className="field-label" htmlFor="settings-view-power-limit">
               Batas Daya Peringatan
             </label>
-            <div className="room-chips-row" style={{ marginBottom: 8 }}>
+            <div className="room-chips-row cols-4" style={{ marginBottom: 8 }}>
               {POWER_PRESETS.map((w) => (
                 <button
                   key={w}
@@ -775,7 +775,7 @@ export function SettingsView({
             <label className="field-label" htmlFor="settings-view-cooldown">
               Jeda Peringatan Ulang
             </label>
-            <div className="room-chips-row" style={{ marginBottom: 8 }}>
+            <div className="room-chips-row cols-3" style={{ marginBottom: 8 }}>
               {COOLDOWN_PRESETS.map((m) => (
                 <button
                   key={m}
@@ -832,7 +832,7 @@ export function SettingsView({
                 <label className="field-label" htmlFor="settings-view-report-hour">
                   Jam Kirim Rekap Harian
                 </label>
-                <div className="room-chips-row" style={{ marginBottom: 8 }}>
+                <div className="room-chips-row cols-4" style={{ marginBottom: 8 }}>
                   {REPORT_HOUR_QUICK.map((h) => (
                     <button
                       key={h}

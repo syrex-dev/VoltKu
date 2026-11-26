@@ -3224,10 +3224,23 @@ html {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+  width: 100%;
+}
+
+.room-chips-row.cols-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.room-chips-row.cols-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .room-chip {
-  padding: 7px 13px;
+  padding: 8px 12px;
   border-radius: 9999px;
   font-family: var(--font-sans);
   font-size: 12.5px;
@@ -3236,6 +3249,29 @@ html {
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+  min-width: 0;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.room-chips-row.cols-4 .room-chip,
+.room-chips-row.cols-3 .room-chip {
+  width: 100%;
+  padding: 8px 6px;
+}
+
+@media (max-width: 360px) {
+  .room-chips-row.cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .room-chips-row.cols-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .room-chip.selected {
