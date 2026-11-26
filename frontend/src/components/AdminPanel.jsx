@@ -5,28 +5,22 @@ import {
   Cpu,
   ShieldAlert,
   Sliders,
-  Plus,
-  Search,
-  Pencil,
-  Trash2,
   ExternalLink,
   LogOut,
   Sun,
   Moon,
-  Wifi,
-  WifiOff,
   X,
   Save,
   RefreshCw,
-  Crown,
   CreditCard,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
-import { formatNum, formatTimeWIB } from '../utils/formatters'
+import { formatTimeWIB } from '../utils/formatters'
 import { BrandLogo } from './BrandLogo'
 import { InAppSelect } from './InAppSelect'
 import { AdminAppSettingsTab } from './AdminAppSettingsTab'
 import { AdminUsersSection } from './AdminUsersSection'
+import { AdminDevicesSection } from './AdminDevicesSection'
 import { AdminUserModal } from './AdminUserModal'
 import {
   AdminPaymentSummaryStrip,
@@ -54,8 +48,6 @@ export function AdminPanel({
   const [notice, setNotice] = useState(null)
 
   // Filters
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
   const [anomDeviceFilter, setAnomDeviceFilter] = useState('')
   const [anomSeverityFilter, setAnomSeverityFilter] = useState('')
 
@@ -67,7 +59,6 @@ export function AdminPanel({
   const [editOwnerId, setEditOwnerId] = useState('0')
   const [editPublicDemo, setEditPublicDemo] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
-  const [confirmDeleteDevId, setConfirmDeleteDevId] = useState('')
 
   // User Create / Edit Modal State
   const [userModalMode, setUserModalMode] = useState(null) // 'create' | 'edit'
@@ -177,7 +168,6 @@ export function AdminPanel({
     setNotice(null)
     try {
       await apiRequest(`/api/devices/${devId}`, { method: 'DELETE' }, token, onLogout)
-      setConfirmDeleteDevId('')
       setNotice({ type: 'success', text: `Perangkat ${devId} dihapus.` })
       await loadAdminData()
     } catch (err) {
@@ -206,24 +196,6 @@ export function AdminPanel({
       setNotice({ type: 'error', text: err.message || 'Gagal menghapus akun pengguna.' })
     }
   }
-
-  const filteredDevices = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    return devices.filter((d) => {
-      if (statusFilter === 'online' && d.status !== 'online') return false
-      if (statusFilter === 'offline' && d.status !== 'offline') return false
-      if (statusFilter === 'unclaimed' && d.owner_user_id != null) return false
-      if (statusFilter === 'demo' && !d.is_public_demo) return false
-      if (!q) return true
-      return (
-        d.id.toLowerCase().includes(q) ||
-        (d.name || '').toLowerCase().includes(q) ||
-        (d.location || '').toLowerCase().includes(q) ||
-        (d.owner_name || '').toLowerCase().includes(q) ||
-        (d.owner_email || '').toLowerCase().includes(q)
-      )
-    })
-  }, [devices, searchQuery, statusFilter])
 
   const filteredAnomalies = useMemo(() => {
     return anomalies.filter((a) => {
@@ -463,220 +435,16 @@ export function AdminPanel({
             )}
 
             {adminTab === 'devices' && (
-              <div className="admin-section-stack tab-pane-fade">
-                <div className="clean-sheet admin-toolbar-card">
-                  <div className="admin-search-wrap">
-                    <Search size={16} className="admin-search-icon" />
-                    <input
-                      type="text"
-                      className="modern-input admin-search-input"
-                      placeholder="Cari ID, nama alat, atau pemilik..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                  <div className="admin-toolbar-right">
-                    <div className="admin-filter-pills">
-                      {[
-                        { id: 'all', label: 'Semua' },
-                        { id: 'online', label: 'Online' },
-                        { id: 'unclaimed', label: 'Stok' },
-                        { id: 'demo', label: 'Guest' },
-                      ].map((f) => (
-                        <button
-                          key={f.id}
-                          type="button"
-                          className={`admin-chip-btn ${statusFilter === f.id ? 'active' : ''}`}
-                          onClick={() => setStatusFilter(f.id)}
-                        >
-                          {f.label}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-compact"
-                      onClick={onOpenAddDevice}
-                    >
-                      <Plus size={15} />
-                      <span>Tambah Unit</span>
-                    </button>
-                  </div>
-                </div>
-
-                {filteredDevices.length === 0 ? (
-                  <div className="clean-sheet admin-empty-box">
-                    Tidak ada perangkat yang cocok dengan filter saat ini.
-                  </div>
-                ) : (
-                  <>
-                    <div className="clean-sheet admin-table-desktop">
-                      <table className="admin-table">
-                        <thead>
-                          <tr>
-                            <th>Perangkat</th>
-                            <th>Pemilik (Tenant)</th>
-                            <th>Status</th>
-                            <th>Daya / Tegangan</th>
-                            <th>MCB</th>
-                            <th style={{ textAlign: 'right' }}>Aksi</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredDevices.map((d) => {
-                            const online = d.status === 'online'
-                            const watts = d.latest?.p
-                            const volts = d.latest?.v
-                            return (
-                              <tr key={d.id}>
-                                <td>
-                                  <div className="admin-dev-name">
-                                    {d.name || d.id}{' '}
-                                    {d.is_public_demo && (
-                                      <span className="admin-demo-badge">Guest</span>
-                                    )}
-                                  </div>
-                                  <div className="admin-dev-id num-tabular">
-                                    {d.id} · {d.location || 'Tanpa ruangan'}
-                                  </div>
-                                </td>
-                                <td>
-                                  {d.owner_name ? (
-                                    <div>
-                                      <div className="admin-dev-name">{d.owner_name}</div>
-                                      <div className="admin-dev-id">{d.owner_email}</div>
-                                    </div>
-                                  ) : (
-                                    <span className="admin-pill muted">Stok (Belum Diklaim)</span>
-                                  )}
-                                </td>
-                                <td>
-                                  <span className={`admin-pill ${online ? 'ok' : 'muted'}`}>
-                                    {online ? 'Online' : 'Offline'}
-                                  </span>
-                                </td>
-                                <td className="num-tabular">
-                                  {watts !== undefined ? `${formatNum(watts, 0)} W` : '—'}
-                                  {volts !== undefined ? ` · ${formatNum(volts, 0)} V` : ''}
-                                </td>
-                                <td className="num-tabular">{d.mcb_watt} W</td>
-                                <td>
-                                  <div className="admin-row-actions">
-                                    <button
-                                      type="button"
-                                      className="admin-icon-action"
-                                      title="Atur Pemilik & Metadata"
-                                      onClick={() => openEditDeviceModal(d)}
-                                    >
-                                      <Pencil size={15} />
-                                    </button>
-                                    {confirmDeleteDevId === d.id ? (
-                                      <button
-                                        type="button"
-                                        className="btn btn-danger-solid btn-compact"
-                                        onClick={() => handleDeleteDevice(d.id)}
-                                      >
-                                        Hapus?
-                                      </button>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        className="admin-icon-action danger"
-                                        title="Hapus Perangkat"
-                                        onClick={() => setConfirmDeleteDevId(d.id)}
-                                      >
-                                        <Trash2 size={15} />
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="admin-cards-mobile">
-                      {filteredDevices.map((d) => {
-                        const online = d.status === 'online'
-                        const watts = d.latest?.p
-                        const volts = d.latest?.v
-                        const rssi = d.latest?.rssi
-                        return (
-                          <div key={d.id} className="clean-sheet admin-device-card-m">
-                            <div className="admin-m-top">
-                              <div className="admin-m-ident">
-                                <div className="admin-dev-name">
-                                  {d.name || d.id}{' '}
-                                  {d.is_public_demo && (
-                                    <span className="admin-demo-badge">Guest</span>
-                                  )}
-                                </div>
-                                <div className="admin-dev-id num-tabular">
-                                  {d.id} · {d.owner_name ? `Milik ${d.owner_name}` : 'Stok Belum Diklaim'}
-                                </div>
-                              </div>
-                              <span className={`admin-pill ${online ? 'ok' : 'muted'}`}>
-                                {online ? <Wifi size={12} /> : <WifiOff size={12} />}
-                                <span>{online ? 'Online' : 'Offline'}</span>
-                              </span>
-                            </div>
-
-                            <div className="admin-m-metrics num-tabular">
-                              <div>
-                                <span>Daya</span>
-                                <strong>{watts !== undefined ? `${formatNum(watts, 0)} W` : '--'}</strong>
-                              </div>
-                              <div>
-                                <span>Tegangan</span>
-                                <strong>{volts !== undefined ? `${formatNum(volts, 0)} V` : '--'}</strong>
-                              </div>
-                              <div>
-                                <span>MCB</span>
-                                <strong>{d.mcb_watt} W</strong>
-                              </div>
-                              <div>
-                                <span>Sinyal</span>
-                                <strong>{rssi !== undefined ? `${rssi} dBm` : '--'}</strong>
-                              </div>
-                            </div>
-
-                            <div className="admin-m-actions admin-m-actions-2col">
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-compact"
-                                onClick={() => openEditDeviceModal(d)}
-                              >
-                                <Pencil size={14} />
-                                <span>Atur / Pemilik</span>
-                              </button>
-                              {confirmDeleteDevId === d.id ? (
-                                <button
-                                  type="button"
-                                  className="btn btn-danger-solid btn-compact"
-                                  onClick={() => handleDeleteDevice(d.id)}
-                                >
-                                  <span>Yakin Hapus</span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="btn btn-danger-ghost btn-compact"
-                                  onClick={() => setConfirmDeleteDevId(d.id)}
-                                >
-                                  <Trash2 size={14} />
-                                  <span>Hapus</span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
+              <AdminDevicesSection
+                devices={devices}
+                token={token}
+                onLogout={onLogout}
+                onNotice={setNotice}
+                onReload={loadAdminData}
+                onOpenAddDevice={onOpenAddDevice}
+                onEditDevice={openEditDeviceModal}
+                onDeleteDevice={handleDeleteDevice}
+              />
             )}
 
             {adminTab === 'anomalies' && (
@@ -878,6 +646,18 @@ export function AdminPanel({
                   onChange={(e) => setEditMcb(e.target.value)}
                   required
                 />
+                <div className="admin-mcb-presets" aria-label="Preset daya MCB PLN">
+                  {[900, 1300, 2200, 3500, 5500].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className={`admin-mcb-preset-btn num-tabular ${Number(editMcb) === preset ? 'active' : ''}`}
+                      onClick={() => setEditMcb(preset)}
+                    >
+                      {preset} W
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="form-field-group">
                 <label className="field-label" htmlFor="admin-edit-owner">

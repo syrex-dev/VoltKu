@@ -7637,6 +7637,165 @@ button,
   flex-wrap: wrap;
 }
 
+.admin-dev-icon-box {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+}
+
+.admin-dev-icon-box.online {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.admin-dev-icon-box.offline {
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
+.admin-dev-mcb-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 145px;
+}
+
+.admin-dev-mcb-values {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.admin-dev-mcb-values span {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.admin-dev-mcb-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.admin-mcb-bar-track {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.admin-mcb-bar-track.is-sm {
+  height: 5px;
+  border: none;
+}
+
+.admin-mcb-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.admin-mcb-bar-fill.ok {
+  background: #10b981;
+}
+
+.admin-mcb-bar-fill.warn {
+  background: #f59e0b;
+}
+
+.admin-mcb-bar-fill.danger {
+  background: #ef4444;
+}
+
+.admin-dev-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.admin-dev-tel-cell {
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-dev-tel-cell span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.admin-dev-tel-cell strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.admin-dev-mcb-detail {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-dev-signal-note {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.admin-mcb-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.admin-mcb-preset-btn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.admin-mcb-preset-btn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--text-accent);
+}
+
+.admin-mcb-preset-btn.active {
+  background: rgba(22, 119, 255, 0.12);
+  border-color: #1677ff;
+  color: #1677ff;
+}
+
+@media (max-width: 520px) {
+  .admin-dev-telemetry-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .admin-pm-form-card {
   margin-top: 14px;
   padding: 14px;
