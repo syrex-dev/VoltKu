@@ -7912,6 +7912,37 @@ button,
   }
 }
 
+.reset-standalone-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.reset-standalone-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.reset-standalone-icon.is-success {
+  background: rgba(16, 185, 129, 0.14);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.reset-standalone-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
 .admin-pm-form-card {
   margin-top: 14px;
   padding: 14px;

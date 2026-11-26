@@ -35,6 +35,7 @@ import { TermsAgreementModal } from './components/TermsAgreementModal'
 import { OnboardingTour } from './components/OnboardingTour'
 import { PlanUpgradeModal } from './components/PlanUpgradeModal'
 import { ProfileModal } from './components/ProfileModal'
+import { ResetPasswordScreen } from './components/ResetPasswordScreen'
 
 const DEFAULT_LOGIN_SUBTITLE = 'Pantau listrik rumah lebih tenang dan akurat'
 const DEFAULT_TERMS_VERSION = '2026-11-v1'
@@ -222,13 +223,19 @@ function CustomerPortalRoot() {
     }
     return getStoredUserToken()
   })
-  const [resetToken, setResetToken] = useState(() => {
+  const [showLoginModal, setShowLoginModal] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search)
-    const rt = (urlParams.get('reset_token') || '').trim()
-    if (rt) {
-      window.history.replaceState({}, document.title, window.location.pathname)
+    if (urlParams.get('open_login') === '1') {
+      urlParams.delete('open_login')
+      const qs = urlParams.toString()
+      window.history.replaceState(
+        {},
+        document.title,
+        qs ? `${window.location.pathname}?${qs}` : window.location.pathname
+      )
+      return true
     }
-    return rt
+    return false
   })
   const [currentUser, setCurrentUser] = useState(null)
   const [loginError, setLoginError] = useState(null)
@@ -244,7 +251,6 @@ function CustomerPortalRoot() {
     () => localStorage.getItem(WELCOME_SEEN_KEY) === '1'
   )
   const [showTour, setShowTour] = useState(false)
-  const [showLoginModal, setShowLoginModal] = useState(false)
   const [loginModalSubtitle, setLoginModalSubtitle] = useState('')
   const [pendingAddDevice, setPendingAddDevice] = useState(false)
 
@@ -458,14 +464,6 @@ function CustomerPortalRoot() {
     const data = await apiRequest('/api/users/forgot-password', {
       method: 'POST',
       body: { email },
-    })
-    return data?.message || ''
-  }
-
-  const handleResetPassword = async (tokenVal, newPassword) => {
-    const data = await apiRequest('/api/users/reset-password', {
-      method: 'POST',
-      body: { token: tokenVal, new_password: newPassword },
     })
     return data?.message || ''
   }
@@ -1134,9 +1132,6 @@ function CustomerPortalRoot() {
           onRegister={handleUserRegister}
           onGoogleLogin={handleGoogleLogin}
           onForgotPassword={handleForgotPassword}
-          onResetPassword={handleResetPassword}
-          initialResetToken={resetToken}
-          onClearResetToken={() => setResetToken('')}
           googleEnabled={publicAppConfig.google_enabled}
           googleClientId={publicAppConfig.google_client_id || publicAppConfig.google_android_client_id}
           registrationEnabled={publicAppConfig.registration_enabled !== false}
@@ -1412,15 +1407,12 @@ function CustomerPortalRoot() {
         />
       )}
 
-      {(Boolean(resetToken) || (showLoginModal && !userToken)) && (
+      {showLoginModal && !userToken && (
         <LoginModal
           onLogin={handleUserLogin}
           onRegister={handleUserRegister}
           onGoogleLogin={handleGoogleLogin}
           onForgotPassword={handleForgotPassword}
-          onResetPassword={handleResetPassword}
-          initialResetToken={resetToken}
-          onClearResetToken={() => setResetToken('')}
           googleEnabled={publicAppConfig.google_enabled}
           googleClientId={publicAppConfig.google_client_id || publicAppConfig.google_android_client_id}
           registrationEnabled={publicAppConfig.registration_enabled !== false}
@@ -1434,7 +1426,6 @@ function CustomerPortalRoot() {
           brandDisplay={publicAppConfig.navbar_brand_display}
           onClose={() => {
             setShowLoginModal(false)
-            setResetToken('')
             setPendingAddDevice(false)
             setLoginModalSubtitle('')
           }}
@@ -1467,7 +1458,37 @@ function CustomerPortalRoot() {
   )
 }
 
+function ResetPasswordPortalRoot() {
+  const [appCfg, setAppCfg] = useState(DEFAULT_APP_CONFIG)
+  const { theme } = useThemePreference(appCfg.default_theme)
+
+  useEffect(() => {
+    apiRequest('/api/public/app-config')
+      .then((cfg) => {
+        if (cfg) setAppCfg((prev) => ({ ...prev, ...cfg }))
+      })
+      .catch(() => {})
+  }, [])
+
+  const urlParams = new URLSearchParams(window.location.search)
+  const token = (urlParams.get('token') || urlParams.get('reset_token') || '').trim()
+
+  return (
+    <ResetPasswordScreen
+      initialToken={token}
+      theme={theme}
+      appName={appCfg.app_name || 'VoltKu'}
+      brandDisplay={appCfg.navbar_brand_display}
+    />
+  )
+}
+
 export default function App() {
-  const isAdminRoute = window.location.pathname.startsWith('/admin')
+  const pathname = window.location.pathname
+  const urlParams = new URLSearchParams(window.location.search)
+  if (pathname.startsWith('/reset-password') || urlParams.has('reset_token')) {
+    return <ResetPasswordPortalRoot />
+  }
+  const isAdminRoute = pathname.startsWith('/admin')
   return isAdminRoute ? <AdminPortalRoot /> : <CustomerPortalRoot />
 }

@@ -75,6 +75,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "/index.html",
             "/sw.js",
             "/manifest.webmanifest",
+            "/reset-password",
             "/admin",
             "/admin/manifest.webmanifest",
         ) or req_path.startswith("/admin/"):
@@ -217,6 +218,10 @@ for p in candidates:
         break
 
 if dashboard_path:
+    @app.get("/reset-password", include_in_schema=False)
+    async def serve_reset_password_spa():
+        return FileResponse(dashboard_path / "index.html")
+
     @app.get("/admin", include_in_schema=False)
     @app.get("/admin/{subpath:path}", include_in_schema=False)
     async def serve_admin_spa(subpath: str = ""):

@@ -35,18 +35,18 @@
     <meta name="apple-mobile-web-app-title" content="VoltKu" />
     <meta name="application-name" content="VoltKu" />
 
-    <link rel="manifest" id="app-manifest-link" href="/manifest.webmanifest?v=5" />
+    <link rel="manifest" id="app-manifest-link" href="/manifest.webmanifest?v=6" />
     <script>
       if (window.location.pathname.indexOf('/admin') === 0) {
         var ml = document.getElementById('app-manifest-link');
         if (ml) ml.setAttribute('href', '/admin/manifest.webmanifest');
       }
     </script>
-    <link rel="icon" href="/pwa-192.png?v=5" sizes="192x192" type="image/png" />
-    <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5" />
-    <script type="module" crossorigin src="/assets/index-VdZxy6cW.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-elaBsO1_.css">
+    <link rel="icon" href="/pwa-192.png?v=6" sizes="192x192" type="image/png" />
+    <link rel="icon" href="/favicon.svg?v=6" type="image/svg+xml" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=6" />
+    <script type="module" crossorigin src="/assets/index-QIGdXbLC.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BSTWmvmh.css">
   </head>
   <body>
     <div id="root"></div>
@@ -56,7 +56,22 @@
         !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
       ) {
         window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/sw.js?v=5').catch(function () {});
+          navigator.serviceWorker
+            .register('/sw.js?v=6')
+            .then(function (reg) {
+              reg.update().catch(function () {});
+            })
+            .catch(function () {});
+          var refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', function () {
+            if (refreshing) return;
+            try {
+              if (sessionStorage.getItem('voltku_sw_reloaded_v6')) return;
+              sessionStorage.setItem('voltku_sw_reloaded_v6', '1');
+            } catch (e) {}
+            refreshing = true;
+            window.location.reload();
+          });
         });
       }
     </script>

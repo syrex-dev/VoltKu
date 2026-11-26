@@ -1,14 +1,14 @@
-const CACHE_NAME = 'voltku-pwa-v5';
+const CACHE_NAME = 'voltku-pwa-v6';
 const PRECACHE_ASSETS = [
   '/offline.html',
-  '/manifest.webmanifest?v=5',
-  '/pwa-192.png?v=5',
-  '/pwa-512.png?v=5',
-  '/apple-touch-icon.png?v=5',
-  '/favicon.svg?v=5',
-  '/brand/voltku-icon.svg?v=5',
-  '/brand/voltku-logo-light.svg?v=5',
-  '/brand/voltku-logo-dark.svg?v=5',
+  '/manifest.webmanifest?v=6',
+  '/pwa-192.png?v=6',
+  '/pwa-512.png?v=6',
+  '/apple-touch-icon.png?v=6',
+  '/favicon.svg?v=6',
+  '/brand/voltku-icon.svg?v=6',
+  '/brand/voltku-logo-light.svg?v=6',
+  '/brand/voltku-logo-dark.svg?v=6',
 ];
 
 self.addEventListener('install', (event) => {
@@ -43,38 +43,30 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Jangan pernah cache endpoint API atau healthz (harus selalu live)
+  // Jangan pernah cache endpoint API atau healthz
   if (url.pathname.startsWith('/api/') || url.pathname === '/healthz') {
     return;
   }
 
-  // Navigasi HTML: Network-first, fallback ke cache lalu offline.html
+  // Navigasi HTML: selalu network no-store, fallback ke offline.html saja bila terputus
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((res) => {
-          if (res && res.status === 200) {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          }
-          return res;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          return cached || caches.match('/offline.html');
-        })
+      fetch(request, { cache: 'no-store' }).catch(async () => {
+        const offline = await caches.match('/offline.html');
+        return offline || Response.error();
+      })
     );
     return;
   }
 
-  // Aset ikon/logo/manifest: Network-first agar perubahan logo/ikon langsung muncul
+  // Aset ikon/logo/manifest: selalu ambil versi terbaru dari jaringan
   if (
     url.pathname.endsWith('.png') ||
     url.pathname.endsWith('.svg') ||
     url.pathname.endsWith('.webmanifest')
   ) {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then((res) => {
           if (res && res.status === 200) {
             const copy = res.clone();
@@ -87,23 +79,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Aset JS/CSS hash Vite (/assets/*) & font: Stale-While-Revalidate
-  if (
-    url.pathname.startsWith('/assets/') ||
-    url.pathname.endsWith('.woff2')
-  ) {
+  // Aset JS/CSS ber-hash Vite (/assets/*) & font: Cache-First karena nama file unik per build
+  if (url.pathname.startsWith('/assets/') || url.pathname.endsWith('.woff2')) {
     event.respondWith(
-      caches.match(request, { ignoreSearch: true }).then((cached) => {
-        const net = fetch(request)
-          .then((res) => {
-            if (res && res.status === 200) {
-              const copy = res.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-            }
-            return res;
-          })
-          .catch(() => null);
-        return cached || net;
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
+          return res;
+        });
       })
     );
   }

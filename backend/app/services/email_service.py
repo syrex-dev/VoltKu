@@ -55,8 +55,8 @@ def is_smtp_configured() -> bool:
 def build_reset_password_url(raw_token: str) -> str:
     settings = get_settings()
     base = (settings.app_public_url or "https://voltku.synemax.web.id").strip().rstrip("/")
-    query = urlencode({"reset_token": raw_token})
-    return f"{base}/?{query}"
+    query = urlencode({"token": raw_token})
+    return f"{base}/reset-password?{query}"
 
 
 def build_password_reset_message(
