@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.media.AudioAttributes;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
@@ -22,39 +23,48 @@ public final class VoltKuNotificationHelper {
     private VoltKuNotificationHelper() {}
 
     public static void ensureChannels(Context context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context == null) {
             return;
         }
-        NotificationManager nm = context.getSystemService(NotificationManager.class);
-        if (nm == null) {
-            return;
+        try {
+            NotificationManager nm = context.getSystemService(NotificationManager.class);
+            if (nm == null) {
+                return;
+            }
+
+            Uri defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            AudioAttributes audioAttrs = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+
+            NotificationChannel alertChannel = new NotificationChannel(
+                CHANNEL_ALERTS,
+                "Peringatan Listrik VoltKu",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            alertChannel.setDescription("Notifikasi darurat beban berlebih, tegangan ekstrem, dan perangkat offline.");
+            alertChannel.enableLights(true);
+            alertChannel.setLightColor(Color.parseColor("#0284c7"));
+            alertChannel.enableVibration(true);
+            alertChannel.setVibrationPattern(new long[]{0, 260, 140, 260});
+            alertChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            alertChannel.setSound(defaultSound, audioAttrs);
+            nm.createNotificationChannel(alertChannel);
+
+            NotificationChannel infoChannel = new NotificationChannel(
+                CHANNEL_INFO,
+                "Info & Tagihan VoltKu",
+                NotificationManager.IMPORTANCE_DEFAULT
+            );
+            infoChannel.setDescription("Info aktivasi paket, laporan harian, dan pemulihan perangkat.");
+            infoChannel.enableVibration(true);
+            infoChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            infoChannel.setSound(defaultSound, audioAttrs);
+            nm.createNotificationChannel(infoChannel);
+        } catch (Throwable ignored) {
+            // Jangan biarkan inisialisasi channel memicu force close pada ROM tertentu
         }
-
-        Uri defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-
-        NotificationChannel alertChannel = new NotificationChannel(
-            CHANNEL_ALERTS,
-            "Peringatan Listrik VoltKu",
-            NotificationManager.IMPORTANCE_HIGH
-        );
-        alertChannel.setDescription("Notifikasi darurat beban berlebih, tegangan ekstrem, dan perangkat offline.");
-        alertChannel.enableLights(true);
-        alertChannel.setLightColor(Color.parseColor("#0284c7"));
-        alertChannel.enableVibration(true);
-        alertChannel.setVibrationPattern(new long[]{0, 260, 140, 260});
-        alertChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-        alertChannel.setSound(defaultSound, null);
-        nm.createNotificationChannel(alertChannel);
-
-        NotificationChannel infoChannel = new NotificationChannel(
-            CHANNEL_INFO,
-            "Info & Tagihan VoltKu",
-            NotificationManager.IMPORTANCE_DEFAULT
-        );
-        infoChannel.setDescription("Info aktivasi paket, laporan harian, dan pemulihan perangkat.");
-        infoChannel.enableVibration(true);
-        infoChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-        nm.createNotificationChannel(infoChannel);
     }
 
     public static void showNotification(
@@ -65,6 +75,9 @@ public final class VoltKuNotificationHelper {
         String category,
         String severity
     ) {
+        if (context == null) {
+            return;
+        }
         ensureChannels(context);
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) {
@@ -106,4 +119,3 @@ public final class VoltKuNotificationHelper {
         nm.notify(notificationId, builder.build());
     }
 }
-

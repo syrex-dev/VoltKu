@@ -56,7 +56,6 @@ export async function showLocalBannerNotification(item) {
             title: item.title,
             body: item.body || '',
             channelId: ANDROID_CHANNEL_ID,
-            smallIcon: 'ic_launcher',
             extra: item.data || (item.device_id ? { device_id: item.device_id } : {}),
           },
         ],
@@ -118,66 +117,77 @@ export async function registerDeviceNotifications(userToken, callbacks = {}) {
         await LocalNotifications.requestPermissions()
       }
 
+      let firebaseReady = false
+      try {
+        const fb = await VoltKuPushBridge.isFirebaseConfigured()
+        firebaseReady = Boolean(fb?.configured)
+      } catch {
+        firebaseReady = false
+      }
+
       if (fcmInitializedForToken !== userToken) {
         await cleanupPushListeners()
         fcmInitializedForToken = userToken
-
-        const regHandle = await PushNotifications.addListener('registration', async (tok) => {
-          const fcmVal = tok?.value?.trim()
-          if (!fcmVal) return
-          localStorage.setItem(PUSH_TOKEN_CACHE_KEY, fcmVal)
-          try {
-            await apiRequest(
-              '/api/users/push-token',
-              {
-                method: 'POST',
-                body: {
-                  token: fcmVal,
-                  platform: Capacitor.getPlatform() === 'ios' ? 'ios' : 'android',
-                  device_label: `VoltKu ${Capacitor.getPlatform()}`,
-                },
-              },
-              userToken
-            )
-          } catch {
-            // Akan dicoba ulang pada sesi berikutnya
-          }
-        })
-        activeListeners.push(regHandle)
-
-        const fgHandle = await PushNotifications.addListener('pushNotificationReceived', async (pn) => {
-          await showLocalBannerNotification({
-            id: Date.now(),
-            title: pn.title || 'VoltKu',
-            body: pn.body || '',
-            data: pn.data || {},
-          })
-          callbacks.onPushReceived?.(pn)
-        })
-        activeListeners.push(fgHandle)
-
-        const tapHandle = await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-          const devId = action?.notification?.data?.device_id
-          callbacks.onNotificationTap?.(devId || '')
-        })
-        activeListeners.push(tapHandle)
 
         const localTapHandle = await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
           const devId = action?.notification?.extra?.device_id
           callbacks.onNotificationTap?.(devId || '')
         })
         activeListeners.push(localTapHandle)
+
+        if (firebaseReady) {
+          const regHandle = await PushNotifications.addListener('registration', async (tok) => {
+            const fcmVal = tok?.value?.trim()
+            if (!fcmVal) return
+            localStorage.setItem(PUSH_TOKEN_CACHE_KEY, fcmVal)
+            try {
+              await apiRequest(
+                '/api/users/push-token',
+                {
+                  method: 'POST',
+                  body: {
+                    token: fcmVal,
+                    platform: Capacitor.getPlatform() === 'ios' ? 'ios' : 'android',
+                    device_label: `VoltKu ${Capacitor.getPlatform()}`,
+                  },
+                },
+                userToken
+              )
+            } catch {
+              // Akan dicoba ulang pada sesi berikutnya
+            }
+          })
+          activeListeners.push(regHandle)
+
+          const fgHandle = await PushNotifications.addListener('pushNotificationReceived', async (pn) => {
+            await showLocalBannerNotification({
+              id: Date.now(),
+              title: pn.title || 'VoltKu',
+              body: pn.body || '',
+              data: pn.data || {},
+            })
+            callbacks.onPushReceived?.(pn)
+          })
+          activeListeners.push(fgHandle)
+
+          const tapHandle = await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+            const devId = action?.notification?.data?.device_id
+            callbacks.onNotificationTap?.(devId || '')
+          })
+          activeListeners.push(tapHandle)
+        }
       }
 
-      const pushPerm = await PushNotifications.checkPermissions()
-      let granted = pushPerm.receive === 'granted'
-      if (!granted) {
-        const asked = await PushNotifications.requestPermissions()
-        granted = asked.receive === 'granted'
-      }
-      if (granted) {
-        // Aman bila Firebase google-services.json belum dipasang: hanya reject halus
-        await PushNotifications.register().catch(() => {})
+      if (firebaseReady) {
+        const pushPerm = await PushNotifications.checkPermissions()
+        let granted = pushPerm.receive === 'granted'
+        if (!granted) {
+          const asked = await PushNotifications.requestPermissions()
+          granted = asked.receive === 'granted'
+        }
+        if (granted) {
+          await PushNotifications.register().catch(() => {})
+        }
       }
     } catch {
       // Tetap mengandalkan LocalNotifications + WorkManager fallback bila FCM belum dikonfigurasi
