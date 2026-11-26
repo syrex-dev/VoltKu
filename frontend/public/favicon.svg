@@ -1,9 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">
   <title>VoltKu</title>
-  <rect width="64" height="64" rx="16" fill="#0B1B3A"/>
-  <g transform="translate(6 6) scale(0.8125)">
-    <path fill="none" stroke-width="7" stroke-linecap="round" stroke="#22345F" d="M14.3 49.7A25 25 0 1 1 49.7 49.7"/>
-    <path fill="none" stroke-width="7" stroke-linecap="round" stroke="#5B9DFF" d="M14.3 49.7A25 25 0 1 1 53.5 19.3"/>
-    <polygon points="35,17 24,35 31,35 29,47 41,28 33,28" fill="#FFC53D" stroke="#FFC53D" stroke-width="2.5" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="fv-bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#132B52"/>
+      <stop offset="55%" stop-color="#0B1933"/>
+      <stop offset="100%" stop-color="#071022"/>
+    </linearGradient>
+    <radialGradient id="fv-glow" cx="32" cy="14" r="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#1677FF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fv-w" x1="12" y1="12" x2="34" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#D7E6FF"/>
+    </linearGradient>
+    <linearGradient id="fv-b" x1="52" y1="12" x2="30" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="52%" stop-color="#1677FF"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="fv-s" x1="30" y1="36" x2="38" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#09204A" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#09204A" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#fv-bg)"/>
+  <rect width="64" height="64" rx="16" fill="url(#fv-glow)"/>
+  <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="15.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="1.5"/>
+  <g transform="translate(8 8) scale(0.75)">
+    <path fill="url(#fv-w)" d="M10.4 14.4C9.8 12.9 10.9 11.4 12.5 11.4H20.8C21.8 11.4 22.7 12 23.1 12.9L36.2 44.3L33.4 50.6C32.4 52.8 29.2 52.8 28.2 50.6L10.4 14.4Z"/>
+    <path fill="url(#fv-b)" d="M43.2 11.4H51.5C53.1 11.4 54.2 12.9 53.6 14.4L36.2 50.5C35.4 52.1 33.8 52.6 32 52.6C30.4 52.6 29 51.8 28.3 50.5L32.8 40.3L40.9 13C41.3 12 42.2 11.4 43.2 11.4Z"/>
+    <path fill="url(#fv-s)" d="M32.8 40.3L36.2 44.3L33.4 50.6L28.3 50.5L32.8 40.3Z"/>
+    <circle cx="32" cy="17.5" r="3.4" fill="#FBBF24"/>
   </g>
 </svg>

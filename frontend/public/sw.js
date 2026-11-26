@@ -1,14 +1,14 @@
-const CACHE_NAME = 'voltku-pwa-v3';
+const CACHE_NAME = 'voltku-pwa-v4';
 const PRECACHE_ASSETS = [
   '/offline.html',
-  '/manifest.webmanifest?v=3',
-  '/pwa-192.png?v=3',
-  '/pwa-512.png?v=3',
-  '/apple-touch-icon.png?v=3',
-  '/favicon.svg?v=3',
-  '/brand/voltku-icon.svg?v=3',
-  '/brand/voltku-logo-light.svg?v=3',
-  '/brand/voltku-logo-dark.svg?v=3',
+  '/manifest.webmanifest?v=4',
+  '/pwa-192.png?v=4',
+  '/pwa-512.png?v=4',
+  '/apple-touch-icon.png?v=4',
+  '/favicon.svg?v=4',
+  '/brand/voltku-icon.svg?v=4',
+  '/brand/voltku-logo-light.svg?v=4',
+  '/brand/voltku-logo-dark.svg?v=4',
 ];
 
 self.addEventListener('install', (event) => {

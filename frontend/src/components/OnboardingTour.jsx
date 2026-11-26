@@ -27,11 +27,12 @@ function StepIllustration({ stepIndex }) {
     return (
       <svg viewBox="0 0 240 120" className="guide-illus-svg" aria-hidden="true">
         <rect x="20" y="16" width="112" height="88" rx="14" className="guide-card-bg" />
-        <rect x="34" y="30" width="28" height="28" rx="8" className="guide-accent-soft" />
-        <path
-          d="M50 37 L44 45 H49 L47 52 L54 43 H49 Z"
-          fill="#FFB703"
-        />
+        <rect x="34" y="30" width="28" height="28" rx="8" fill="#0B1933" />
+        <g transform="translate(38 34) scale(0.3125)">
+          <path fill="#FFFFFF" d="M10.4 14.4C9.8 12.9 10.9 11.4 12.5 11.4H20.8C21.8 11.4 22.7 12 23.1 12.9L36.2 44.3L33.4 50.6C32.4 52.8 29.2 52.8 28.2 50.6L10.4 14.4Z" />
+          <path fill="#38BDF8" d="M43.2 11.4H51.5C53.1 11.4 54.2 12.9 53.6 14.4L36.2 50.5C35.4 52.1 33.8 52.6 32 52.6C30.4 52.6 29 51.8 28.3 50.5L32.8 40.3L40.9 13C41.3 12 42.2 11.4 43.2 11.4Z" />
+          <circle cx="32" cy="17.5" r="3.4" fill="#FBBF24" />
+        </g>
         <rect x="74" y="34" width="44" height="8" rx="4" className="guide-line-strong" />
         <rect x="74" y="47" width="30" height="6" rx="3" className="guide-line-muted" />
         <rect x="34" y="74" width="84" height="16" rx="8" className="guide-line-pill" />

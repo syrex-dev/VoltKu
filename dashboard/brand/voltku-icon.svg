@@ -1,1 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img"><title>VoltKu</title><path fill="none" stroke-width="7" stroke-linecap="round" stroke="#22345F" d="M14.3 49.7A25 25 0 1 1 49.7 49.7"/><path fill="none" stroke-width="7" stroke-linecap="round" stroke="#5B9DFF" d="M14.3 49.7A25 25 0 1 1 53.5 19.3"/><polygon points="35,17 24,35 31,35 29,47 41,28 33,28" fill="#FFC53D" stroke="#FFC53D" stroke-width="2.5" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">
+  <title>VoltKu</title>
+  <defs>
+    <linearGradient id="vk-w" x1="12" y1="12" x2="34" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#D7E6FF"/>
+    </linearGradient>
+    <linearGradient id="vk-b" x1="52" y1="12" x2="30" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="52%" stop-color="#1677FF"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="vk-s" x1="30" y1="36" x2="38" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#09204A" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#09204A" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Sayap kiri V (anodized white ribbon) -->
+  <path fill="url(#vk-w)" d="M10.4 14.4C9.8 12.9 10.9 11.4 12.5 11.4H20.8C21.8 11.4 22.7 12 23.1 12.9L36.2 44.3L33.4 50.6C32.4 52.8 29.2 52.8 28.2 50.6L10.4 14.4Z"/>
+  <!-- Sayap kanan V (electric sky-cobalt ribbon) -->
+  <path fill="url(#vk-b)" d="M43.2 11.4H51.5C53.1 11.4 54.2 12.9 53.6 14.4L36.1 50.7C35.1 52.7 32.3 52.8 31.1 50.9L28.5 46.8C29.7 49.4 33.4 49.3 34.5 46.7L40.9 13C41.3 12 42.2 11.4 43.2 11.4Z"/>
+  <!-- Lapisan penuh sayap kanan menyatu rapi di verteks bawah -->
+  <path fill="url(#vk-b)" d="M43.2 11.4H51.5C53.1 11.4 54.2 12.9 53.6 14.4L36.2 50.5C35.4 52.1 33.8 52.6 32 52.6C30.4 52.6 29 51.8 28.3 50.5L32.8 40.3L40.9 13C41.3 12 42.2 11.4 43.2 11.4Z"/>
+  <!-- Bayangan lipatan halus pada sambungan V -->
+  <path fill="url(#vk-s)" d="M32.8 40.3L36.2 44.3L33.4 50.6L28.3 50.5L32.8 40.3Z"/>
+  <!-- Titik aksen presisi energi -->
+  <circle cx="32" cy="17.5" r="3.4" fill="#FBBF24"/>
+</svg>
