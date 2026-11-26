@@ -13,7 +13,11 @@ from app.routers.settings import (
     format_settings_response,
     get_all_settings,
 )
-from app.services.plans import build_public_plans_payload, get_freemium_config
+from app.services.plans import (
+    build_public_plans_payload,
+    get_freemium_config,
+    sync_legacy_app_config_to_default_plans,
+)
 
 PUBLIC_ACCESS_KEY = "public_dashboard_enabled"
 
@@ -263,7 +267,7 @@ def _build_public_config_payload(session: Session, data: dict[str, str]) -> dict
         "support_whatsapp": data["support_whatsapp"],
         "support_telegram": data["support_telegram"],
         "support_email": data["support_email"],
-        "plans": build_public_plans_payload(data),
+        "plans": build_public_plans_payload(data, session=session),
     }
 
 
@@ -373,6 +377,21 @@ def update_admin_app_settings(session: Session, payload: dict[str, Any]) -> dict
     for key in DEFAULT_APP_CONFIG:
         if key in payload and payload[key] is not None:
             _validate_and_store_config_field(session, key, payload[key])
+
+    legacy_plan_keys = {
+        "free_plan_name",
+        "free_max_devices",
+        "free_history_days",
+        "free_forecast_enabled",
+        "free_export_enabled",
+        "pro_plan_name",
+        "pro_monthly_price_rp",
+        "pro_yearly_price_rp",
+        "pro_max_devices",
+        "pro_history_days",
+    }
+    if any(k in payload and payload[k] is not None for k in legacy_plan_keys):
+        sync_legacy_app_config_to_default_plans(session, get_app_config_map(session))
 
     if payload.get("public_read_enabled") is not None:
         val_str = "true" if bool(payload["public_read_enabled"]) else "false"

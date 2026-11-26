@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -21,9 +22,11 @@ from app.db import get_db
 from app.models import (
     Anomaly,
     Device,
+    DiscountCode,
     PaymentMethod,
     Reading,
     Setting,
+    SubscriptionPlan,
     TermsConsent,
     UpgradeRequest,
     User,
@@ -45,6 +48,7 @@ from app.services.app_config import (
     get_admin_app_settings,
     get_app_config_map,
     update_admin_app_settings,
+    upsert_app_config,
 )
 from app.services.email_service import (
     is_smtp_configured,
@@ -61,7 +65,14 @@ from app.services.payments import (
 )
 from app.services.plans import (
     ACTIVE_UPGRADE_STATUSES,
+    ALLOWED_DISCOUNT_TYPES,
+    DISCOUNT_CODE_RE,
+    PLAN_SLUG_RE,
     apply_user_plan_update,
+    ensure_default_plans_seeded,
+    release_discount_usage,
+    serialize_discount_code,
+    serialize_plan,
     serialize_upgrade_request,
 )
 
@@ -127,6 +138,81 @@ class AdminPaymentMethodUpdateRequest(BaseModel):
 
 class AdminQrisUploadRequest(BaseModel):
     image_base64: str
+
+
+class AdminPlanCreateRequest(BaseModel):
+    slug: str
+    name: str
+    description: Optional[str] = None
+    badge_text: Optional[str] = None
+    price_monthly_rp: int = 0
+    price_yearly_rp: int = 0
+    promo_discount_type: Optional[str] = None
+    promo_discount_value: int = 0
+    promo_label: Optional[str] = None
+    promo_starts_at: Optional[int] = None
+    promo_expires_at: Optional[int] = None
+    max_devices: int = 10
+    history_days: int = 90
+    forecast_enabled: bool = True
+    export_enabled: bool = True
+    anomaly_advanced: bool = True
+    features: Optional[list[str]] = None
+    is_recommended: bool = False
+    is_active: bool = True
+    sort_order: int = 10
+
+
+class AdminPlanUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    badge_text: Optional[str] = None
+    price_monthly_rp: Optional[int] = None
+    price_yearly_rp: Optional[int] = None
+    promo_discount_type: Optional[str] = None
+    promo_discount_value: Optional[int] = None
+    promo_label: Optional[str] = None
+    promo_starts_at: Optional[int] = None
+    promo_expires_at: Optional[int] = None
+    max_devices: Optional[int] = None
+    history_days: Optional[int] = None
+    forecast_enabled: Optional[bool] = None
+    export_enabled: Optional[bool] = None
+    anomaly_advanced: Optional[bool] = None
+    features: Optional[list[str]] = None
+    is_recommended: Optional[bool] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class AdminDiscountCreateRequest(BaseModel):
+    code: str
+    label: Optional[str] = None
+    discount_type: str = "percent"  # percent | fixed_rp
+    discount_value: int = 10
+    max_discount_rp: Optional[int] = None
+    min_purchase_rp: int = 0
+    target_plan_slug: Optional[str] = None
+    target_cycle: Optional[str] = None
+    max_uses: Optional[int] = None
+    starts_at: Optional[int] = None
+    expires_at: Optional[int] = None
+    is_active: bool = True
+
+
+class AdminDiscountUpdateRequest(BaseModel):
+    code: Optional[str] = None
+    label: Optional[str] = None
+    discount_type: Optional[str] = None
+    discount_value: Optional[int] = None
+    max_discount_rp: Optional[int] = None
+    min_purchase_rp: Optional[int] = None
+    target_plan_slug: Optional[str] = None
+    target_cycle: Optional[str] = None
+    max_uses: Optional[int] = None
+    starts_at: Optional[int] = None
+    expires_at: Optional[int] = None
+    is_active: Optional[bool] = None
 
 
 class AdminDeviceUpdateRequest(BaseModel):
@@ -235,7 +321,7 @@ def get_admin_overview(session: Session = Depends(get_db)):
     users_pro = (
         session.scalar(
             select(func.count(User.id)).where(
-                User.plan_tier == "pro",
+                User.plan_tier != "free",
                 (User.plan_expires_at.is_(None)) | (User.plan_expires_at > now_utc),
             )
         )
@@ -338,6 +424,7 @@ def create_admin_user(req: AdminUserCreateRequest, session: Session = Depends(ge
             user,
             plan_tier=req.plan_tier,
             duration_days=req.plan_duration_days,
+            session=session,
         )
     except ValueError as err:
         raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
@@ -394,6 +481,7 @@ def update_admin_user(
                 plan_tier=req.plan_tier,
                 duration_days=req.plan_duration_days,
                 clear_expiration=bool(req.clear_plan_expiration),
+                session=session,
             )
         except ValueError as err:
             raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
@@ -707,10 +795,12 @@ def resolve_admin_upgrade_request(
             user,
             plan_tier=entry.requested_tier or "pro",
             duration_days=days_to_apply,
+            session=session,
         )
         entry.status = "approved"
     else:
         entry.status = "rejected"
+        release_discount_usage(session, entry)
 
     entry.admin_note = clean_note
     entry.resolved_at = now_utc
@@ -720,16 +810,18 @@ def resolve_admin_upgrade_request(
     try:
         from app.services.push_notifier import create_and_dispatch_user_notification
 
-        tier_label = (entry.requested_tier or "pro").upper()
+        tier_label = (
+            entry.plan_name_snapshot or (entry.requested_tier or "pro").upper()
+        )
         if action == "approve":
             order_label = entry.order_code or ""
             create_and_dispatch_user_notification(
                 session,
                 user_id=entry.user_id,
-                title=f"Paket {tier_label} Aktif!",
+                title=f"{tier_label} Aktif!",
                 body=(
                     f"Pembayaran {order_label} telah disetujui. "
-                    f"Nikmati fitur penuh VoltKu {tier_label}."
+                    f"Nikmati fitur penuh paket {tier_label}."
                 ),
                 category="billing",
                 severity="success",
@@ -929,3 +1021,533 @@ def delete_admin_payment_method(
     if old_qris:
         delete_private_image(old_qris)
     return {"deleted": True, "id": method_id}
+
+
+def _normalize_promo_and_limits(
+    *,
+    name: str,
+    price_monthly_rp: int,
+    price_yearly_rp: int,
+    max_devices: int,
+    history_days: int,
+    promo_discount_type: Optional[str],
+    promo_discount_value: int,
+    promo_starts_at: Optional[int],
+    promo_expires_at: Optional[int],
+    is_default_free: bool = False,
+) -> dict[str, Any]:
+    clean_name = (name or "").strip()
+    if len(clean_name) < 2 or len(clean_name) > 64:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Nama paket harus antara 2 hingga 64 karakter.",
+        )
+
+    monthly_rp = 0 if is_default_free else int(price_monthly_rp or 0)
+    yearly_rp = 0 if is_default_free else int(price_yearly_rp or 0)
+    if monthly_rp < 0 or monthly_rp > 100_000_000:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Harga bulanan harus antara Rp 0 hingga Rp 100.000.000.",
+        )
+    if yearly_rp < 0 or yearly_rp > 1_000_000_000:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Harga tahunan harus antara Rp 0 hingga Rp 1.000.000.000.",
+        )
+
+    max_dev = int(max_devices)
+    if max_dev == 0 or max_dev < -1 or max_dev > 10000:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Kuota panel harus -1 (tanpa batas) atau antara 1 hingga 10000.",
+        )
+    hist_days = int(history_days)
+    if hist_days < 1 or hist_days > 366:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Riwayat hari grafik harus antara 1 hingga 366 hari.",
+        )
+
+    ptype = (promo_discount_type or "").strip().lower() or None
+    pval = int(promo_discount_value or 0)
+    if ptype is None or pval <= 0:
+        ptype = None
+        pval = 0
+    elif ptype not in ALLOWED_DISCOUNT_TYPES:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Tipe promo paket harus 'percent' atau 'fixed_rp'.",
+        )
+    elif ptype == "percent" and pval > 100:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Diskon promo persen maksimal 100%.",
+        )
+    elif ptype == "fixed_rp" and pval > 100_000_000:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Diskon nominal maksimal Rp 100.000.000.",
+        )
+
+    p_start = int(promo_starts_at) if promo_starts_at else None
+    p_end = int(promo_expires_at) if promo_expires_at else None
+    if p_start is not None and p_end is not None and p_end <= p_start:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Waktu berakhir promo harus lebih besar dari waktu mulai.",
+        )
+
+    return {
+        "name": clean_name,
+        "price_monthly_rp": monthly_rp,
+        "price_yearly_rp": yearly_rp,
+        "max_devices": max_dev,
+        "history_days": hist_days,
+        "promo_discount_type": ptype,
+        "promo_discount_value": pval,
+        "promo_starts_at": p_start,
+        "promo_expires_at": p_end,
+    }
+
+
+def _sync_plan_row_to_legacy_config(session: Session, plan: SubscriptionPlan) -> None:
+    if plan.slug == "free" or plan.is_default_free:
+        upsert_app_config(session, "free_plan_name", plan.name)
+        upsert_app_config(session, "free_max_devices", str(max(1, int(plan.max_devices))))
+        upsert_app_config(session, "free_history_days", str(int(plan.history_days)))
+        upsert_app_config(
+            session, "free_forecast_enabled", "true" if plan.forecast_enabled else "false"
+        )
+        upsert_app_config(
+            session, "free_export_enabled", "true" if plan.export_enabled else "false"
+        )
+    elif plan.slug == "pro":
+        upsert_app_config(session, "pro_plan_name", plan.name)
+        upsert_app_config(session, "pro_monthly_price_rp", str(int(plan.price_monthly_rp)))
+        upsert_app_config(session, "pro_yearly_price_rp", str(int(plan.price_yearly_rp)))
+        upsert_app_config(session, "pro_max_devices", str(int(plan.max_devices)))
+        upsert_app_config(session, "pro_history_days", str(int(plan.history_days)))
+
+
+@router.get("/plans", response_model=list[dict[str, Any]])
+def list_admin_plans(session: Session = Depends(get_db)):
+    """Daftar seluruh paket langganan (aktif & nonaktif) beserta ringkasan promo."""
+    cfg_map = get_app_config_map(session)
+    rows = ensure_default_plans_seeded(session, cfg_map)
+    session.commit()
+    now_utc = int(time.time())
+    user_counts = dict(
+        session.execute(
+            select(User.plan_tier, func.count(User.id)).group_by(User.plan_tier)
+        ).all()
+    )
+    items = []
+    for p in rows:
+        data = serialize_plan(p, now_utc=now_utc)
+        data["subscriber_count"] = int(user_counts.get(p.slug, 0))
+        items.append(data)
+    return items
+
+
+@router.post("/plans", status_code=status.HTTP_201_CREATED, response_model=dict[str, Any])
+def create_admin_plan(req: AdminPlanCreateRequest, session: Session = Depends(get_db)):
+    """Menambah paket langganan baru lengkap dengan kuota fitur & promo harga coret."""
+    cfg_map = get_app_config_map(session)
+    ensure_default_plans_seeded(session, cfg_map)
+
+    clean_slug = (req.slug or "").strip().lower()
+    if not PLAN_SLUG_RE.match(clean_slug):
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Slug paket harus 2-32 huruf kecil/angka/'-'/'_' (diawali huruf/angka).",
+        )
+    if session.scalar(select(SubscriptionPlan).where(SubscriptionPlan.slug == clean_slug)):
+        raise _admin_err(
+            status.HTTP_409_CONFLICT,
+            f"Kode slug paket '{clean_slug}' sudah dipakai.",
+        )
+
+    v = _normalize_promo_and_limits(
+        name=req.name,
+        price_monthly_rp=req.price_monthly_rp,
+        price_yearly_rp=req.price_yearly_rp,
+        max_devices=req.max_devices,
+        history_days=req.history_days,
+        promo_discount_type=req.promo_discount_type,
+        promo_discount_value=req.promo_discount_value,
+        promo_starts_at=req.promo_starts_at,
+        promo_expires_at=req.promo_expires_at,
+        is_default_free=False,
+    )
+    now_utc = int(time.time())
+    clean_features = (
+        [str(x).strip()[:120] for x in req.features if str(x).strip()]
+        if req.features is not None
+        else None
+    )
+    plan = SubscriptionPlan(
+        slug=clean_slug,
+        name=v["name"],
+        description=(req.description or "").strip()[:255] or None,
+        badge_text=(req.badge_text or "").strip()[:32] or None,
+        price_monthly_rp=v["price_monthly_rp"],
+        price_yearly_rp=v["price_yearly_rp"],
+        promo_discount_type=v["promo_discount_type"],
+        promo_discount_value=v["promo_discount_value"],
+        promo_label=(req.promo_label or "").strip()[:48] or None,
+        promo_starts_at=v["promo_starts_at"],
+        promo_expires_at=v["promo_expires_at"],
+        max_devices=v["max_devices"],
+        history_days=v["history_days"],
+        forecast_enabled=1 if req.forecast_enabled else 0,
+        export_enabled=1 if req.export_enabled else 0,
+        anomaly_advanced=1 if req.anomaly_advanced else 0,
+        features_json=json.dumps(clean_features) if clean_features else None,
+        is_default_free=0,
+        is_recommended=1 if req.is_recommended else 0,
+        is_active=1 if req.is_active else 0,
+        sort_order=int(req.sort_order or 10),
+        created_at=now_utc,
+        updated_at=now_utc,
+    )
+    session.add(plan)
+    session.commit()
+    session.refresh(plan)
+    data = serialize_plan(plan, now_utc=now_utc)
+    data["subscriber_count"] = 0
+    return data
+
+
+@router.patch("/plans/{plan_id}", response_model=dict[str, Any])
+def update_admin_plan(
+    plan_id: int,
+    req: AdminPlanUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    """Memperbarui detail harga, kuota fitur, promo harga coret, atau status paket."""
+    cfg_map = get_app_config_map(session)
+    ensure_default_plans_seeded(session, cfg_map)
+    plan = session.get(SubscriptionPlan, plan_id)
+    if not plan:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Paket langganan tidak ditemukan.")
+
+    if plan.is_default_free and req.is_active is False:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Paket gratis bawaan wajib tetap aktif sebagai dasar akun baru.",
+        )
+
+    v = _normalize_promo_and_limits(
+        name=req.name if req.name is not None else plan.name,
+        price_monthly_rp=(
+            req.price_monthly_rp if req.price_monthly_rp is not None else plan.price_monthly_rp
+        ),
+        price_yearly_rp=(
+            req.price_yearly_rp if req.price_yearly_rp is not None else plan.price_yearly_rp
+        ),
+        max_devices=req.max_devices if req.max_devices is not None else plan.max_devices,
+        history_days=req.history_days if req.history_days is not None else plan.history_days,
+        promo_discount_type=(
+            req.promo_discount_type
+            if "promo_discount_type" in req.model_fields_set
+            else plan.promo_discount_type
+        ),
+        promo_discount_value=(
+            req.promo_discount_value
+            if req.promo_discount_value is not None
+            else plan.promo_discount_value
+        ),
+        promo_starts_at=(
+            req.promo_starts_at
+            if "promo_starts_at" in req.model_fields_set
+            else plan.promo_starts_at
+        ),
+        promo_expires_at=(
+            req.promo_expires_at
+            if "promo_expires_at" in req.model_fields_set
+            else plan.promo_expires_at
+        ),
+        is_default_free=bool(plan.is_default_free),
+    )
+
+    plan.name = v["name"]
+    plan.price_monthly_rp = v["price_monthly_rp"]
+    plan.price_yearly_rp = v["price_yearly_rp"]
+    plan.max_devices = v["max_devices"]
+    plan.history_days = v["history_days"]
+    plan.promo_discount_type = v["promo_discount_type"]
+    plan.promo_discount_value = v["promo_discount_value"]
+    plan.promo_starts_at = v["promo_starts_at"]
+    plan.promo_expires_at = v["promo_expires_at"]
+
+    if req.description is not None:
+        plan.description = req.description.strip()[:255] or None
+    if req.badge_text is not None:
+        plan.badge_text = req.badge_text.strip()[:32] or None
+    if req.promo_label is not None:
+        plan.promo_label = req.promo_label.strip()[:48] or None
+    if req.forecast_enabled is not None:
+        plan.forecast_enabled = 1 if req.forecast_enabled else 0
+    if req.export_enabled is not None:
+        plan.export_enabled = 1 if req.export_enabled else 0
+    if req.anomaly_advanced is not None:
+        plan.anomaly_advanced = 1 if req.anomaly_advanced else 0
+    if req.features is not None:
+        clean_features = [str(x).strip()[:120] for x in req.features if str(x).strip()]
+        plan.features_json = json.dumps(clean_features) if clean_features else None
+    if req.is_recommended is not None:
+        plan.is_recommended = 1 if req.is_recommended else 0
+    if req.is_active is not None:
+        plan.is_active = 1 if req.is_active else 0
+    if req.sort_order is not None:
+        plan.sort_order = int(req.sort_order)
+
+    now_utc = int(time.time())
+    plan.updated_at = now_utc
+    _sync_plan_row_to_legacy_config(session, plan)
+    session.commit()
+    session.refresh(plan)
+    sub_count = int(
+        session.scalar(
+            select(func.count(User.id)).where(User.plan_tier == plan.slug)
+        )
+        or 0
+    )
+    data = serialize_plan(plan, now_utc=now_utc)
+    data["subscriber_count"] = sub_count
+    return data
+
+
+@router.delete("/plans/{plan_id}", response_model=dict[str, Any])
+def delete_admin_plan(plan_id: int, session: Session = Depends(get_db)):
+    """Menghapus paket kustom (paket gratis bawaan dan paket yang masih dipakai user dilindungi)."""
+    plan = session.get(SubscriptionPlan, plan_id)
+    if not plan:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Paket langganan tidak ditemukan.")
+    if plan.is_default_free or plan.slug == "free":
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Paket gratis bawaan tidak boleh dihapus.",
+        )
+
+    active_users = int(
+        session.scalar(
+            select(func.count(User.id)).where(
+                (User.plan_id == plan.id) | (User.plan_tier == plan.slug)
+            )
+        )
+        or 0
+    )
+    if active_users > 0:
+        raise _admin_err(
+            status.HTTP_409_CONFLICT,
+            f"Masih ada {active_users} akun pelanggan pada paket ini. "
+            "Nonaktifkan saja paket agar pembeli baru tidak bisa memilihnya.",
+        )
+
+    session.delete(plan)
+    session.commit()
+    return {"deleted": True, "id": plan_id}
+
+
+def _normalize_discount_fields(
+    *,
+    code: str,
+    discount_type: str,
+    discount_value: int,
+    max_discount_rp: Optional[int],
+    min_purchase_rp: int,
+    target_plan_slug: Optional[str],
+    target_cycle: Optional[str],
+    max_uses: Optional[int],
+    starts_at: Optional[int],
+    expires_at: Optional[int],
+) -> dict[str, Any]:
+    clean_code = (code or "").strip().upper()
+    if not DISCOUNT_CODE_RE.match(clean_code):
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Kode promo harus 2-32 karakter huruf kapital/angka/'-'/'_' tanpa spasi.",
+        )
+    dtype = (discount_type or "percent").strip().lower()
+    if dtype not in ALLOWED_DISCOUNT_TYPES:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Tipe diskon harus 'percent' atau 'fixed_rp'.",
+        )
+    dval = int(discount_value or 0)
+    if dtype == "percent" and (dval < 1 or dval > 100):
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Nilai diskon persentase harus antara 1% hingga 100%.",
+        )
+    if dtype == "fixed_rp" and (dval < 1 or dval > 100_000_000):
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Potongan nominal harus antara Rp 1 hingga Rp 100.000.000.",
+        )
+    cap_rp = (
+        int(max_discount_rp)
+        if max_discount_rp is not None and int(max_discount_rp) > 0
+        else None
+    )
+    min_rp = max(0, int(min_purchase_rp or 0))
+    plan_slug = (target_plan_slug or "").strip().lower() or None
+    cycle = (target_cycle or "").strip().lower() or None
+    if cycle is not None and cycle not in ("monthly", "yearly"):
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Target siklus kode promo harus 'monthly', 'yearly', atau kosong (semua).",
+        )
+    limit_uses = int(max_uses) if max_uses is not None and int(max_uses) > 0 else None
+    d_start = int(starts_at) if starts_at else None
+    d_end = int(expires_at) if expires_at else None
+    if d_start is not None and d_end is not None and d_end <= d_start:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Waktu berakhir kode promo harus lebih besar dari waktu mulai.",
+        )
+    return {
+        "code": clean_code,
+        "discount_type": dtype,
+        "discount_value": dval,
+        "max_discount_rp": cap_rp,
+        "min_purchase_rp": min_rp,
+        "target_plan_slug": plan_slug,
+        "target_cycle": cycle,
+        "max_uses": limit_uses,
+        "starts_at": d_start,
+        "expires_at": d_end,
+    }
+
+
+@router.get("/discounts", response_model=list[dict[str, Any]])
+def list_admin_discounts(session: Session = Depends(get_db)):
+    """Daftar seluruh kode promo/voucher diskon beserta statistik penggunaannya."""
+    rows = session.scalars(
+        select(DiscountCode).order_by(DiscountCode.id.desc())
+    ).all()
+    now_utc = int(time.time())
+    return [serialize_discount_code(r, now_utc=now_utc) for r in rows]
+
+
+@router.post("/discounts", status_code=status.HTTP_201_CREATED, response_model=dict[str, Any])
+def create_admin_discount(
+    req: AdminDiscountCreateRequest,
+    session: Session = Depends(get_db),
+):
+    """Membuat kode promo/voucher baru untuk halaman checkout upgrade pelanggan."""
+    v = _normalize_discount_fields(
+        code=req.code,
+        discount_type=req.discount_type,
+        discount_value=req.discount_value,
+        max_discount_rp=req.max_discount_rp,
+        min_purchase_rp=req.min_purchase_rp,
+        target_plan_slug=req.target_plan_slug,
+        target_cycle=req.target_cycle,
+        max_uses=req.max_uses,
+        starts_at=req.starts_at,
+        expires_at=req.expires_at,
+    )
+    if session.scalar(select(DiscountCode).where(DiscountCode.code == v["code"])):
+        raise _admin_err(
+            status.HTTP_409_CONFLICT,
+            f"Kode promo '{v['code']}' sudah ada.",
+        )
+
+    now_utc = int(time.time())
+    dc = DiscountCode(
+        code=v["code"],
+        label=(req.label or "").strip()[:80] or None,
+        discount_type=v["discount_type"],
+        discount_value=v["discount_value"],
+        max_discount_rp=v["max_discount_rp"],
+        min_purchase_rp=v["min_purchase_rp"],
+        target_plan_slug=v["target_plan_slug"],
+        target_cycle=v["target_cycle"],
+        max_uses=v["max_uses"],
+        used_count=0,
+        starts_at=v["starts_at"],
+        expires_at=v["expires_at"],
+        is_active=1 if req.is_active else 0,
+        created_at=now_utc,
+        updated_at=now_utc,
+    )
+    session.add(dc)
+    session.commit()
+    session.refresh(dc)
+    return serialize_discount_code(dc, now_utc=now_utc)
+
+
+@router.patch("/discounts/{discount_id}", response_model=dict[str, Any])
+def update_admin_discount(
+    discount_id: int,
+    req: AdminDiscountUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    """Memperbarui aturan, kuota, jadwal berlaku, atau status aktif kode promo."""
+    dc = session.get(DiscountCode, discount_id)
+    if not dc:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Kode promo tidak ditemukan.")
+
+    v = _normalize_discount_fields(
+        code=req.code if req.code is not None else dc.code,
+        discount_type=req.discount_type if req.discount_type is not None else dc.discount_type,
+        discount_value=req.discount_value if req.discount_value is not None else dc.discount_value,
+        max_discount_rp=(
+            req.max_discount_rp if "max_discount_rp" in req.model_fields_set else dc.max_discount_rp
+        ),
+        min_purchase_rp=(
+            req.min_purchase_rp if req.min_purchase_rp is not None else dc.min_purchase_rp
+        ),
+        target_plan_slug=(
+            req.target_plan_slug
+            if "target_plan_slug" in req.model_fields_set
+            else dc.target_plan_slug
+        ),
+        target_cycle=(
+            req.target_cycle if "target_cycle" in req.model_fields_set else dc.target_cycle
+        ),
+        max_uses=req.max_uses if "max_uses" in req.model_fields_set else dc.max_uses,
+        starts_at=req.starts_at if "starts_at" in req.model_fields_set else dc.starts_at,
+        expires_at=req.expires_at if "expires_at" in req.model_fields_set else dc.expires_at,
+    )
+
+    if v["code"] != dc.code:
+        existing_dc = session.scalar(
+            select(DiscountCode).where(DiscountCode.code == v["code"], DiscountCode.id != dc.id)
+        )
+        if existing_dc:
+            raise _admin_err(status.HTTP_409_CONFLICT, f"Kode promo '{v['code']}' sudah dipakai.")
+
+    dc.code = v["code"]
+    if req.label is not None:
+        dc.label = req.label.strip()[:80] or None
+    dc.discount_type = v["discount_type"]
+    dc.discount_value = v["discount_value"]
+    dc.max_discount_rp = v["max_discount_rp"]
+    dc.min_purchase_rp = v["min_purchase_rp"]
+    dc.target_plan_slug = v["target_plan_slug"]
+    dc.target_cycle = v["target_cycle"]
+    dc.max_uses = v["max_uses"]
+    dc.starts_at = v["starts_at"]
+    dc.expires_at = v["expires_at"]
+    if req.is_active is not None:
+        dc.is_active = 1 if req.is_active else 0
+    now_utc = int(time.time())
+    dc.updated_at = now_utc
+    session.commit()
+    session.refresh(dc)
+    return serialize_discount_code(dc, now_utc=now_utc)
+
+
+@router.delete("/discounts/{discount_id}", response_model=dict[str, Any])
+def delete_admin_discount(discount_id: int, session: Session = Depends(get_db)):
+    """Menghapus kode promo (histori tagihan lama tetap menyimpan snapshot teks kode)."""
+    dc = session.get(DiscountCode, discount_id)
+    if not dc:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Kode promo tidak ditemukan.")
+    session.delete(dc)
+    session.commit()
+    return {"deleted": True, "id": discount_id}

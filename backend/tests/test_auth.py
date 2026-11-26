@@ -213,6 +213,7 @@ def test_route_audit_security_lockdown():
         "/api/public/devices/{device_id}/export",
         "/api/public/anomalies",
         "/api/public/settings",
+        "/api/public/plans",
         "/api/public/payment-methods",
         "/api/payment-methods/{method_id}/qris",
     }

@@ -450,3 +450,355 @@ def test_manual_payment_methods_and_proof_verification_flow():
     assert del_res.status_code == 200
     session.close()
 
+
+def test_admin_plans_crud_promo_pricing_and_custom_tier():
+    _, session = open_clean_test_session()
+    admin_tok = create_access_token(subject="admin", role="admin")
+    adm_headers = {"Authorization": f"Bearer {admin_tok}"}
+
+    # 1. Admin list melihat paket bawaan free & pro
+    list_res = client.get("/api/admin/plans", headers=adm_headers)
+    assert list_res.status_code == 200
+    slugs = {p["slug"]: p for p in list_res.json()}
+    assert "free" in slugs and "pro" in slugs
+    assert slugs["free"]["is_default_free"] is True
+
+    # Paket gratis bawaan tidak bisa dinonaktifkan maupun dihapus
+    bad_deact = client.patch(
+        f"/api/admin/plans/{slugs['free']['id']}",
+        headers=adm_headers,
+        json={"is_active": False},
+    )
+    assert bad_deact.status_code == 422
+
+    bad_del = client.delete(
+        f"/api/admin/plans/{slugs['free']['id']}",
+        headers=adm_headers,
+    )
+    assert bad_del.status_code == 422
+
+    # 2. Admin membuat paket kustom 'bisnis' dengan promo harga coret 20% aktif
+    now_utc = int(time.time())
+    create_res = client.post(
+        "/api/admin/plans",
+        headers=adm_headers,
+        json={
+            "slug": "bisnis",
+            "name": "VoltKu Bisnis",
+            "description": "Untuk toko & kantor banyak cabang",
+            "badge_text": "Paling Laris",
+            "price_monthly_rp": 100000,
+            "price_yearly_rp": 1000000,
+            "promo_discount_type": "percent",
+            "promo_discount_value": 20,
+            "promo_label": "Diskon Pembukaan",
+            "promo_starts_at": now_utc - 60,
+            "promo_expires_at": now_utc + 3600,
+            "max_devices": 25,
+            "history_days": 180,
+            "forecast_enabled": True,
+            "export_enabled": True,
+            "anomaly_advanced": True,
+            "features": ["25 panel aktif", "Riwayat 180 hari", "Prioritas dukungan"],
+            "is_recommended": True,
+            "is_active": True,
+            "sort_order": 30,
+        },
+    )
+    assert create_res.status_code == 201
+    bisnis = create_res.json()
+    assert bisnis["slug"] == "bisnis"
+    assert bisnis["promo_active"] is True
+    assert bisnis["monthly_promo_discount_rp"] == 20000
+    assert bisnis["effective_monthly_price_rp"] == 80000
+    assert bisnis["yearly_promo_discount_rp"] == 200000
+    assert bisnis["effective_yearly_price_rp"] == 800000
+
+    # 3. Public endpoint menampilkan paket kustom beserta harga promo
+    pub_plans = client.get("/api/public/plans")
+    assert pub_plans.status_code == 200
+    pub_items = {p["slug"]: p for p in pub_plans.json()["items"]}
+    assert "bisnis" in pub_items
+    assert pub_items["bisnis"]["effective_monthly_price_rp"] == 80000
+    assert pub_items["bisnis"]["promo_label"] == "Diskon Pembukaan"
+
+    # Promo fixed_rp melebihi harga dasar tidak pernah menghasilkan angka negatif
+    patch_fixed = client.patch(
+        f"/api/admin/plans/{bisnis['id']}",
+        headers=adm_headers,
+        json={
+            "promo_discount_type": "fixed_rp",
+            "promo_discount_value": 150000,
+        },
+    )
+    assert patch_fixed.status_code == 200
+    assert patch_fixed.json()["effective_monthly_price_rp"] == 0
+    assert patch_fixed.json()["effective_yearly_price_rp"] == 850000
+
+    # Promo yang sudah melewati promo_expires_at otomatis tidak aktif lagi
+    patch_exp = client.patch(
+        f"/api/admin/plans/{bisnis['id']}",
+        headers=adm_headers,
+        json={
+            "promo_starts_at": now_utc - 7200,
+            "promo_expires_at": now_utc - 60,
+        },
+    )
+    assert patch_exp.status_code == 200
+    assert patch_exp.json()["promo_active"] is False
+    assert patch_exp.json()["effective_monthly_price_rp"] == 100000
+
+    # Hapus paket yang belum memiliki pelanggan berhasil
+    del_bisnis = client.delete(
+        f"/api/admin/plans/{bisnis['id']}",
+        headers=adm_headers,
+    )
+    assert del_bisnis.status_code == 200
+    session.close()
+
+
+def test_discount_codes_checkout_caps_and_quota_release():
+    _, session = open_clean_test_session()
+    admin_tok = create_access_token(subject="admin", role="admin")
+    adm_headers = {"Authorization": f"Bearer {admin_tok}"}
+
+    # 1. Buat metode bayar aktif + paket 'bisnis' (100rb/bln, promo 20% -> 80rb)
+    pm_res = client.post(
+        "/api/admin/payment-methods",
+        headers=adm_headers,
+        json={
+            "type": "bank",
+            "label": "Mandiri VoltKu",
+            "account_number": "99887766",
+            "is_active": True,
+        },
+    )
+    assert pm_res.status_code == 201
+    pm_id = pm_res.json()["id"]
+
+    bisnis_res = client.post(
+        "/api/admin/plans",
+        headers=adm_headers,
+        json={
+            "slug": "bisnis",
+            "name": "VoltKu Bisnis",
+            "price_monthly_rp": 100000,
+            "price_yearly_rp": 1000000,
+            "promo_discount_type": "percent",
+            "promo_discount_value": 20,
+            "promo_label": "Promo Bisnis",
+            "max_devices": 25,
+            "history_days": 180,
+            "forecast_enabled": True,
+            "export_enabled": True,
+            "anomaly_advanced": True,
+            "is_active": True,
+        },
+    )
+    assert bisnis_res.status_code == 201
+    bisnis_id = bisnis_res.json()["id"]
+
+    # 2. Kupon HEMAT50: 50% maks 25rb, min 50rb, bisnis monthly, maks 1x pakai
+    dc_res = client.post(
+        "/api/admin/discounts",
+        headers=adm_headers,
+        json={
+            "code": "hemat50",
+            "label": "Voucher Hemat 50%",
+            "discount_type": "percent",
+            "discount_value": 50,
+            "max_discount_rp": 25000,
+            "min_purchase_rp": 50000,
+            "target_plan_slug": "bisnis",
+            "target_cycle": "monthly",
+            "max_uses": 1,
+            "is_active": True,
+        },
+    )
+    assert dc_res.status_code == 201
+    dc_obj = dc_res.json()
+    assert dc_obj["code"] == "HEMAT50"
+
+    # 3. Registrasi 2 pelanggan
+    reg_a = client.post(
+        "/api/users/register",
+        json={
+            "name": "Bisnis A",
+            "email": "bisnis-a@example.com",
+            "password": "password123",
+            "accept_terms": True,
+        },
+    )
+    reg_b = client.post(
+        "/api/users/register",
+        json={
+            "name": "Bisnis B",
+            "email": "bisnis-b@example.com",
+            "password": "password123",
+            "accept_terms": True,
+        },
+    )
+    a_headers = {"Authorization": f"Bearer {reg_a.json()['token']}"}
+    b_headers = {"Authorization": f"Bearer {reg_b.json()['token']}"}
+
+    # Validasi apply-discount gagal jika salah paket / salah siklus / kode palsu
+    assert (
+        client.post(
+            "/api/users/apply-discount",
+            headers=a_headers,
+            json={"plan_slug": "bisnis", "billing_cycle": "monthly", "discount_code": "NGASAL"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            "/api/users/apply-discount",
+            headers=a_headers,
+            json={"plan_slug": "pro", "billing_cycle": "monthly", "discount_code": "HEMAT50"},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/users/apply-discount",
+            headers=a_headers,
+            json={"plan_slug": "bisnis", "billing_cycle": "yearly", "discount_code": "HEMAT50"},
+        ).status_code
+        == 422
+    )
+
+    # Preview valid pada bisnis monthly:
+    # 100.000 - promo 20.000 = 80.000 -> voucher 50% cap 25.000 = 55.000
+    prev = client.post(
+        "/api/users/apply-discount",
+        headers=a_headers,
+        json={"plan_slug": "bisnis", "billing_cycle": "monthly", "discount_code": "HEMAT50"},
+    )
+    assert prev.status_code == 200
+    pq = prev.json()
+    assert pq["base_amount_rp"] == 100000
+    assert pq["promo_discount_rp"] == 20000
+    assert pq["voucher_discount_rp"] == 25000
+    assert pq["final_amount_rp"] == 55000
+
+    # 4. Pelanggan A buat invoice lalu BATALKAN -> kuota dipakai 1 lalu kembali 0
+    inv1 = client.post(
+        "/api/users/upgrade-request",
+        headers=a_headers,
+        json={
+            "plan_slug": "bisnis",
+            "billing_cycle": "monthly",
+            "discount_code": "HEMAT50",
+            "payment_method_id": pm_id,
+        },
+    )
+    assert inv1.status_code == 201
+    inv1_data = inv1.json()
+    assert inv1_data["plan_name_snapshot"] == "VoltKu Bisnis"
+    assert inv1_data["amount_rp"] == 55000
+    assert inv1_data["discount_code"] == "HEMAT50"
+
+    # Saat dipakai oleh inv1 (max_uses=1), pelanggan B tidak bisa apply kode yang sama
+    b_full = client.post(
+        "/api/users/apply-discount",
+        headers=b_headers,
+        json={"plan_slug": "bisnis", "billing_cycle": "monthly", "discount_code": "HEMAT50"},
+    )
+    assert b_full.status_code == 409
+
+    # Setelah inv1 dibatalkan, kuota HEMAT50 kembali 0 & bisa dipakai lagi
+    can1 = client.post(
+        f"/api/users/upgrade-requests/{inv1_data['id']}/cancel",
+        headers=a_headers,
+    )
+    assert can1.status_code == 200
+    d_cancel_rows = client.get("/api/admin/discounts", headers=adm_headers).json()
+    d_list_after_cancel = {d["code"]: d for d in d_cancel_rows}
+    assert d_list_after_cancel["HEMAT50"]["used_count"] == 0
+
+    # 5. Pelanggan A buat invoice lagi & unggah bukti, Admin TOLAK -> kuota kembali 0
+    inv2 = client.post(
+        "/api/users/upgrade-request",
+        headers=a_headers,
+        json={
+            "plan_slug": "bisnis",
+            "billing_cycle": "monthly",
+            "discount_code": "HEMAT50",
+            "payment_method_id": pm_id,
+        },
+    ).json()
+    assert (
+        client.post(
+            f"/api/users/upgrade-requests/{inv2['id']}/confirm-payment",
+            headers=a_headers,
+            json={"proof_base64": _sample_png_data_url()},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            f"/api/admin/upgrade-requests/{inv2['id']}",
+            headers=adm_headers,
+            json={"action": "reject", "admin_note": "Nominal kurang"},
+        ).status_code
+        == 200
+    )
+    d_reject_rows = client.get("/api/admin/discounts", headers=adm_headers).json()
+    d_list_after_reject = {d["code"]: d for d in d_reject_rows}
+    assert d_list_after_reject["HEMAT50"]["used_count"] == 0
+
+    # 6. Pelanggan A buat invoice ke-3 & Admin SETUJUI -> naik ke tier 'bisnis'
+    inv3 = client.post(
+        "/api/users/upgrade-request",
+        headers=a_headers,
+        json={
+            "plan_slug": "bisnis",
+            "billing_cycle": "monthly",
+            "discount_code": "HEMAT50",
+            "payment_method_id": pm_id,
+        },
+    ).json()
+    assert (
+        client.post(
+            f"/api/users/upgrade-requests/{inv3['id']}/confirm-payment",
+            headers=a_headers,
+            json={"proof_base64": _sample_png_data_url()},
+        ).status_code
+        == 200
+    )
+    appr3 = client.patch(
+        f"/api/admin/upgrade-requests/{inv3['id']}",
+        headers=adm_headers,
+        json={"action": "approve"},
+    )
+    assert appr3.status_code == 200
+    me_bisnis = client.get("/api/users/me", headers=a_headers).json()
+    assert me_bisnis["plan"]["effective_tier"] == "bisnis"
+    assert me_bisnis["plan"]["plan_name"] == "VoltKu Bisnis"
+    assert me_bisnis["plan"]["is_pro"] is True
+    assert me_bisnis["plan"]["limits"]["max_devices"] == 25
+    assert me_bisnis["plan"]["limits"]["history_days"] == 180
+
+    # Paket 'bisnis' yang masih memiliki pelanggan aktif tidak boleh dihapus (409)
+    del_in_use = client.delete(f"/api/admin/plans/{bisnis_id}", headers=adm_headers)
+    assert del_in_use.status_code == 409
+
+    # Nonaktifkan paket 'bisnis' -> pelanggan B tidak bisa checkout paket nonaktif (404)
+    deact_bisnis = client.patch(
+        f"/api/admin/plans/{bisnis_id}",
+        headers=adm_headers,
+        json={"is_active": False},
+    )
+    assert deact_bisnis.status_code == 200
+    b_try = client.post(
+        "/api/users/upgrade-request",
+        headers=b_headers,
+        json={"plan_slug": "bisnis", "billing_cycle": "monthly", "payment_method_id": pm_id},
+    )
+    assert b_try.status_code == 404
+
+    # Hapus kode promo yang tidak lagi dipakai berhasil
+    del_dc = client.delete(f"/api/admin/discounts/{dc_obj['id']}", headers=adm_headers)
+    assert del_dc.status_code == 200
+    session.close()
+

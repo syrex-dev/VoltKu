@@ -21,7 +21,13 @@ from app.auth import (
     verify_user_password,
 )
 from app.db import get_db
-from app.models import PasswordResetToken, PaymentMethod, UpgradeRequest, User
+from app.models import (
+    PasswordResetToken,
+    PaymentMethod,
+    SubscriptionPlan,
+    UpgradeRequest,
+    User,
+)
 from app.services.app_config import (
     get_active_terms_version,
     get_app_config_map,
@@ -41,7 +47,9 @@ from app.services.payments import (
 )
 from app.services.plans import (
     ACTIVE_UPGRADE_STATUSES,
-    get_freemium_config,
+    ensure_default_plans_seeded,
+    evaluate_checkout_pricing,
+    release_discount_usage,
     resolve_user_plan,
     serialize_upgrade_request,
 )
@@ -84,9 +92,17 @@ class UserTermsConsentRequest(BaseModel):
 
 
 class UpgradeSubmitRequest(BaseModel):
+    plan_slug: Optional[str] = "pro"
     billing_cycle: str = "monthly"
+    discount_code: Optional[str] = None
     payment_method_id: Optional[int] = None
     user_note: Optional[str] = None
+
+
+class DiscountApplyRequest(BaseModel):
+    plan_slug: str = "pro"
+    billing_cycle: str = "monthly"
+    discount_code: str
 
 
 class UpgradeConfirmPaymentRequest(BaseModel):
@@ -608,13 +624,83 @@ def list_my_upgrade_requests(
     return [serialize_upgrade_request(r) for r in rows]
 
 
+def _resolve_active_paid_plan(
+    session: Session,
+    plan_slug: Optional[str],
+    cfg_map: dict[str, str],
+) -> SubscriptionPlan:
+    plans = ensure_default_plans_seeded(session, cfg_map)
+    clean_slug = (plan_slug or "pro").strip().lower()
+    target = next((p for p in plans if p.slug == clean_slug), None)
+    if target is None and clean_slug == "pro":
+        target = next(
+            (p for p in plans if not p.is_default_free and p.slug != "free" and p.is_active),
+            None,
+        )
+    if not target or not target.is_active:
+        raise _api_error(
+            status.HTTP_404_NOT_FOUND,
+            f"Paket langganan '{clean_slug}' tidak ditemukan atau sedang nonaktif.",
+        )
+    if target.is_default_free or target.slug == "free":
+        raise _api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Pilih paket berbayar untuk membuat tagihan upgrade.",
+        )
+    return target
+
+
+@router.post("/apply-discount", response_model=dict[str, Any])
+def preview_discount_code(
+    req: DiscountApplyRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Validasi kode promo/kupon terhadap paket & siklus berlangganan sebelum checkout."""
+    if current.get("role") != "user" or current.get("user_id") is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+
+    cycle = (req.billing_cycle or "monthly").strip().lower()
+    if cycle not in ("monthly", "yearly"):
+        raise _api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "billing_cycle harus 'monthly' atau 'yearly'.",
+        )
+    if not (req.discount_code or "").strip():
+        raise _api_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Masukkan kode promo.")
+
+    cfg_map = get_app_config_map(session)
+    plan = _resolve_active_paid_plan(session, req.plan_slug, cfg_map)
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+    quote = evaluate_checkout_pricing(
+        session,
+        plan=plan,
+        billing_cycle=cycle,
+        discount_code_raw=req.discount_code,
+        now_utc=now_utc,
+    )
+    return {
+        "valid": True,
+        "plan_slug": quote["plan_slug"],
+        "plan_name": quote["plan_name"],
+        "billing_cycle": quote["billing_cycle"],
+        "base_amount_rp": quote["base_amount_rp"],
+        "promo_discount_rp": quote["promo_discount_rp"],
+        "promo_label": quote["promo_label"],
+        "discount_code": quote["discount_code"],
+        "discount_label": quote["discount_label"],
+        "voucher_discount_rp": quote["voucher_discount_rp"],
+        "final_amount_rp": quote["final_amount_rp"],
+    }
+
+
 @router.post("/upgrade-request", status_code=status.HTTP_201_CREATED, response_model=dict[str, Any])
 def submit_upgrade_request(
     req: UpgradeSubmitRequest,
     current: dict[str, Any] = Depends(get_current_user),
     session: Session = Depends(get_db),
 ):
-    """Membuat tagihan/pengajuan upgrade manual ke paket VoltKu Pro."""
+    """Membuat tagihan/pengajuan upgrade manual ke paket pilihan user beserta promo & voucher."""
     uid = current.get("user_id")
     if current.get("role") != "user" or uid is None:
         raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
@@ -654,19 +740,34 @@ def submit_upgrade_request(
             )
 
     cfg_map = get_app_config_map(session)
-    fcfg = get_freemium_config(cfg_map)
-    amount_rp = (
-        fcfg["pro_yearly_price_rp"] if cycle == "yearly" else fcfg["pro_monthly_price_rp"]
-    )
-    clean_note = req.user_note.strip()[:255] if req.user_note and req.user_note.strip() else None
+    target_plan = _resolve_active_paid_plan(session, req.plan_slug, cfg_map)
     now_utc = int(datetime.now(timezone.utc).timestamp())
+    quote = evaluate_checkout_pricing(
+        session,
+        plan=target_plan,
+        billing_cycle=cycle,
+        discount_code_raw=req.discount_code,
+        now_utc=now_utc,
+    )
+    dc = quote["discount_code_obj"]
+    if dc is not None:
+        dc.used_count = int(dc.used_count or 0) + 1
+
+    clean_note = req.user_note.strip()[:255] if req.user_note and req.user_note.strip() else None
 
     entry = UpgradeRequest(
         user_id=user.id,
         order_code=generate_order_code(now_utc),
-        requested_tier="pro",
+        requested_tier=target_plan.slug,
+        plan_id=target_plan.id,
+        plan_name_snapshot=target_plan.name,
         billing_cycle=cycle,
-        amount_rp=amount_rp,
+        base_amount_rp=quote["base_amount_rp"],
+        promo_discount_rp=quote["promo_discount_rp"],
+        discount_code_id=dc.id if dc else None,
+        discount_code=quote["discount_code"],
+        voucher_discount_rp=quote["voucher_discount_rp"],
+        amount_rp=quote["final_amount_rp"],
         payment_method_id=pm.id if pm else None,
         payment_method_type=pm.type if pm else None,
         payment_method_label=pm.label if pm else None,
@@ -704,6 +805,7 @@ def confirm_upgrade_payment(
     if entry.status == "awaiting_payment" and entry.expires_at and entry.expires_at <= now_utc:
         entry.status = "expired"
         entry.resolved_at = now_utc
+        release_discount_usage(session, entry)
         session.commit()
         raise _api_error(
             status.HTTP_409_CONFLICT,
@@ -760,6 +862,7 @@ def cancel_upgrade_request(
 
     entry.status = "cancelled"
     entry.resolved_at = int(datetime.now(timezone.utc).timestamp())
+    release_discount_usage(session, entry)
     session.commit()
     session.refresh(entry)
     user = session.get(User, int(uid))

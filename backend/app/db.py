@@ -72,9 +72,17 @@ def ensure_multi_tenant_columns(target_engine: Engine) -> None:
         if "plan_tier" not in user_cols:
             conn.execute(
                 text(
-                    "ALTER TABLE users ADD COLUMN plan_tier VARCHAR(16) NOT NULL DEFAULT 'free'"
+                    "ALTER TABLE users ADD COLUMN plan_tier VARCHAR(32) NOT NULL DEFAULT 'free'"
                 )
             )
+        elif conn.dialect.name == "mysql":
+            conn.execute(
+                text(
+                    "ALTER TABLE users MODIFY COLUMN plan_tier VARCHAR(32) NOT NULL DEFAULT 'free'"
+                )
+            )
+        if "plan_id" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN plan_id INTEGER NULL"))
         if "plan_expires_at" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN plan_expires_at INTEGER NULL"))
         if "plan_updated_at" not in user_cols:
@@ -107,6 +115,13 @@ def ensure_multi_tenant_columns(target_engine: Engine) -> None:
         upg_cols = {c["name"] for c in inspect(conn).get_columns("upgrade_requests")}
         upg_additions = [
             ("order_code", "VARCHAR(32) NULL"),
+            ("plan_id", "INTEGER NULL"),
+            ("plan_name_snapshot", "VARCHAR(64) NULL"),
+            ("base_amount_rp", "INTEGER NOT NULL DEFAULT 0"),
+            ("promo_discount_rp", "INTEGER NOT NULL DEFAULT 0"),
+            ("discount_code_id", "INTEGER NULL"),
+            ("discount_code", "VARCHAR(32) NULL"),
+            ("voucher_discount_rp", "INTEGER NOT NULL DEFAULT 0"),
             ("payment_method_id", "INTEGER NULL"),
             ("payment_method_type", "VARCHAR(16) NULL"),
             ("payment_method_label", "VARCHAR(64) NULL"),
@@ -117,6 +132,13 @@ def ensure_multi_tenant_columns(target_engine: Engine) -> None:
             ("expires_at", "INTEGER NULL"),
             ("submitted_at", "INTEGER NULL"),
         ]
+        if conn.dialect.name == "mysql" and "requested_tier" in upg_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE upgrade_requests MODIFY COLUMN "
+                    "requested_tier VARCHAR(32) NOT NULL DEFAULT 'pro'"
+                )
+            )
         for col_name, col_def in upg_additions:
             if col_name not in upg_cols:
                 conn.execute(text(f"ALTER TABLE upgrade_requests ADD COLUMN {col_name} {col_def}"))

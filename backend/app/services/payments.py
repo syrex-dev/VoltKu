@@ -158,6 +158,10 @@ def expire_stale_awaiting_requests(
     for item in stale:
         item.status = "expired"
         item.resolved_at = now_ts
+        if getattr(item, "discount_code_id", None):
+            from app.services.plans import release_discount_usage
+
+            release_discount_usage(session, item)
     if stale:
         session.flush()
     return len(stale)

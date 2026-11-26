@@ -35,7 +35,10 @@ def get_clean_mysql_engine() -> Engine:
     global _SCHEMA_CREATED
     close_active_test_sessions()
     if not _SCHEMA_CREATED:
+        from app.db import ensure_multi_tenant_columns
+
         Base.metadata.create_all(bind=test_engine)
+        ensure_multi_tenant_columns(test_engine)
         _SCHEMA_CREATED = True
 
     with test_engine.begin() as conn:

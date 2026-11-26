@@ -30,7 +30,10 @@ class User(Base):
     avatar_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     terms_version_accepted: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     terms_accepted_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    plan_tier: Mapped[str] = mapped_column(String(16), default="free", nullable=False)
+    plan_tier: Mapped[str] = mapped_column(String(32), default="free", nullable=False)
+    plan_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("subscription_plans.id", ondelete="SET NULL"), nullable=True
+    )
     plan_expires_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     plan_updated_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -38,6 +41,66 @@ class User(Base):
         Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
     )
     last_login_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class SubscriptionPlan(Base):
+    __tablename__ = "subscription_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    slug: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    badge_text: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    price_monthly_rp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    price_yearly_rp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Promo diskon langsung per paket: percent | fixed_rp | None
+    promo_discount_type: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    promo_discount_value: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    promo_label: Mapped[Optional[str]] = mapped_column(String(48), nullable=True)
+    promo_starts_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    promo_expires_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_devices: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    history_days: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    forecast_enabled: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    export_enabled: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    anomaly_advanced: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    features_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_default_free: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_recommended: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
+
+
+class DiscountCode(Base):
+    __tablename__ = "discount_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    label: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    # percent | fixed_rp
+    discount_type: Mapped[str] = mapped_column(String(16), default="percent", nullable=False)
+    discount_value: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_discount_rp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    min_purchase_rp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    target_plan_slug: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    target_cycle: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    max_uses: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    used_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    starts_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    expires_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
 
 
 class PaymentMethod(Base):
@@ -66,8 +129,19 @@ class UpgradeRequest(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     order_code: Mapped[Optional[str]] = mapped_column(String(32), unique=True, nullable=True)
-    requested_tier: Mapped[str] = mapped_column(String(16), default="pro", nullable=False)
+    requested_tier: Mapped[str] = mapped_column(String(32), default="pro", nullable=False)
+    plan_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("subscription_plans.id", ondelete="SET NULL"), nullable=True
+    )
+    plan_name_snapshot: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     billing_cycle: Mapped[str] = mapped_column(String(16), default="monthly", nullable=False)
+    base_amount_rp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    promo_discount_rp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    discount_code_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("discount_codes.id", ondelete="SET NULL"), nullable=True
+    )
+    discount_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    voucher_discount_rp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     amount_rp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     payment_method_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     payment_method_type: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)

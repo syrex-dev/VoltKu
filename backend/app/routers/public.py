@@ -18,8 +18,9 @@ from app.routers.devices import (
     list_devices_data,
 )
 from app.routers.settings import format_settings_response, get_all_settings
-from app.services.app_config import get_public_app_config, record_terms_consent
+from app.services.app_config import get_app_config_map, get_public_app_config, record_terms_consent
 from app.services.payments import resolve_private_image_path, serialize_payment_method
+from app.services.plans import build_public_plans_payload
 from app.services.reports import calculate_device_forecast, calculate_device_summary
 
 PUBLIC_ACCESS_KEY = "public_dashboard_enabled"
@@ -75,6 +76,12 @@ def get_public_access_status(session: Session = Depends(get_db)):
 def get_public_app_configuration(session: Session = Depends(get_db)):
     """Konfigurasi aplikasi publik (brand, panduan, auth/Google, teks legal, kontak dukungan)."""
     return get_public_app_config(session)
+
+
+@router.get("/plans", response_model=dict[str, Any])
+def get_public_subscription_plans(session: Session = Depends(get_db)):
+    """Daftar seluruh paket langganan aktif beserta harga promo & fitur."""
+    return build_public_plans_payload(get_app_config_map(session), session=session)
 
 
 @router.get("/payment-methods", response_model=list[dict[str, Any]])
