@@ -20,9 +20,11 @@ import {
   RefreshCw,
   UserPlus,
   Crown,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
-import { formatNum, formatTimeWIB } from '../utils/formatters'
+import { formatNum, formatRp, formatTimeWIB } from '../utils/formatters'
 import { BrandLogo } from './BrandLogo'
 import { InAppSelect } from './InAppSelect'
 import { AdminAppSettingsTab } from './AdminAppSettingsTab'
@@ -74,6 +76,7 @@ export function AdminPanel({
   const [uPlanTier, setUPlanTier] = useState('free')
   const [uPlanDuration, setUPlanDuration] = useState('keep')
   const [savingUser, setSavingUser] = useState(false)
+  const [resolvingUpgradeId, setResolvingUpgradeId] = useState(null)
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState(null)
 
   const [togglingAccess, setTogglingAccess] = useState(false)
@@ -256,6 +259,33 @@ export function AdminPanel({
       setNotice({ type: 'error', text: err.message || 'Gagal menyimpan akun pengguna.' })
     } finally {
       setSavingUser(false)
+    }
+  }
+
+  const handleResolveUpgrade = async (reqId, action, durationDays = null) => {
+    setResolvingUpgradeId(reqId)
+    setNotice(null)
+    try {
+      const body = { action }
+      if (durationDays !== null) body.duration_days = durationDays
+      await apiRequest(
+        `/api/admin/upgrade-requests/${reqId}`,
+        { method: 'PATCH', body },
+        token,
+        onLogout
+      )
+      setNotice({
+        type: 'success',
+        text:
+          action === 'approve'
+            ? 'Permintaan upgrade disetujui dan paket VoltKu Pro langsung aktif.'
+            : 'Permintaan upgrade ditolak.',
+      })
+      await loadAdminData()
+    } catch (err) {
+      setNotice({ type: 'error', text: err.message || 'Gagal memproses permintaan upgrade.' })
+    } finally {
+      setResolvingUpgradeId(null)
     }
   }
 
@@ -675,32 +705,32 @@ export function AdminPanel({
                               </div>
                             </div>
                             <div className="admin-m-actions admin-m-actions-2col">
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-compact"
-                              onClick={() => openEditUser(u)}
-                            >
-                              <Pencil size={14} />
-                              <span>Edit</span>
-                            </button>
-                            {confirmDeleteUserId === u.id ? (
                               <button
                                 type="button"
-                                className="btn btn-danger-solid btn-compact"
-                                onClick={() => handleDeleteUser(u.id)}
+                                className="btn btn-secondary btn-compact"
+                                onClick={() => openEditUser(u)}
                               >
-                                <span>Yakin Hapus</span>
+                                <Pencil size={14} />
+                                <span>Edit</span>
                               </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn btn-danger-ghost btn-compact"
-                                onClick={() => setConfirmDeleteUserId(u.id)}
-                              >
-                                <Trash2 size={14} />
-                                <span>Hapus</span>
-                              </button>
-                            )}
+                              {confirmDeleteUserId === u.id ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-danger-solid btn-compact"
+                                  onClick={() => handleDeleteUser(u.id)}
+                                >
+                                  <span>Yakin Hapus</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-danger-ghost btn-compact"
+                                  onClick={() => setConfirmDeleteUserId(u.id)}
+                                >
+                                  <Trash2 size={14} />
+                                  <span>Hapus</span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         )

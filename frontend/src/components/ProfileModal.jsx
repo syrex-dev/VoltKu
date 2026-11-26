@@ -161,7 +161,9 @@ export function ProfileModal({
                   </span>
                   <span>
                     {plan.pending_upgrade && !isPro
-                      ? 'Menunggu aktivasi admin'
+                      ? plan.pending_upgrade.status === 'awaiting_payment'
+                        ? 'Tagihan menunggu bayar'
+                        : 'Menunggu verifikasi admin'
                       : `Riwayat ${plan.limits?.history_days ?? 3} hari`}
                   </span>
                 </div>

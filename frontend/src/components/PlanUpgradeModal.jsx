@@ -16,6 +16,8 @@ import {
   ZoomIn,
   Download,
   RotateCcw,
+  Sparkles,
+  ShieldCheck,
 } from 'lucide-react'
 import { apiRequest, buildApiUrl } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
@@ -82,6 +84,21 @@ export function PlanUpgradeModal({
   const pending = localPending !== undefined ? localPending : userPlan.pending_upgrade || null
   const latestUpgrade = userPlan.latest_upgrade || null
   const activeStepStatus = pending?.status || ''
+
+  // Hitung penghematan paket tahunan secara deterministik dari harga bulanan x 12
+  const yearlyFullPrice = monthlyPrice * 12
+  const yearlySavingsRp = yearlyFullPrice > yearlyPrice ? yearlyFullPrice - yearlyPrice : 0
+  const yearlySavingsPct =
+    yearlySavingsRp > 0 && yearlyFullPrice > 0
+      ? Math.round((yearlySavingsRp / yearlyFullPrice) * 100)
+      : 0
+
+  const checkoutStepNum = useMemo(() => {
+    if (isPro) return 4
+    if (activeStepStatus === 'verifying') return 3
+    if (activeStepStatus === 'awaiting_payment' || activeStepStatus === 'pending') return 2
+    return 1
+  }, [isPro, activeStepStatus])
 
   // Reset saat modal dibuka/ditutup dan muat daftar metode pembayaran aktif
   useEffect(() => {
@@ -307,19 +324,21 @@ export function PlanUpgradeModal({
       >
         <div className="pwa-guide-head">
           <div className="plan-modal-head-left">
-            <span className="plan-crown-badge">
+            <span className={`plan-crown-badge ${isPro ? 'is-pro' : ''}`}>
               <Crown size={18} />
             </span>
             <div>
               <h3 className="pwa-guide-title">
-                {pending ? `Pembayaran ${proName}` : `Paket & Fitur ${appConfig?.app_name || 'VoltKu'}`}
+                {pending
+                  ? `Pembayaran ${proName}`
+                  : `Paket & Fitur ${appConfig?.app_name || 'VoltKu'}`}
               </h3>
               <p className="pwa-guide-sub">
                 {isPro
-                  ? `Akun Anda aktif di paket ${proName}`
+                  ? `Langganan ${proName} Anda sedang aktif`
                   : pending
                     ? `Tagihan ${pending.order_code || `#${pending.id}`}`
-                    : `Tingkatkan ke ${proName} untuk buka semua fitur`}
+                    : `Tingkatkan ke ${proName} untuk kendali energi lengkap`}
               </p>
             </div>
           </div>
@@ -327,6 +346,30 @@ export function PlanUpgradeModal({
             <X size={18} />
           </button>
         </div>
+
+        {/* Stepper alur upgrade manual untuk pengguna non-Pro */}
+        {!isPro && (
+          <div className="plan-steps-bar" aria-label="Tahapan Pembayaran">
+            <div className={`plan-step-pill ${checkoutStepNum === 1 ? 'active' : 'done'}`}>
+              <span className="plan-step-num">{checkoutStepNum > 1 ? '✓' : '1'}</span>
+              <span>Pilih Paket</span>
+            </div>
+            <span className="plan-step-sep" aria-hidden="true" />
+            <div
+              className={`plan-step-pill ${
+                checkoutStepNum === 2 ? 'active' : checkoutStepNum > 2 ? 'done' : ''
+              }`}
+            >
+              <span className="plan-step-num">{checkoutStepNum > 2 ? '✓' : '2'}</span>
+              <span>Bayar &amp; Bukti</span>
+            </div>
+            <span className="plan-step-sep" aria-hidden="true" />
+            <div className={`plan-step-pill ${checkoutStepNum === 3 ? 'active' : ''}`}>
+              <span className="plan-step-num">3</span>
+              <span>Verifikasi</span>
+            </div>
+          </div>
+        )}
 
         {lockedReason && (
           <div className="plan-locked-banner">
@@ -345,27 +388,44 @@ export function PlanUpgradeModal({
         {isPro && (
           <div className="plan-pro-active-card">
             <div className="plan-pro-active-head">
-              <CheckCircle2 size={20} className="plan-check-icon" />
-              <div>
-                <strong>{proName} Aktif</strong>
+              <div className="plan-pro-active-icon">
+                <ShieldCheck size={22} />
+              </div>
+              <div className="plan-pro-active-copy">
+                <div className="plan-pro-active-title">
+                  <strong>{proName} Aktif</strong>
+                  <span className="plan-tier-badge pro">Prioritas</span>
+                </div>
                 <div className="plan-sub-note">
                   {userPlan.expires_at
                     ? `Berlaku hingga ${formatDateTimeWIB(userPlan.expires_at)}`
-                    : 'Aktif Permanen'}
+                    : 'Aktif Permanen (Tanpa Batas Waktu)'}
                 </div>
               </div>
             </div>
+
+            <div className="plan-pro-stats-row">
+              <div className="plan-pro-stat-box">
+                <span>Panel Terpakai</span>
+                <strong className="num-tabular">
+                  {userPlan.usage?.device_count || 0} /{' '}
+                  {proMaxDevices < 0 ? '∞' : proMaxDevices}
+                </strong>
+              </div>
+              <div className="plan-pro-stat-box">
+                <span>Retensi Riwayat</span>
+                <strong className="num-tabular">{proHistoryDays} Hari</strong>
+              </div>
+            </div>
+
             <ul className="plan-feature-list" style={{ marginTop: 12 }}>
               <li>
                 <Check size={14} className="plan-check-icon" />
-                <span>
-                  Terpakai {userPlan.usage?.device_count || 0} /{' '}
-                  {proMaxDevices < 0 ? 'Tanpa Batas' : `${proMaxDevices} panel`}
-                </span>
+                <span>Proyeksi tagihan PLN otomatis akhir bulan</span>
               </li>
               <li>
                 <Check size={14} className="plan-check-icon" />
-                <span>Riwayat grafik hingga {proHistoryDays} hari + Proyeksi & Ekspor CSV</span>
+                <span>Ekspor laporan konsumsi CSV &amp; analisis anomali lengkap</span>
               </li>
             </ul>
           </div>
@@ -381,7 +441,9 @@ export function PlanUpgradeModal({
                     {pending.order_code || `INV-${pending.id}`}
                   </span>
                   <div className="pay-order-cycle">
-                    {pending.billing_cycle === 'yearly' ? `${proName} · Tahunan` : `${proName} · Bulanan`}
+                    {pending.billing_cycle === 'yearly'
+                      ? `${proName} · Tahunan`
+                      : `${proName} · Bulanan`}
                   </div>
                 </div>
                 <span className={`pay-status-badge ${isExpiredInvoice ? 'expired' : 'awaiting'}`}>
@@ -453,9 +515,13 @@ export function PlanUpgradeModal({
                   <div className="pay-account-row">
                     <div>
                       <div className="pay-account-label">Nomor Rekening / Tujuan</div>
-                      <div className="pay-account-num num-tabular">{pending.payment_account_number}</div>
+                      <div className="pay-account-num num-tabular">
+                        {pending.payment_account_number}
+                      </div>
                       {pending.payment_account_holder && (
-                        <div className="pay-account-holder">a.n. {pending.payment_account_holder}</div>
+                        <div className="pay-account-holder">
+                          a.n. {pending.payment_account_holder}
+                        </div>
                       )}
                     </div>
                     <button
@@ -527,12 +593,14 @@ export function PlanUpgradeModal({
                 <div className="plan-cta-row">
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-primary plan-cta-primary"
                     disabled={submitting || !proofBase64}
                     onClick={handleConfirmPayment}
                   >
                     <CheckCircle2 size={15} />
-                    <span>{submitting ? 'Mengirim Bukti...' : 'Saya Sudah Bayar & Kirim Bukti'}</span>
+                    <span>
+                      {submitting ? 'Mengirim Bukti...' : 'Saya Sudah Bayar & Kirim Bukti'}
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -549,7 +617,7 @@ export function PlanUpgradeModal({
               <div className="plan-cta-row">
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-primary plan-cta-primary"
                   disabled={cancelling}
                   onClick={handleCancelOrder}
                 >
@@ -617,8 +685,7 @@ export function PlanUpgradeModal({
                   href={waHref}
                   target="_blank"
                   rel="noreferrer"
-                  className="btn btn-ghost"
-                  style={{ width: '100%' }}
+                  className="btn btn-ghost plan-cta-primary"
                 >
                   <MessageCircle size={15} />
                   <span>Hubungi Admin via WhatsApp</span>
@@ -646,17 +713,49 @@ export function PlanUpgradeModal({
               </div>
             )}
 
+            {/* Toggle Periode Langganan di atas agar harga kartu langsung mencerminkan pilihan */}
+            <div className="plan-cycle-toggle">
+              <button
+                type="button"
+                className={`plan-cycle-btn ${billingCycle === 'monthly' ? 'active' : ''}`}
+                onClick={() => setBillingCycle('monthly')}
+              >
+                <span>Bulanan</span>
+                <strong className="num-tabular">{formatRp(monthlyPrice)}</strong>
+              </button>
+              <button
+                type="button"
+                className={`plan-cycle-btn ${billingCycle === 'yearly' ? 'active' : ''}`}
+                onClick={() => setBillingCycle('yearly')}
+              >
+                <span className="plan-cycle-title-row">
+                  <span>Tahunan</span>
+                  {yearlySavingsPct > 0 && (
+                    <span className="plan-save-chip">Hemat {yearlySavingsPct}%</span>
+                  )}
+                </span>
+                <strong className="num-tabular">{formatRp(yearlyPrice)}</strong>
+              </button>
+            </div>
+
             <div className="plan-compare-grid">
               <div className="plan-tier-card is-current">
                 <div className="plan-tier-head">
                   <span className="plan-tier-name">{freeName}</span>
                   <span className="plan-tier-badge current">Aktif</span>
                 </div>
-                <div className="plan-tier-price num-tabular">Rp 0</div>
+                <div className="plan-tier-price num-tabular">
+                  Rp 0<span className="plan-tier-unit">/selamanya</span>
+                </div>
+                <div className="plan-alt-price">Cocok untuk coba 1 panel rumah</div>
                 <ul className="plan-feature-list">
                   <li>
                     <Check size={14} className="plan-check-icon" />
                     <span>Maks. {freeMaxDevices} panel aktif</span>
+                  </li>
+                  <li>
+                    <Check size={14} className="plan-check-icon" />
+                    <span>Pantau Live real-time 10 detik</span>
                   </li>
                   <li>
                     <Check size={14} className="plan-check-icon" />
@@ -672,13 +771,26 @@ export function PlanUpgradeModal({
                       Proyeksi tagihan akhir bulan
                     </span>
                   </li>
+                  <li>
+                    {freeCfg.export_enabled ? (
+                      <Check size={14} className="plan-check-icon" />
+                    ) : (
+                      <Lock size={14} className="plan-lock-icon" />
+                    )}
+                    <span className={!freeCfg.export_enabled ? 'plan-feat-locked' : ''}>
+                      Ekspor laporan CSV
+                    </span>
+                  </li>
                 </ul>
               </div>
 
               <div className="plan-tier-card is-pro">
                 <div className="plan-tier-head">
                   <span className="plan-tier-name">
-                    <Crown size={14} /> {proName}
+                    <Crown size={14} className="plan-pro-crown" /> {proName}
+                  </span>
+                  <span className="plan-tier-badge pro">
+                    <Sparkles size={10} /> Rekomendasi
                   </span>
                 </div>
                 <div className="plan-tier-price num-tabular">
@@ -688,15 +800,17 @@ export function PlanUpgradeModal({
                   </span>
                 </div>
                 <div className="plan-alt-price num-tabular">
-                  {billingCycle === 'yearly'
-                    ? `atau ${formatRp(monthlyPrice)}/bulan`
+                  {billingCycle === 'yearly' && yearlySavingsRp > 0
+                    ? `Hemat ${formatRp(yearlySavingsRp)}/thn (${formatRp(Math.round(yearlyPrice / 12))}/bln)`
                     : `atau ${formatRp(yearlyPrice)}/tahun`}
                 </div>
                 <ul className="plan-feature-list">
                   <li>
                     <Check size={14} className="plan-check-icon" />
                     <span>
-                      {proMaxDevices < 0 ? 'Panel aktif tanpa batas' : `Hingga ${proMaxDevices} panel`}
+                      {proMaxDevices < 0
+                        ? 'Panel aktif tanpa batas'
+                        : `Hingga ${proMaxDevices} panel aktif`}
                     </span>
                   </li>
                   <li>
@@ -705,7 +819,11 @@ export function PlanUpgradeModal({
                   </li>
                   <li>
                     <Check size={14} className="plan-check-icon" />
-                    <span>Proyeksi tagihan & Ekspor CSV</span>
+                    <span>Proyeksi tagihan akhir bulan otomatis</span>
+                  </li>
+                  <li>
+                    <Check size={14} className="plan-check-icon" />
+                    <span>Ekspor laporan konsumsi CSV</span>
                   </li>
                   <li>
                     <Check size={14} className="plan-check-icon" />
@@ -715,32 +833,18 @@ export function PlanUpgradeModal({
               </div>
             </div>
 
-            <div className="plan-cycle-toggle">
-              <button
-                type="button"
-                className={`plan-cycle-btn ${billingCycle === 'monthly' ? 'active' : ''}`}
-                onClick={() => setBillingCycle('monthly')}
-              >
-                Bulanan · {formatRp(monthlyPrice)}
-              </button>
-              <button
-                type="button"
-                className={`plan-cycle-btn ${billingCycle === 'yearly' ? 'active' : ''}`}
-                onClick={() => setBillingCycle('yearly')}
-              >
-                Tahunan · {formatRp(yearlyPrice)}
-              </button>
-            </div>
-
             {/* Pilihan Metode Pembayaran Manual */}
             <div className="pay-methods-section">
-              <div className="pay-methods-title">Pilih Metode Pembayaran Manual</div>
+              <div className="pay-methods-head">
+                <span className="pay-methods-title">Pilih Metode Pembayaran Manual</span>
+                <span className="pay-methods-sub">Verifikasi cepat oleh Admin VoltKu</span>
+              </div>
               {methodsLoading ? (
                 <div className="pay-methods-loading">Memuat metode pembayaran...</div>
               ) : paymentMethods.length === 0 ? (
                 <div className="pay-methods-empty">
-                  Admin belum menambahkan rekening/QRIS otomatis. Klik tombol di bawah untuk
-                  mengajukan upgrade manual atau hubungi Admin.
+                  {instructions ||
+                    'Pembayaran dilakukan via konfirmasi manual ke pengelola (QRIS / Transfer / WhatsApp). Klik tombol di bawah untuk membuat pengajuan.'}
                 </div>
               ) : (
                 <div className="pay-method-grid">
@@ -757,13 +861,20 @@ export function PlanUpgradeModal({
                       >
                         <div className="pay-method-card-top">
                           <span className="pay-method-icon-box">
-                            <Icon size={16} />
+                            <Icon size={15} />
                           </span>
                           <span className="pay-method-type-text">{meta.label}</span>
+                          {isSelected && (
+                            <span className="pay-method-check">
+                              <Check size={12} />
+                            </span>
+                          )}
                         </div>
                         <div className="pay-method-label">{pm.label}</div>
-                        {pm.account_holder && (
-                          <div className="pay-method-sub">a.n. {pm.account_holder}</div>
+                        {(pm.account_number || pm.account_holder) && (
+                          <div className="pay-method-sub">
+                            {pm.account_number ? pm.account_number : `a.n. ${pm.account_holder}`}
+                          </div>
                         )}
                       </button>
                     )
@@ -772,13 +883,13 @@ export function PlanUpgradeModal({
               )}
             </div>
 
-            <div className="form-field-group" style={{ marginTop: 10 }}>
+            <div className="form-field-group" style={{ marginTop: 10, marginBottom: 12 }}>
               <input
                 id="upgrade-user-note"
                 type="text"
                 className="modern-input"
                 maxLength={140}
-                placeholder="Catatan untuk admin (opsional)"
+                placeholder="Catatan konfirmasi (opsional, mis. nama pengirim transfer/QRIS)"
                 value={userNote}
                 onChange={(e) => setUserNote(e.target.value)}
               />
@@ -787,7 +898,7 @@ export function PlanUpgradeModal({
             <div className="plan-cta-row">
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-primary plan-cta-primary"
                 disabled={submitting}
                 onClick={handleCreateOrder}
               >
@@ -796,8 +907,8 @@ export function PlanUpgradeModal({
                   {submitting
                     ? 'Membuat Tagihan...'
                     : selectedMethod
-                      ? `Bayar via ${selectedMethod.label}`
-                      : `Ajukan Upgrade ${proName}`}
+                      ? `Bayar ${formatRp(selectedPrice)} via ${selectedMethod.label}`
+                      : `Ajukan Upgrade (${formatRp(selectedPrice)})`}
                 </span>
               </button>
               {waHref && (
