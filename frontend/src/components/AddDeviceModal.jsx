@@ -3,7 +3,6 @@ import {
   X,
   Wifi,
   Check,
-  AlertCircle,
   Radio,
   CheckCircle2,
   QrCode,
@@ -145,66 +144,72 @@ export function AddDeviceModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-dialog-modern pairing-wizard-dialog" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="modal-header-modern wizard-modal-header">
-          <div className="modal-title-group">
-            <div className="wizard-header-icon">
-              <Radio size={18} />
-            </div>
-            <div>
-              <h3 className="modal-title-text">Tambah Panel Listrik</h3>
-              <div className="wizard-subtitle">{STEP_SUBTITLES[step]}</div>
-            </div>
-          </div>
-          <button type="button" className="btn-icon-close" onClick={onClose} aria-label="Tutup">
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* 4-Step Progress Stepper */}
-        {step >= 1 && step < 5 && (
-          <div className="wizard-steps-bar" role="navigation" aria-label="Tahap tambah panel">
-            {WIZARD_STEPS.map((item) => {
-              const isDone = step > item.num
-              const isCurrent = step === item.num
-              const stateClass = isDone ? 'done' : isCurrent ? 'current' : 'upcoming'
-              return (
-                <button
-                  key={item.num}
-                  type="button"
-                  disabled={!isDone}
-                  className={`wizard-pill ${stateClass}`}
-                  onClick={() => {
-                    if (isDone) {
-                      setErrorMsg(null)
-                      setStep(item.num)
-                    }
-                  }}
-                >
-                  <span className="wizard-pill-dot" aria-hidden="true">
-                    {isDone ? <Check size={11} strokeWidth={3} /> : item.num}
-                  </span>
-                  <span className="wizard-pill-label">{item.label}</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {errorMsg && <div className="feedback-msg error">{errorMsg}</div>}
-
-        {/* STEP 1: Persiapan & Pilih Kondisi Alat */}
-        {step === 1 && (
-          <div className="wizard-body">
-            <div className="wizard-info-callout">
-              <AlertCircle size={18} className="wizard-callout-icon" />
+        <div className="wizard-top-sticky">
+          {/* Header */}
+          <div className="modal-header-modern wizard-modal-header">
+            <div className="modal-title-group">
+              <div className="wizard-header-icon">
+                <Radio size={18} />
+              </div>
               <div>
-                <strong>Siapkan unit VoltKu:</strong> colokkan alat ke listrik dan pastikan lampu biru berkedip cepat.{' '}
-                <span className="wizard-muted-inline">
-                  Jika belum berkedip, tekan &amp; tahan tombol Pairing selama 3 detik.
-                </span>
+                <h3 className="modal-title-text">Tambah Panel Listrik</h3>
+                <div className="wizard-subtitle">{STEP_SUBTITLES[step]}</div>
               </div>
             </div>
+            <button type="button" className="btn-icon-close" onClick={onClose} aria-label="Tutup">
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* 4-Step Progress Stepper */}
+          {step >= 1 && step < 5 && (
+            <div className="wizard-steps-bar" role="navigation" aria-label="Tahap tambah panel">
+              {WIZARD_STEPS.map((item) => {
+                const isDone = step > item.num
+                const isCurrent = step === item.num
+                const stateClass = isDone ? 'done' : isCurrent ? 'current' : 'upcoming'
+                return (
+                  <button
+                    key={item.num}
+                    type="button"
+                    disabled={!isDone}
+                    className={`wizard-pill ${stateClass}`}
+                    onClick={() => {
+                      if (isDone) {
+                        setErrorMsg(null)
+                        setStep(item.num)
+                      }
+                    }}
+                  >
+                    <span className="wizard-pill-dot" aria-hidden="true">
+                      {isDone ? <Check size={11} strokeWidth={3} /> : item.num}
+                    </span>
+                    <span className="wizard-pill-label">{item.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="wizard-scroll-region">
+          {errorMsg && <div className="feedback-msg error">{errorMsg}</div>}
+
+          {/* STEP 1: Persiapan & Pilih Kondisi Alat */}
+          {step === 1 && (
+            <div className="wizard-body">
+              <div className="wizard-info-callout">
+                <span className="pairing-led-demo" aria-hidden="true">
+                  <span className="pairing-led-dot" />
+                </span>
+                <div>
+                  <strong>Siapkan unit VoltKu:</strong> nyalakan alat dan pastikan lampu indikator biru{' '}
+                  <strong>berkedip cepat</strong>.{' '}
+                  <span className="wizard-muted-inline">
+                    Jika belum, tahan tombol Pairing 5 detik sampai lampu berkedip.
+                  </span>
+                </div>
+              </div>
 
             <div className="wizard-section-ask">Apakah alat sudah terhubung ke Wi-Fi rumah?</div>
 
@@ -594,6 +599,7 @@ export function AddDeviceModal({
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   )

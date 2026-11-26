@@ -1,5 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Plus, ChevronDown, Check, LayoutGrid } from 'lucide-react'
+import {
+  Plus,
+  Search,
+  MoreHorizontal,
+  Eye,
+  EyeOff,
+  LayoutGrid,
+  List,
+  X,
+  Check,
+} from 'lucide-react'
 
 export function RoomFilterBar({
   rooms = ['Semua'],
@@ -7,19 +17,28 @@ export function RoomFilterBar({
   onSelectRoom,
   onOpenAddDevice,
   devices = [],
+  viewMode = 'grid',
+  onToggleViewMode,
+  hideOffline = false,
+  onToggleHideOffline,
+  searchQuery = '',
+  onSearchChange,
+  searchOpen = false,
+  onToggleSearch,
 }) {
-  const [isOpen, setIsOpen] = useState(false)
-  const wrapRef = useRef(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuWrapRef = useRef(null)
+  const searchInputRef = useRef(null)
 
   useEffect(() => {
-    if (!isOpen) return undefined
+    if (!menuOpen) return undefined
     const handlePointerDown = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
-        setIsOpen(false)
+      if (menuWrapRef.current && !menuWrapRef.current.contains(e.target)) {
+        setMenuOpen(false)
       }
     }
     const handleEscape = (e) => {
-      if (e.key === 'Escape') setIsOpen(false)
+      if (e.key === 'Escape') setMenuOpen(false)
     }
     document.addEventListener('mousedown', handlePointerDown)
     document.addEventListener('keydown', handleEscape)
@@ -27,7 +46,13 @@ export function RoomFilterBar({
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [isOpen])
+  }, [menuOpen])
+
+  useEffect(() => {
+    if (searchOpen && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [searchOpen])
 
   const getRoomCount = (room) => {
     if (room === 'Semua') return devices.length
@@ -37,77 +62,165 @@ export function RoomFilterBar({
     return devices.filter((d) => (d.location || '').trim() === room).length
   }
 
-  const activeLabel = activeRoom === 'Semua' ? 'Semua Ruangan' : activeRoom
-
   return (
-    <div className="clean-room-bar-row">
-      <div className="room-dropdown-wrap" ref={wrapRef}>
-        <button
-          type="button"
-          className={`room-dropdown-trigger ${isOpen ? 'open' : ''}`}
-          onClick={() => setIsOpen((prev) => !prev)}
-          aria-haspopup="listbox"
-          aria-expanded={isOpen}
-          aria-label="Pilih Ruangan"
-        >
-          <LayoutGrid size={15} className="room-dropdown-lead-ico" />
-          <span className="room-dropdown-label">{activeLabel}</span>
-          <span className="room-dropdown-count num-tabular">{getRoomCount(activeRoom)}</span>
-          <span className="header-panel-caret" aria-hidden="true">
-            <ChevronDown size={14} />
-          </span>
-        </button>
+    <div className="ewl-room-toolbar-wrap">
+      <div className="ewl-room-toolbar">
+        {/* Scrollable Room Tabs (eWeLink style with active blue underline) */}
+        <div className="clean-room-tabs-scroll" role="tablist" aria-label="Filter Ruangan">
+          {rooms.map((room) => {
+            const isSelected = activeRoom === room
+            const count = getRoomCount(room)
+            return (
+              <button
+                key={room}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                className={`clean-room-tab ${isSelected ? 'active' : ''}`}
+                onClick={() => onSelectRoom(room)}
+              >
+                <span>{room}</span>
+                {count > 0 && <span className="room-tab-count num-tabular">{count}</span>}
+                {isSelected && <span className="room-tab-underline" aria-hidden="true" />}
+              </button>
+            )
+          })}
+        </div>
 
-        {isOpen && (
-          <div className="room-dropdown-popover" role="listbox" aria-label="Daftar Ruangan">
-            <div className="header-panel-popover-head">
-              <span>Ruangan</span>
-              <span className="header-panel-count">{rooms.length}</span>
-            </div>
-            <div className="header-panel-list">
-              {rooms.map((room) => {
-                const isSelected = activeRoom === room
-                const label = room === 'Semua' ? 'Semua Ruangan' : room
-                const count = getRoomCount(room)
-                return (
+        {/* Right Compact Action Icons + Add Button */}
+        <div className="ewl-toolbar-actions">
+          {onToggleSearch && (
+            <button
+              type="button"
+              className={`ewl-tool-icon-btn ${searchOpen || searchQuery ? 'active' : ''}`}
+              onClick={() => onToggleSearch()}
+              aria-label="Cari Perangkat"
+              title="Cari Perangkat"
+            >
+              <Search size={17} />
+            </button>
+          )}
+
+          <div className="ewl-more-wrap" ref={menuWrapRef}>
+            <button
+              type="button"
+              className={`ewl-tool-icon-btn ${menuOpen || hideOffline ? 'active' : ''}`}
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="Opsi Tampilan"
+              title="Opsi Tampilan & Filter"
+            >
+              <MoreHorizontal size={18} />
+            </button>
+
+            {menuOpen && (
+              <div className="ewl-more-popover" role="menu" aria-label="Menu Tampilan">
+                {onToggleSearch && (
                   <button
-                    key={room}
                     type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    className={`header-panel-item ${isSelected ? 'selected' : ''}`}
+                    role="menuitem"
+                    className="ewl-more-item"
                     onClick={() => {
-                      onSelectRoom(room)
-                      setIsOpen(false)
+                      setMenuOpen(false)
+                      if (!searchOpen) onToggleSearch()
                     }}
                   >
-                    <span className="header-panel-item-copy">
-                      <span className="header-panel-item-title">{label}</span>
-                    </span>
-                    <span className="header-panel-item-right">
-                      <span className="header-panel-item-watt num-tabular">{count} panel</span>
-                      {isSelected && <Check size={15} className="header-panel-check" />}
-                    </span>
+                    <Search size={16} />
+                    <span>Cari Perangkat</span>
                   </button>
-                )
-              })}
-            </div>
+                )}
+
+                {onToggleHideOffline && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={`ewl-more-item ${hideOffline ? 'is-checked' : ''}`}
+                    onClick={() => {
+                      onToggleHideOffline()
+                      setMenuOpen(false)
+                    }}
+                  >
+                    {hideOffline ? <Eye size={16} /> : <EyeOff size={16} />}
+                    <span>{hideOffline ? 'Tampilkan Offline' : 'Sembunyikan Offline'}</span>
+                    {hideOffline && <Check size={14} className="ewl-more-check" />}
+                  </button>
+                )}
+
+                {onToggleViewMode && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="ewl-more-item"
+                    onClick={() => {
+                      onToggleViewMode()
+                      setMenuOpen(false)
+                    }}
+                  >
+                    {viewMode === 'grid' ? <List size={16} /> : <LayoutGrid size={16} />}
+                    <span>{viewMode === 'grid' ? 'Tampilan Daftar' : 'Tampilan Grid'}</span>
+                  </button>
+                )}
+
+                {onOpenAddDevice && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="ewl-more-item is-accent"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onOpenAddDevice()
+                    }}
+                  >
+                    <Plus size={16} />
+                    <span>Tambah Panel Baru</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-        )}
+
+          {onOpenAddDevice && (
+            <button
+              type="button"
+              data-tour-target="add-panel"
+              className="ewl-add-pill"
+              onClick={onOpenAddDevice}
+              aria-label="Tambah Panel"
+              title="Tambah Panel Listrik Baru"
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              <span className="ewl-add-pill-text">Tambah Panel</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {onOpenAddDevice && (
-        <button
-          type="button"
-          data-tour-target="add-panel"
-          className="content-add-btn"
-          onClick={onOpenAddDevice}
-          aria-label="Tambah Panel"
-          title="Tambah Panel Listrik Baru"
-        >
-          <Plus size={15} strokeWidth={2.5} />
-          <span>Tambah Panel</span>
-        </button>
+      {/* Inline Search Strip */}
+      {(searchOpen || searchQuery) && (
+        <div className="ewl-search-bar">
+          <Search size={15} className="ewl-search-ico" />
+          <input
+            ref={searchInputRef}
+            type="search"
+            className="ewl-search-input"
+            placeholder="Cari nama panel, kode alat, atau ruangan..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+            aria-label="Cari panel listrik"
+          />
+          <button
+            type="button"
+            className="ewl-search-clear"
+            aria-label="Tutup pencarian"
+            onClick={() => {
+              onSearchChange?.('')
+              if (searchOpen && onToggleSearch) onToggleSearch(false)
+            }}
+          >
+            <X size={15} />
+          </button>
+        </div>
       )}
     </div>
   )

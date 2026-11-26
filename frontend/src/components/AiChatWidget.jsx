@@ -9,6 +9,16 @@ const QUICK_PROMPTS = [
   'Apakah ada anomali minggu ini?',
 ]
 
+const TOOL_LABELS = {
+  list_devices: 'Daftar Panel',
+  get_summary: 'Ringkasan',
+  get_current: 'Daya Live',
+  get_forecast: 'Proyeksi',
+  get_hourly_profile: 'Profil Jam',
+  compare_periods: 'Perbandingan',
+  get_anomalies: 'Anomali',
+}
+
 export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([])
@@ -148,15 +158,19 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
                 <div className="ai-chat-text">{m.text}</div>
                 {Array.isArray(m.tools) && m.tools.length > 0 && (
                   <div className="ai-chat-tools">
-                    Data: {[...new Set(m.tools)].join(', ')}
+                    {[...new Set(m.tools)].map((t) => TOOL_LABELS[t] || t).join(' · ')}
                   </div>
                 )}
               </div>
             ))}
 
             {sending && (
-              <div className="ai-chat-bubble bot">
-                <div className="ai-chat-text">Menghitung data panel Anda...</div>
+              <div className="ai-chat-bubble bot is-typing" role="status" aria-label="AI sedang mengetik">
+                <div className="ai-typing-wave" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
               </div>
             )}
           </div>

@@ -551,3 +551,23 @@ def test_gemini_client_preserves_thought_signature_and_uses_user_role():
     assert contents[1]["parts"][0]["thoughtSignature"] == "sig-opaque-123"
     assert contents[2]["role"] == "user"
     assert "functionResponse" in contents[2]["parts"][0]
+
+
+def test_gemini_request_body_applies_minimal_thinking_only_on_gemini3():
+    from app.ai.llm_client import GeminiLLMClient
+
+    body_g3 = GeminiLLMClient._build_request_body(
+        "gemini-3-flash-preview",
+        "Sys",
+        [{"role": "user", "parts": [{"text": "Hai"}]}],
+        [],
+    )
+    assert body_g3["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "minimal"}
+
+    body_lite = GeminiLLMClient._build_request_body(
+        "gemini-flash-lite-latest",
+        "Sys",
+        [{"role": "user", "parts": [{"text": "Hai"}]}],
+        [],
+    )
+    assert "thinkingConfig" not in body_lite["generationConfig"]

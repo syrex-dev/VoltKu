@@ -1,7 +1,61 @@
-import React, { useMemo } from 'react'
-import { Zap, Wifi, WifiOff, Plus, LogIn, Activity, ShieldCheck, AlertTriangle } from 'lucide-react'
+import React, { useMemo, useState, useEffect } from 'react'
+import { Zap, Wifi, WifiOff, Plus, LogIn, ShieldCheck, AlertTriangle, RotateCcw } from 'lucide-react'
 import { RoomFilterBar } from './RoomFilterBar'
 import { formatNum } from '../utils/formatters'
+
+function EmptySmartBoxIllustration() {
+  return (
+    <svg viewBox="0 0 180 140" className="ewl-empty-svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="ewlOrbBg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#dbeafe" stopOpacity="0.85" />
+          <stop offset="100%" stopColor="#eff6ff" stopOpacity="0.45" />
+        </linearGradient>
+        <linearGradient id="ewlBoxTop" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#e2e8f0" />
+        </linearGradient>
+        <linearGradient id="ewlBoxFront" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f1f5f9" />
+          <stop offset="100%" stopColor="#cbd5e1" />
+        </linearGradient>
+        <linearGradient id="ewlBoltGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#3b82f6" />
+          <stop offset="100%" stopColor="#1677ff" />
+        </linearGradient>
+      </defs>
+
+      <circle cx="90" cy="74" r="52" fill="url(#ewlOrbBg)" className="ewl-empty-orb" />
+      <circle cx="32" cy="48" r="4.5" fill="#93c5fd" opacity="0.7" />
+      <circle cx="146" cy="58" r="5" fill="#60a5fa" opacity="0.55" />
+      <circle cx="132" cy="116" r="3.5" fill="#93c5fd" opacity="0.65" />
+      <circle cx="48" cy="110" r="3" fill="#cbd5e1" opacity="0.8" />
+
+      {/* Dashed signal trail to floating bolt badge */}
+      <path
+        d="M92 66 C100 44, 118 36, 127 26"
+        fill="none"
+        stroke="#60a5fa"
+        strokeWidth="2"
+        strokeDasharray="3.5 3.5"
+        strokeLinecap="round"
+      />
+      <circle cx="131" cy="22" r="12" fill="url(#ewlBoltGrad)" />
+      <path
+        d="M132.5 16.5 L127.5 23 H131.5 L130.2 28.2 L135.2 21.5 H131.2 Z"
+        fill="#ffffff"
+      />
+
+      {/* Isometric Smart Panel Box */}
+      <path d="M52 68 L90 52 L128 68 L90 84 Z" fill="url(#ewlBoxTop)" stroke="#cbd5e1" strokeWidth="1.2" />
+      <path d="M52 68 L90 84 V116 L52 100 Z" fill="url(#ewlBoxFront)" stroke="#cbd5e1" strokeWidth="1.2" />
+      <path d="M128 68 L90 84 V116 L128 100 Z" fill="#dbe3ee" stroke="#cbd5e1" strokeWidth="1.2" />
+      {/* Open flaps */}
+      <path d="M52 68 L39 58 L77 42 L90 52 Z" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1.2" />
+      <path d="M128 68 L141 58 L103 42 L90 52 Z" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1.2" />
+    </svg>
+  )
+}
 
 export function HomeDevicesView({
   devices,
@@ -14,25 +68,79 @@ export function HomeDevicesView({
   isAuthenticated = false,
   onOpenLogin,
 }) {
-  const filteredDevices = devices.filter((dev) => {
-    if (activeRoom === 'Semua') return true
-    if (activeRoom === 'Lainnya') return !dev.location || !dev.location.trim()
-    return (dev.location || '').trim() === activeRoom
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('voltku_home_view_mode') === 'list' ? 'list' : 'grid'
+    } catch {
+      return 'grid'
+    }
   })
+  const [hideOffline, setHideOffline] = useState(() => {
+    try {
+      return localStorage.getItem('voltku_home_hide_offline') === 'true'
+    } catch {
+      return false
+    }
+  })
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('voltku_home_view_mode', viewMode)
+    } catch {
+      // ignore storage failure
+    }
+  }, [viewMode])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('voltku_home_hide_offline', String(hideOffline))
+    } catch {
+      // ignore storage failure
+    }
+  }, [hideOffline])
+
+  const normalizedSearch = searchQuery.trim().toLowerCase()
+
+  const filteredDevices = useMemo(
+    () =>
+      devices.filter((dev) => {
+        if (activeRoom === 'Lainnya') {
+          if (dev.location && dev.location.trim()) return false
+        } else if (activeRoom !== 'Semua') {
+          if ((dev.location || '').trim() !== activeRoom) return false
+        }
+
+        if (hideOffline && !isDeviceOnlineFn(dev)) {
+          return false
+        }
+
+        if (normalizedSearch) {
+          const haystack = `${dev.name || ''} ${dev.id || ''} ${dev.location || ''}`.toLowerCase()
+          if (!haystack.includes(normalizedSearch)) return false
+        }
+
+        return true
+      }),
+    [devices, activeRoom, hideOffline, isDeviceOnlineFn, normalizedSearch]
+  )
 
   const homeSummary = useMemo(() => {
     let onlineCount = 0
     let totalWatts = 0
+    let totalMcb = 0
     let highLoadCount = 0
 
     for (const dev of devices) {
+      const mcb = Number(dev.mcb_watt) || 2200
+      totalMcb += mcb
       const online = isDeviceOnlineFn(dev)
       if (online) {
         onlineCount += 1
         const w = dev.latest?.p
         if (typeof w === 'number') {
           totalWatts += w
-          const mcb = Number(dev.mcb_watt) || 2200
           if (w / mcb >= 0.75) {
             highLoadCount += 1
           }
@@ -40,95 +148,146 @@ export function HomeDevicesView({
       }
     }
 
+    const loadRatio = totalMcb > 0 ? Math.min(100, Math.round((totalWatts / totalMcb) * 100)) : 0
+
     return {
       total: devices.length,
       onlineCount,
       totalWatts,
       highLoadCount,
+      loadRatio,
     }
   }, [devices, isDeviceOnlineFn])
 
+  const hasActiveFilter = hideOffline || Boolean(normalizedSearch)
+
   return (
     <div className="home-view-clean tab-pane-fade">
-      {/* Bar Dropdown Ruangan & Satu Tombol Tambah di Main Content */}
+      {/* eWeLink-Style Room Tabs + Utility Controls */}
       <RoomFilterBar
         rooms={rooms}
         activeRoom={activeRoom}
         onSelectRoom={onSelectRoom}
         onOpenAddDevice={onOpenAddDevice}
         devices={devices}
+        viewMode={viewMode}
+        onToggleViewMode={() => setViewMode((prev) => (prev === 'grid' ? 'list' : 'grid'))}
+        hideOffline={hideOffline}
+        onToggleHideOffline={() => setHideOffline((prev) => !prev)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchOpen={searchOpen}
+        onToggleSearch={(forceVal) =>
+          setSearchOpen((prev) => (typeof forceVal === 'boolean' ? forceVal : !prev))
+        }
       />
 
-      {/* Ringkasan Cepat Beban Rumah */}
+      {/* eWeLink Insight-Inspired Quick Metric Cards */}
       {homeSummary.total > 0 && (
-        <div className="clean-sheet home-summary-strip num-tabular">
-          <div className="home-summary-item">
-            <Activity size={15} className="brand-blue-text" />
-            <span className="home-summary-label">Total Beban</span>
-            <strong className="home-summary-val">{formatNum(homeSummary.totalWatts, 0)} W</strong>
+        <div className="insight-quick-grid num-tabular">
+          <div className="insight-mini-card">
+            <div className="insight-dual-icon is-blue" aria-hidden="true">
+              <Zap size={16} />
+            </div>
+            <div className="insight-mini-copy">
+              <span className="insight-mini-label">Beban Saat Ini</span>
+              <strong className="insight-mini-val">{formatNum(homeSummary.totalWatts, 0)} W</strong>
+            </div>
           </div>
-          <div className="home-summary-divider" aria-hidden="true" />
-          <div className="home-summary-item">
-            <Wifi size={15} className={homeSummary.onlineCount > 0 ? 'brand-emerald-text' : ''} />
-            <span className="home-summary-label">Aktif</span>
-            <strong className="home-summary-val">
-              {homeSummary.onlineCount}/{homeSummary.total} unit
-            </strong>
+
+          <div className="insight-mini-card">
+            <div className="insight-dual-icon is-emerald" aria-hidden="true">
+              <Wifi size={16} />
+            </div>
+            <div className="insight-mini-copy">
+              <span className="insight-mini-label">Panel Aktif</span>
+              <strong className="insight-mini-val">
+                {homeSummary.onlineCount}/{homeSummary.total} Online
+              </strong>
+            </div>
           </div>
-          <div className="home-summary-divider" aria-hidden="true" />
-          <div className="home-summary-item">
-            {homeSummary.highLoadCount > 0 ? (
-              <AlertTriangle size={15} className="brand-amber-text" />
-            ) : (
-              <ShieldCheck size={15} className="brand-emerald-text" />
-            )}
-            <span className="home-summary-label">Beban MCB</span>
-            <strong
-              className={`home-summary-val ${
-                homeSummary.highLoadCount > 0 ? 'brand-amber-text' : 'brand-emerald-text'
+
+          <div className="insight-mini-card">
+            <div
+              className={`insight-dual-icon ${
+                homeSummary.highLoadCount > 0 ? 'is-amber' : 'is-emerald'
               }`}
+              aria-hidden="true"
             >
-              {homeSummary.highLoadCount > 0 ? `${homeSummary.highLoadCount} tinggi` : 'Aman'}
-            </strong>
+              {homeSummary.highLoadCount > 0 ? <AlertTriangle size={16} /> : <ShieldCheck size={16} />}
+            </div>
+            <div className="insight-mini-copy">
+              <span className="insight-mini-label">Kapasitas MCB</span>
+              <strong
+                className={`insight-mini-val ${
+                  homeSummary.highLoadCount > 0 ? 'brand-amber-text' : 'brand-emerald-text'
+                }`}
+              >
+                {homeSummary.highLoadCount > 0
+                  ? `${homeSummary.highLoadCount} Tinggi`
+                  : `Aman · ${homeSummary.loadRatio}%`}
+              </strong>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Grid Kartu Perangkat */}
+      {/* Grid / List Kartu Perangkat */}
       {filteredDevices.length === 0 ? (
-        <div className="clean-sheet empty-home-sheet" data-tour-target="device-grid">
-          <div className="empty-home-circle">
-            <Zap size={28} />
-          </div>
+        <div className="empty-home-canvas" data-tour-target="device-grid">
+          <EmptySmartBoxIllustration />
           <h3>
-            {!isAuthenticated && devices.length === 0
-              ? 'Belum Ada Perangkat Publik'
-              : devices.length === 0
-                ? 'Belum Ada Perangkat Anda'
-                : `Belum Ada Alat di ${activeRoom}`}
+            {hasActiveFilter && devices.length > 0
+              ? 'Tidak Ada Panel yang Cocok'
+              : !isAuthenticated && devices.length === 0
+                ? 'Belum Ada Perangkat Publik'
+                : devices.length === 0
+                  ? 'Belum Ada Panel Listrik'
+                  : `Belum Ada Alat di ${activeRoom}`}
           </h3>
           <p>
-            {!isAuthenticated && devices.length === 0
-              ? 'Masuk atau daftar akun untuk memasang serta mengelola meteran listrik Anda.'
-              : devices.length === 0
-                ? 'Tambahkan perangkat VoltKu pertama Anda dan sambungkan ke Wi-Fi rumah.'
-                : 'Pilih "Semua Ruangan" atau tekan + Tambah Panel di atas untuk memasang alat baru.'}
+            {hasActiveFilter && devices.length > 0
+              ? 'Coba ubah kata kunci pencarian atau tampilkan perangkat offline.'
+              : !isAuthenticated && devices.length === 0
+                ? 'Masuk atau daftar akun untuk menautkan serta memantau meteran listrik Anda.'
+                : devices.length === 0
+                  ? 'Ketuk tombol di bawah atau ikon + di atas untuk menautkan panel VoltKu Anda.'
+                  : 'Belum ada panel yang terpasang di ruangan ini.'}
           </p>
-          {!isAuthenticated && devices.length === 0 && onOpenLogin && (
-            <button type="button" className="btn btn-primary" onClick={onOpenLogin}>
+
+          {hasActiveFilter && devices.length > 0 ? (
+            <button
+              type="button"
+              className="btn btn-secondary ewl-reset-filter-btn"
+              onClick={() => {
+                setHideOffline(false)
+                setSearchQuery('')
+                setSearchOpen(false)
+              }}
+            >
+              <RotateCcw size={15} />
+              <span>Tampilkan Semua Panel</span>
+            </button>
+          ) : !isAuthenticated && devices.length === 0 && onOpenLogin ? (
+            <button type="button" className="ewl-primary-pill-btn" onClick={onOpenLogin}>
               <LogIn size={16} />
               <span>Masuk / Daftar Akun</span>
             </button>
-          )}
-          {isAuthenticated && devices.length === 0 && (
-            <button type="button" className="btn btn-primary" onClick={onOpenAddDevice}>
-              <Plus size={16} />
-              <span>Tambah Perangkat</span>
-            </button>
+          ) : (
+            isAuthenticated &&
+            onOpenAddDevice && (
+              <button type="button" className="ewl-primary-pill-btn" onClick={onOpenAddDevice}>
+                <Plus size={17} strokeWidth={2.5} />
+                <span>Tambah Sekarang</span>
+              </button>
+            )
           )}
         </div>
       ) : (
-        <div className="clean-device-grid">
+        <div
+          className={`clean-device-grid ${viewMode === 'list' ? 'is-list-view' : ''}`}
+          data-tour-target="device-grid"
+        >
           {filteredDevices.map((device) => {
             const online = isDeviceOnlineFn(device)
             const latest = device.latest
@@ -143,12 +302,14 @@ export function HomeDevicesView({
               <button
                 key={device.id}
                 type="button"
-                className={`clean-device-card ${online ? 'is-online' : 'is-offline'}`}
+                className={`clean-device-card ${online ? 'is-online' : 'is-offline'} ${
+                  viewMode === 'list' ? 'is-list-card' : ''
+                }`}
                 onClick={() => onSelectDevice(device.id)}
               >
                 <div className="clean-card-top">
                   <div className={`clean-device-glyph ${online ? 'online' : 'offline'}`}>
-                    <Zap size={20} />
+                    <Zap size={19} />
                   </div>
                   <div className="clean-card-power-col num-tabular">
                     <div className="clean-card-watt">

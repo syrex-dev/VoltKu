@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -77,6 +79,49 @@ class GeminiLLMClient(LLMClient):
     def __init__(self, api_key: str, model: str = "gemini-3-flash-preview") -> None:
         self._api_key = api_key
         self._model = model
+        self._loop_clients: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, httpx.AsyncClient
+        ] = weakref.WeakKeyDictionary()
+
+    @staticmethod
+    def _build_request_body(
+        model_name: str,
+        system_instruction: str,
+        contents: list[dict[str, Any]],
+        fn_declarations: list[dict[str, Any]],
+        include_thinking_config: bool = True,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 700,
+            },
+        }
+        if include_thinking_config and model_name.startswith("gemini-3"):
+            # Minimal reasoning memangkas latensi Gemini 3 dari ~8-15 dtk menjadi ~1-2 dtk
+            body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": "minimal"}
+        if system_instruction:
+            body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+        if fn_declarations:
+            body["tools"] = [{"functionDeclarations": fn_declarations}]
+        return body
+
+    def _get_pooled_client(self, timeout_s: float) -> tuple[httpx.AsyncClient, bool]:
+        """Menggunakan koneksi TLS keep-alive per event loop untuk memangkas handshake."""
+        try:
+            loop = asyncio.get_running_loop()
+            client = self._loop_clients.get(loop)
+            if client is not None and not client.is_closed:
+                return client, False
+            client = httpx.AsyncClient(
+                timeout=httpx.Timeout(timeout_s, connect=6.0),
+                limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
+            )
+            self._loop_clients[loop] = client
+            return client, False
+        except (RuntimeError, TypeError):
+            return httpx.AsyncClient(timeout=timeout_s), True
 
     @staticmethod
     def _build_contents(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
@@ -139,23 +184,25 @@ class GeminiLLMClient(LLMClient):
             }
             for t in tools
         ]
-        body: dict[str, Any] = {"contents": contents}
-        if system_instruction:
-            body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
-        if fn_declarations:
-            body["tools"] = [{"functionDeclarations": fn_declarations}]
-
         candidates_to_try = [self._model] + [
             m for m in self.FALLBACK_MODELS if m != self._model
         ]
         data: dict[str, Any] = {}
         last_exc: Optional[Exception] = None
 
-        async with httpx.AsyncClient(timeout=timeout_s) as client:
+        client, should_close = self._get_pooled_client(timeout_s)
+        try:
             for model_name in candidates_to_try:
                 url = (
                     f"https://generativelanguage.googleapis.com/v1beta/models/"
                     f"{model_name}:generateContent"
+                )
+                body = self._build_request_body(
+                    model_name=model_name,
+                    system_instruction=system_instruction,
+                    contents=contents,
+                    fn_declarations=fn_declarations,
+                    include_thinking_config=True,
                 )
                 try:
                     resp = await client.post(
@@ -165,7 +212,25 @@ class GeminiLLMClient(LLMClient):
                             "Content-Type": "application/json",
                         },
                         json=body,
+                        timeout=timeout_s,
                     )
+                    if resp.status_code == 400 and model_name.startswith("gemini-3"):
+                        body_retry = self._build_request_body(
+                            model_name=model_name,
+                            system_instruction=system_instruction,
+                            contents=contents,
+                            fn_declarations=fn_declarations,
+                            include_thinking_config=False,
+                        )
+                        resp = await client.post(
+                            url,
+                            headers={
+                                "x-goog-api-key": self._api_key,
+                                "Content-Type": "application/json",
+                            },
+                            json=body_retry,
+                            timeout=timeout_s,
+                        )
                     if resp.status_code in (404, 429, 500, 503):
                         last_exc = httpx.HTTPStatusError(
                             f"HTTP {resp.status_code}", request=resp.request, response=resp
@@ -180,6 +245,9 @@ class GeminiLLMClient(LLMClient):
                     continue
             if last_exc is not None:
                 raise last_exc
+        finally:
+            if should_close:
+                await client.aclose()
 
         candidates = data.get("candidates") or []
         if not candidates:
