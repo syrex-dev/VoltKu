@@ -711,6 +711,8 @@ export function ProfileModal({
                   updatePrefs={updatePrefs}
                   lockCfg={lockCfg}
                   settings={settings}
+                  theme={theme}
+                  onToggleTheme={onToggleTheme}
                   onNavigate={navigateTo}
                   onLogout={onLogout}
                   onClose={onClose}

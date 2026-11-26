@@ -1311,7 +1311,6 @@ function CustomerPortalRoot() {
         deviceAnomalyCount={deviceAnomalies.length}
         globalAnomalyCount={globalAnomalies.length}
         theme={theme}
-        onToggleTheme={toggleTheme}
         isAuthenticated={isAuthenticated}
         currentUser={currentUser}
         onOpenLogin={() => {

@@ -7,8 +7,6 @@ import {
   Sliders,
   Bell,
   Settings2,
-  Sun,
-  Moon,
   User,
   ChevronDown,
   Check,
@@ -207,7 +205,6 @@ export function Header({
   deviceAnomalyCount = 0,
   globalAnomalyCount = 0,
   theme,
-  onToggleTheme,
   isAuthenticated = false,
   currentUser = null,
   onOpenLogin,
@@ -347,7 +344,7 @@ export function Header({
               })}
             </nav>
 
-            {/* Kanan Navbar: Notifikasi, Tema, lalu Ikon Akun di PALING KANAN */}
+            {/* Kanan Navbar: Notifikasi & Ikon Akun di PALING KANAN (Tema ada di Setelan/Profil) */}
             <div className="header-actions">
               {isAuthenticated && (
                 <NotificationBell
@@ -357,16 +354,6 @@ export function Header({
                   onSelectNotification={onSelectNotification}
                 />
               )}
-
-              <button
-                type="button"
-                className="header-icon-btn"
-                onClick={onToggleTheme}
-                aria-label="Ganti Tema"
-                title={theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}
-              >
-                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-              </button>
 
               <AccountAvatarButton
                 isAuthenticated={isAuthenticated}

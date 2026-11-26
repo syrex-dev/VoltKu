@@ -748,6 +748,8 @@ export function SettingsSubView({
   updatePrefs,
   lockCfg,
   settings,
+  theme = 'light',
+  onToggleTheme,
   onNavigate,
   onLogout,
   onClose,
@@ -810,6 +812,32 @@ export function SettingsSubView({
           <ChevronRight size={16} className="profile-ref-chevron" />
         </button>
 
+        {onToggleTheme && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={theme === 'dark'}
+            className="profile-ref-row"
+            onClick={() => {
+              triggerHaptic(12)
+              onToggleTheme()
+            }}
+          >
+            <span className="profile-ref-row-text">
+              <span className="profile-ref-row-title">Mode Gelap</span>
+              <span className="profile-ref-row-sub">
+                Saat ini: {theme === 'dark' ? 'Tema Gelap' : 'Tema Terang'}
+              </span>
+            </span>
+            <span
+              className={`profile-theme-switch ${theme === 'dark' ? 'is-on' : ''}`}
+              aria-hidden="true"
+            >
+              <span className="profile-theme-knob" />
+            </span>
+          </button>
+        )}
+
         <button
           type="button"
           role="switch"
@@ -866,8 +894,8 @@ export function SettingsSubView({
       <div className="profile-info-hint-row">
         <Info size={14} />
         <span>
-          Mode Gelap dan fitur eksperimental tersedia pada menu <strong>VoltKu Labs</strong> di
-          halaman Profil.
+          Fitur eksperimental lainnya tersedia pada menu <strong>VoltKu Labs</strong> di halaman
+          Profil.
         </span>
       </div>
 
@@ -1203,6 +1231,32 @@ export function LabsSubView({ theme, onToggleTheme, prefs, updatePrefs, isPro })
               <span className="profile-ref-row-title">Mode Gelap</span>
               <span className="profile-ref-row-sub">
                 Tampilan nyaman di ruangan redup dan hemat layar OLED
+              </span>
+            </span>
+            <span
+              className={`profile-theme-switch ${theme === 'dark' ? 'is-on' : ''}`}
+              aria-hidden="true"
+            >
+              <span className="profile-theme-knob" />
+            </span>
+          </button>
+        )}
+
+        {onToggleTheme && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={theme === 'dark'}
+            className="profile-ref-row"
+            onClick={() => {
+              triggerHaptic(12)
+              onToggleTheme()
+            }}
+          >
+            <span className="profile-ref-row-text">
+              <span className="profile-ref-row-title">Mode Gelap</span>
+              <span className="profile-ref-row-sub">
+                Saat ini: {theme === 'dark' ? 'Tema Gelap' : 'Tema Terang'}
               </span>
             </span>
             <span
