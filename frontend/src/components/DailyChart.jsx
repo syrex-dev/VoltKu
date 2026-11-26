@@ -9,7 +9,7 @@ import {
   Legend,
 } from 'chart.js'
 import { Bar } from 'react-chartjs-2'
-import { CalendarDays, Download, Lock } from 'lucide-react'
+import { CalendarDays, Download, Loader2, Lock } from 'lucide-react'
 import { formatDateWIB, formatNum, formatRp } from '../utils/formatters'
 
 ChartJS.register(
@@ -27,6 +27,7 @@ export function DailyChart({
   tariff = 1444.7,
   historyDays = 14,
   exportEnabled = true,
+  exporting = false,
   onExportCsv,
   onOpenUpgrade,
 }) {
@@ -114,6 +115,7 @@ export function DailyChart({
             <button
               type="button"
               className={`chart-export-btn ${!exportEnabled ? 'is-locked' : ''}`}
+              disabled={exporting}
               onClick={() => {
                 if (!exportEnabled) {
                   if (onOpenUpgrade) {
@@ -123,10 +125,22 @@ export function DailyChart({
                 }
                 if (onExportCsv) onExportCsv()
               }}
-              title={exportEnabled ? 'Unduh Laporan CSV' : 'Fitur VoltKu Pro'}
+              title={
+                exporting
+                  ? 'Menyiapkan file CSV...'
+                  : exportEnabled
+                    ? 'Unduh Laporan CSV'
+                    : 'Fitur VoltKu Pro'
+              }
             >
-              {exportEnabled ? <Download size={13} /> : <Lock size={12} />}
-              <span>CSV</span>
+              {exporting ? (
+                <Loader2 size={13} className="spin" />
+              ) : exportEnabled ? (
+                <Download size={13} />
+              ) : (
+                <Lock size={12} />
+              )}
+              <span>{exporting ? 'Mengunduh...' : 'CSV'}</span>
             </button>
           )}
         </div>

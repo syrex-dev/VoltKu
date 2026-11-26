@@ -1,10 +1,12 @@
 import json
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app.auth import create_access_token, user_login_limiter
 from app.db import get_db
 from app.main import app
-from app.models import Anomaly, Device, Reading, Setting
+from app.models import Anomaly, DailyStat, Device, Reading, Setting
 from fastapi.testclient import TestClient
 from mysql_test_helper import open_clean_test_session
 
@@ -83,6 +85,17 @@ def test_public_demo_endpoints_isolate_private_devices():
             ),
         ]
     )
+    today_wib = datetime.now(ZoneInfo("Asia/Jakarta")).strftime("%Y-%m-%d")
+    session.add(
+        DailyStat(
+            device_id="demo_unit",
+            day=today_wib,
+            kwh=2.5,
+            cost_rp=3612,
+            tariff_sen=144470,
+            p_max=980.0,
+        )
+    )
     session.add_all(
         [
             Anomaly(
@@ -116,6 +129,14 @@ def test_public_demo_endpoints_isolate_private_devices():
     assert client.get("/api/public/devices/private_unit/latest").status_code == 404
     assert client.get("/api/public/devices/private_unit/summary?range=today").status_code == 404
 
+    pub_csv = client.get("/api/public/devices/demo_unit/export?days=14")
+    assert pub_csv.status_code == 200
+    assert "text/csv" in pub_csv.headers["content-type"]
+    assert pub_csv.text.startswith("\ufefftanggal_wib,energi_kwh,biaya_rp")
+    assert f"{today_wib},2.500,3612" in pub_csv.text
+    assert 'filename="voltku-demo_unit-14d.csv"' in pub_csv.headers.get("content-disposition", "")
+    assert client.get("/api/public/devices/private_unit/export?days=14").status_code == 404
+
     public_anoms = client.get("/api/public/anomalies").json()
     assert [a["device_id"] for a in public_anoms] == ["demo_unit"]
 
@@ -129,6 +150,7 @@ def test_public_demo_endpoints_isolate_private_devices():
         == 200
     )
     assert client.get("/api/public/devices").status_code == 401
+    assert client.get("/api/public/devices/demo_unit/export?days=14").status_code == 401
     assert client.get("/api/public/anomalies").status_code == 401
 
     app.dependency_overrides.clear()

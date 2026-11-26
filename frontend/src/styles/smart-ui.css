@@ -6073,9 +6073,14 @@ button,
   cursor: pointer;
 }
 
-.chart-export-btn:hover {
+.chart-export-btn:hover:not(:disabled) {
   border-color: #1677ff;
   color: #1677ff;
+}
+
+.chart-export-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .chart-export-btn.is-locked {

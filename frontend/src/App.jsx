@@ -264,6 +264,7 @@ function CustomerPortalRoot() {
   const [powerPoints, setPowerPoints] = useState([])
   const [powerRange, setPowerRange] = useState('5h')
   const [dailyPoints, setDailyPoints] = useState([])
+  const [exportingCsv, setExportingCsv] = useState(false)
 
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false)
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false)
@@ -919,34 +920,98 @@ function CustomerPortalRoot() {
   }
 
   const handleExportDeviceCsv = async () => {
-    if (!activeDeviceId || !userToken) return
-    if (!exportEnabled) {
+    if (!activeDeviceId || exportingCsv) return
+    if (!userToken && !canReadDashboard) {
+      setLoginError(null)
+      setLoginModalSubtitle('Masuk ke akun Anda untuk mengunduh laporan CSV.')
+      setShowLoginModal(true)
+      return
+    }
+    if (isAuthenticated && !exportEnabled) {
       openPlanModal('Ekspor laporan konsumsi CSV tersedia pada paket VoltKu Pro.')
       return
     }
+
+    setExportingCsv(true)
     try {
-      const resp = await fetch(buildApiUrl(`/api/devices/${activeDeviceId}/export?days=30`), {
-        headers: { Authorization: `Bearer ${userToken}` },
-      })
-      if (resp.status === 403) {
-        const errBody = await resp.json().catch(() => ({}))
-        openPlanModal(
-          errBody?.error?.message || 'Ekspor laporan konsumsi CSV tersedia pada paket VoltKu Pro.'
-        )
+      const targetEndpoint = `${readBase}/devices/${encodeURIComponent(activeDeviceId)}/export?days=30`
+      const headers = userToken ? { Authorization: `Bearer ${userToken}` } : {}
+      const resp = await fetch(buildApiUrl(targetEndpoint), { headers })
+
+      if (resp.status === 401) {
+        if (userToken) {
+          handleUnauthorized()
+        } else {
+          setLoginError(null)
+          setLoginModalSubtitle('Masuk ke akun Anda untuk mengunduh laporan CSV.')
+          setShowLoginModal(true)
+        }
         return
       }
-      if (!resp.ok) throw new Error('Gagal mengunduh CSV.')
+      if (resp.status === 403) {
+        const errBody = await resp.json().catch(() => ({}))
+        const msg =
+          errBody?.error?.message || 'Ekspor laporan konsumsi CSV tersedia pada paket VoltKu Pro.'
+        if (isAuthenticated) {
+          openPlanModal(msg)
+        } else {
+          alert(msg)
+        }
+        return
+      }
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({}))
+        throw new Error(errBody?.error?.message || 'Gagal mengunduh laporan CSV.')
+      }
+
+      const disposition = resp.headers.get('Content-Disposition') || ''
+      const filenameMatch = disposition.match(/filename="?([^";\n]+)"?/i)
+      const fallbackName = `voltku-${String(activeDeviceId).replace(/[^A-Za-z0-9_-]/g, '_')}-30d.csv`
+      const filename = filenameMatch?.[1]?.trim() || fallbackName
+
       const blob = await resp.blob()
+      if (isNativeApp()) {
+        const csvFile = new File([blob], filename, { type: 'text/csv;charset=utf-8' })
+        if (
+          typeof navigator !== 'undefined' &&
+          typeof navigator.share === 'function' &&
+          (!navigator.canShare || navigator.canShare({ files: [csvFile] }))
+        ) {
+          try {
+            await navigator.share({
+              files: [csvFile],
+              title: filename,
+              text: 'Laporan Konsumsi Listrik Harian VoltKu',
+            })
+            return
+          } catch (shareErr) {
+            if (shareErr?.name === 'AbortError') return
+          }
+        }
+        const csvText = await blob.text()
+        const a = document.createElement('a')
+        a.href = `data:text/csv;charset=utf-8,${encodeURIComponent(csvText)}`
+        a.download = filename
+        a.style.display = 'none'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        return
+      }
+
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `voltku-${activeDeviceId}-30d.csv`
+      a.download = filename
+      a.style.display = 'none'
       document.body.appendChild(a)
       a.click()
       a.remove()
-      URL.revokeObjectURL(url)
+      setTimeout(() => URL.revokeObjectURL(url), 1500)
     } catch (err) {
-      alert(err.message || 'Gagal mengunduh laporan CSV.')
+      alert(err?.message || 'Gagal mengunduh laporan CSV.')
+    } finally {
+      setExportingCsv(false)
     }
   }
 
@@ -1241,6 +1306,7 @@ function CustomerPortalRoot() {
                 tariff={tariffNum}
                 historyDays={Math.min(historyDaysLimit, 14)}
                 exportEnabled={exportEnabled}
+                exporting={exportingCsv}
                 onExportCsv={handleExportDeviceCsv}
                 onOpenUpgrade={openPlanModal}
               />

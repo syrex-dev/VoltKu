@@ -573,24 +573,10 @@ def get_device_forecast(
     return calculate_device_forecast(session=session, device_id=device_id)
 
 
-@router.get("/{device_id}/export")
-def export_device_daily_csv(
-    device_id: str,
-    days: int = Query(30, ge=1, le=366),
-    current: dict[str, Any] = Depends(get_current_user),
-    session: Session = Depends(get_db),
-):
-    """Ekspor laporan konsumsi harian perangkat ke CSV (khusus paket Pro/admin)."""
-    _get_device_for_actor(session, device_id, current)
-    enforce_user_feature_access(
-        session,
-        current,
-        "export_enabled",
-        "export_csv",
-        "Ekspor laporan CSV tersedia pada paket VoltKu Pro.",
-        get_app_config_map(session),
-    )
-
+def build_device_daily_csv_response(
+    session: Session, device_id: str, days: int = 30
+) -> StreamingResponse:
+    """Bangun respons CSV laporan pemakaian harian perangkat (dengan UTF-8 BOM untuk Excel)."""
     today_wib = datetime.now(TZ_WIB).date()
     start_day = (today_wib - timedelta(days=days - 1)).isoformat()
     rows = session.scalars(
@@ -600,6 +586,7 @@ def export_device_daily_csv(
     ).all()
 
     buf = io.StringIO()
+    buf.write("\ufeff")
     writer = csv.writer(buf)
     writer.writerow(
         ["tanggal_wib", "energi_kwh", "biaya_rp", "tarif_rp_per_kwh", "daya_puncak_w"]
@@ -620,9 +607,30 @@ def export_device_daily_csv(
         )
 
     buf.seek(0)
-    filename = f"voltku-{device_id}-{days}d.csv"
+    safe_device_id = re.sub(r"[^A-Za-z0-9_-]", "_", device_id)
+    filename = f"voltku-{safe_device_id}-{days}d.csv"
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/{device_id}/export")
+def export_device_daily_csv(
+    device_id: str,
+    days: int = Query(30, ge=1, le=366),
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Ekspor laporan konsumsi harian perangkat ke CSV (khusus paket Pro/admin)."""
+    _get_device_for_actor(session, device_id, current)
+    enforce_user_feature_access(
+        session,
+        current,
+        "export_enabled",
+        "export_csv",
+        "Ekspor laporan CSV tersedia pada paket VoltKu Pro.",
+        get_app_config_map(session),
+    )
+    return build_device_daily_csv_response(session=session, device_id=device_id, days=days)

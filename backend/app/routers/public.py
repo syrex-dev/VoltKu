@@ -12,6 +12,7 @@ from app.db import get_db
 from app.models import Device, PaymentMethod, Setting
 from app.routers.anomalies import query_anomalies_list
 from app.routers.devices import (
+    build_device_daily_csv_response,
     get_device_series_data,
     get_latest_reading_data,
     list_devices_data,
@@ -244,6 +245,20 @@ def public_device_forecast(device_id: str, session: Session = Depends(get_db)):
     """Proyeksi akhir bulan perangkat Demo Publik."""
     _ensure_public_demo_device(session, device_id)
     return calculate_device_forecast(session=session, device_id=device_id)
+
+
+@router.get(
+    "/devices/{device_id}/export",
+    dependencies=[Depends(require_public_read)],
+)
+def public_device_export_csv(
+    device_id: str,
+    days: int = Query(30, ge=1, le=30),
+    session: Session = Depends(get_db),
+):
+    """Ekspor laporan harian CSV perangkat Demo Publik (read-only)."""
+    _ensure_public_demo_device(session, device_id)
+    return build_device_daily_csv_response(session=session, device_id=device_id, days=days)
 
 
 @router.get(

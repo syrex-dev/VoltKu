@@ -154,8 +154,30 @@ def test_freemium_public_config_and_quota_enforcement():
     exp_pro = client.get("/api/devices/panel_1/export?days=30", headers=headers)
     assert exp_pro.status_code == 200
     assert "text/csv" in exp_pro.headers["content-type"]
+    assert 'filename="voltku-panel_1-30d.csv"' in exp_pro.headers.get("content-disposition", "")
     assert "tanggal_wib,energi_kwh,biaya_rp" in exp_pro.text
     assert "2026-11-24,3.500,5056" in exp_pro.text
+
+    # Isolasi multi-tenant pada CSV export: user lain ditolak 403
+    reg_other = client.post(
+        "/api/users/register",
+        json={
+            "name": "User Lain",
+            "email": "other-pro@voltku.id",
+            "password": "password123",
+            "accept_terms": True,
+        },
+    )
+    assert reg_other.status_code == 201
+    other_uid = reg_other.json()["user"]["id"]
+    other_user = session.get(User, other_uid)
+    other_user.plan_tier = "pro"
+    other_user.plan_expires_at = int(time.time()) + 86400 * 30
+    session.commit()
+    other_headers = {"Authorization": f"Bearer {reg_other.json()['token']}"}
+    other_exp = client.get("/api/devices/panel_1/export?days=30", headers=other_headers)
+    assert other_exp.status_code == 403
+
     session.close()
 
 
