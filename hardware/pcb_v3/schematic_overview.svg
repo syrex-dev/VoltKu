@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 620" width="1120" height="620" style="background:#0b1120;font-family:'Segoe UI',system-ui,sans-serif">
+  <!-- Title -->
+  <text x="36" y="42" fill="#f8fafc" font-size="22" font-weight="800">VoltKu Pro v3.0 — Skematik &amp; Arsitektur Isolasi PCB (45 × 34 mm)</text>
+  <text x="36" y="66" fill="#94a3b8" font-size="13">BL0942 Metering IC + ADuM1201ARZ + B0505S-1WR3 + HLK-PM01 + ESP32-C3 SuperMini + TFT IPS 1.3" (ST7789)</text>
+
+  <!-- MAINS / HOT DOMAIN -->
+  <rect x="36" y="92" width="430" height="492" rx="14" fill="#171923" stroke="#ef4444" stroke-width="2" />
+  <rect x="36" y="92" width="430" height="36" rx="14" fill="#7f1d1d" />
+  <text x="56" y="115" fill="#fecaca" font-size="13" font-weight="700">DOMAIN 1: SISI TEGANGAN AC / MAINS_ISO (GND_AC = Netral)</text>
+
+  <!-- AC Input & Fuse & MOV -->
+  <rect x="56" y="146" width="170" height="106" rx="8" fill="#1e293b" stroke="#475569" />
+  <text x="70" y="168" fill="#fca5a5" font-size="12" font-weight="700">AC 220V &amp; Proteksi</text>
+  <text x="70" y="190" fill="#e2e8f0" font-size="11">J1: L &amp; N (KF301 7.62mm)</text>
+  <text x="70" y="208" fill="#fbbf24" font-size="11">F1: Sekring 0.5A 250VAC</text>
+  <text x="70" y="226" fill="#cbd5e1" font-size="11">RV1: MOV 10D471K (300VAC)</text>
+  <text x="70" y="242" fill="#94a3b8" font-size="10">N terhubung ke GND_AC</text>
+
+  <!-- Voltage Divider -->
+  <rect x="56" y="270" width="170" height="114" rx="8" fill="#1e293b" stroke="#475569" />
+  <text x="70" y="292" fill="#93c5fd" font-size="12" font-weight="700">Pembagi Tegangan HV</text>
+  <text x="70" y="314" fill="#e2e8f0" font-size="11">R1..R5: 5 × 390kΩ 1206 1%</text>
+  <text x="70" y="332" fill="#e2e8f0" font-size="11">(Total R_top = 1.95 MΩ)</text>
+  <text x="70" y="350" fill="#cbd5e1" font-size="11">R6: 510Ω 1% ke GND_AC</text>
+  <text x="70" y="368" fill="#34d399" font-size="11">C3: 68nF → Pin 4 VP (57.5mV)</text>
+
+  <!-- CT Input -->
+  <rect x="56" y="402" width="170" height="162" rx="8" fill="#1e293b" stroke="#475569" />
+  <text x="70" y="424" fill="#34d399" font-size="12" font-weight="700">Sensing Arus Split-Core CT</text>
+  <text x="70" y="446" fill="#e2e8f0" font-size="11">J2: CT+ / CT- (JST-XH 2P)</text>
+  <text x="70" y="466" fill="#fbbf24" font-size="11">R9 || R10: 2 × 1.0Ω 1% = 0.5Ω</text>
+  <text x="70" y="484" fill="#cbd5e1" font-size="11">D1: TVS SMAJ5.0CA Clamp</text>
+  <text x="70" y="504" fill="#cbd5e1" font-size="11">R7, R8: 510Ω + C4, C5: 68nF</text>
+  <text x="70" y="524" fill="#34d399" font-size="11">→ Pin 2 (IP) &amp; Pin 3 (IN)</text>
+  <text x="70" y="544" fill="#94a3b8" font-size="10">Max ≤ 25mVrms (50A/100A CT)</text>
+
+  <!-- BL0942 IC -->
+  <rect x="262" y="210" width="184" height="270" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+  <text x="354" y="236" fill="#38bdf8" font-size="15" font-weight="800" text-anchor="middle">U1: BL0942 (SSOP-10)</text>
+  <text x="354" y="254" fill="#94a3b8" font-size="11" text-anchor="middle">Single-Phase Metering IC</text>
+  <text x="278" y="284" fill="#fbbf24" font-size="11">1 VDD ← +3.3V_ISO (U6)</text>
+  <text x="278" y="306" fill="#34d399" font-size="11">2 IP  ← Filter Arus (+)</text>
+  <text x="278" y="328" fill="#34d399" font-size="11">3 IN  ← Filter Arus (-)</text>
+  <text x="278" y="350" fill="#93c5fd" font-size="11">4 VP  ← Tegangan 57.5mV</text>
+  <text x="278" y="372" fill="#cbd5e1" font-size="11">5 GND ← GND_AC</text>
+  <text x="278" y="394" fill="#94a3b8" font-size="11">7 SEL ← GND_AC (UART)</text>
+  <text x="278" y="416" fill="#94a3b8" font-size="11">8 BPS ← GND_AC (4800bps)</text>
+  <text x="278" y="438" fill="#f472b6" font-size="11">9 RX  ← R11 5.1k pull-up</text>
+  <text x="278" y="460" fill="#f472b6" font-size="11">10 TX → R12 5.1k pull-up</text>
+
+  <!-- Lines inside domain 1 -->
+  <line x1="226" y1="348" x2="262" y2="348" stroke="#93c5fd" stroke-width="2" />
+  <line x1="226" y1="490" x2="244" y2="490" stroke="#34d399" stroke-width="2" />
+  <line x1="244" y1="490" x2="244" y2="316" stroke="#34d399" stroke-width="2" />
+  <line x1="244" y1="316" x2="262" y2="316" stroke="#34d399" stroke-width="2" />
+
+  <!-- ISOLATION BARRIER -->
+  <rect x="488" y="92" width="164" height="492" rx="12" fill="#111827" stroke="#f59e0b" stroke-width="2" stroke-dasharray="8,5" />
+  <text x="570" y="118" fill="#fbbf24" font-size="13" font-weight="800" text-anchor="middle">PEMBATAS ISOLASI</text>
+  <text x="570" y="136" fill="#fcd34d" font-size="11" text-anchor="middle">Celah ≥ 6.5 mm</text>
+
+  <!-- HLK-PM01 -->
+  <rect x="502" y="156" width="136" height="108" rx="8" fill="#1e293b" stroke="#f59e0b" />
+  <text x="570" y="178" fill="#fbbf24" font-size="12" font-weight="700" text-anchor="middle">PS1: HLK-PM01</text>
+  <text x="570" y="196" fill="#e2e8f0" font-size="11" text-anchor="middle">AC 220V → +5V_SAFE</text>
+  <text x="570" y="214" fill="#94a3b8" font-size="10" text-anchor="middle">Isolasi 4000 VAC (3W)</text>
+  <text x="570" y="232" fill="#34d399" font-size="10" text-anchor="middle">(Di Bay Atas Casing v3)</text>
+  <text x="570" y="250" fill="#94a3b8" font-size="10" text-anchor="middle">C1: 10µF 16V Filter</text>
+
+  <!-- B0505S -->
+  <rect x="502" y="286" width="136" height="106" rx="8" fill="#1e293b" stroke="#38bdf8" />
+  <text x="570" y="308" fill="#38bdf8" font-size="12" font-weight="700" text-anchor="middle">U2: B0505S-1WR3</text>
+  <text x="570" y="326" fill="#e2e8f0" font-size="11" text-anchor="middle">5V_SAFE → 5V_ISO</text>
+  <text x="570" y="344" fill="#cbd5e1" font-size="10" text-anchor="middle">1500VDC DC-DC Isolator</text>
+  <text x="570" y="362" fill="#fbbf24" font-size="10" text-anchor="middle">→ U6 ME6211 → 3.3V_ISO</text>
+  <text x="570" y="380" fill="#94a3b8" font-size="10" text-anchor="middle">C6: 10µF + C9: 100nF</text>
+
+  <!-- ADuM1201 -->
+  <rect x="502" y="416" width="136" height="122" rx="8" fill="#1e293b" stroke="#f472b6" />
+  <text x="570" y="440" fill="#f472b6" font-size="12" font-weight="700" text-anchor="middle">U3: ADuM1201ARZ</text>
+  <text x="570" y="458" fill="#e2e8f0" font-size="11" text-anchor="middle">Isolator Digital UART</text>
+  <text x="570" y="476" fill="#cbd5e1" font-size="10" text-anchor="middle">2500 Vrms Dual-Channel</text>
+  <text x="570" y="496" fill="#f9a8d4" font-size="10" text-anchor="middle">Ch1: ESP TX → BL0942 RX</text>
+  <text x="570" y="514" fill="#f9a8d4" font-size="10" text-anchor="middle">Ch2: BL0942 TX → ESP RX</text>
+  <text x="570" y="530" fill="#94a3b8" font-size="10" text-anchor="middle">C2, C7: 100nF Bypass</text>
+
+  <!-- Cross-barrier lines -->
+  <line x1="446" y1="448" x2="502" y2="448" stroke="#f472b6" stroke-width="2" />
+  <line x1="446" y1="458" x2="502" y2="458" stroke="#f472b6" stroke-width="2" />
+  <line x1="502" y1="336" x2="446" y2="284" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4,3" />
+
+  <!-- SAFE LOW-VOLTAGE DOMAIN -->
+  <rect x="674" y="92" width="410" height="492" rx="14" fill="#0f172a" stroke="#10b981" stroke-width="2" />
+  <rect x="674" y="92" width="410" height="36" rx="14" fill="#065f46" />
+  <text x="694" y="115" fill="#d1fae5" font-size="13" font-weight="700">DOMAIN 2: SISI LOGIKA AMAN / SAFE_DC (+3.3V_SAFE, GND_SAFE)</text>
+
+  <!-- 3.3V LDO -->
+  <rect x="694" y="146" width="166" height="86" rx="8" fill="#1e293b" stroke="#10b981" />
+  <text x="777" y="168" fill="#34d399" font-size="12" font-weight="700" text-anchor="middle">U5: ME6211C33M5G</text>
+  <text x="777" y="188" fill="#e2e8f0" font-size="11" text-anchor="middle">+5V_SAFE → +3.3V_SAFE</text>
+  <text x="777" y="206" fill="#94a3b8" font-size="10" text-anchor="middle">LDO 500mA + C8 10µF</text>
+  <text x="777" y="222" fill="#94a3b8" font-size="10" text-anchor="middle">Suplai ESP32-C3 &amp; TFT IPS</text>
+
+  <!-- ESP32-C3 -->
+  <rect x="694" y="254" width="206" height="308" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2" />
+  <text x="797" y="280" fill="#38bdf8" font-size="14" font-weight="800" text-anchor="middle">U4: ESP32-C3 SuperMini</text>
+  <text x="797" y="298" fill="#94a3b8" font-size="11" text-anchor="middle">Wi-Fi 2.4G + BLE + NVS Kalibrasi</text>
+  <text x="710" y="328" fill="#f472b6" font-size="11">GPIO0 (UART1 RX) ← U3 Ch2</text>
+  <text x="710" y="348" fill="#f472b6" font-size="11">GPIO1 (UART1 TX) → U3 Ch1</text>
+  <line x1="710" y1="364" x2="884" y2="364" stroke="#334155" />
+  <text x="710" y="384" fill="#93c5fd" font-size="11">GPIO4 → TFT_SCK (SPI)</text>
+  <text x="710" y="404" fill="#93c5fd" font-size="11">GPIO6 → TFT_MOSI (SDA)</text>
+  <text x="710" y="424" fill="#93c5fd" font-size="11">GPIO7 → TFT_RES</text>
+  <text x="710" y="444" fill="#93c5fd" font-size="11">GPIO5 → TFT_DC</text>
+  <text x="710" y="464" fill="#93c5fd" font-size="11">GPIO10 → TFT_CS</text>
+  <text x="710" y="484" fill="#93c5fd" font-size="11">GPIO3 → TFT_BLK (PWM)</text>
+  <line x1="710" y1="500" x2="884" y2="500" stroke="#334155" />
+  <text x="710" y="520" fill="#fbbf24" font-size="11">GPIO9 ← SW1 (Tombol PAIR)</text>
+  <text x="710" y="540" fill="#34d399" font-size="11">GPIO21 → LED2 (Wi-Fi)</text>
+
+  <!-- TFT IPS + UI Controls -->
+  <rect x="920" y="254" width="146" height="176" rx="8" fill="#090d16" stroke="#60a5fa" stroke-width="1.5" />
+  <text x="993" y="278" fill="#60a5fa" font-size="12" font-weight="700" text-anchor="middle">J3: TFT IPS 1.3"</text>
+  <text x="993" y="296" fill="#94a3b8" font-size="10" text-anchor="middle">ST7789 240×240 SPI</text>
+  <rect x="944" y="310" width="98" height="84" rx="6" fill="#0f172a" stroke="#38bdf8" />
+  <text x="993" y="334" fill="#fbbf24" font-size="13" font-weight="800" text-anchor="middle">1,112 W</text>
+  <text x="993" y="352" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle">Rp 4.850 / hari</text>
+  <text x="993" y="370" fill="#93c5fd" font-size="9" text-anchor="middle">221V • 5.02A • PF 0.99</text>
+  <text x="993" y="385" fill="#94a3b8" font-size="8" text-anchor="middle">[Wi-Fi OK • QR Ready]</text>
+
+  <rect x="920" y="450" width="146" height="112" rx="8" fill="#1e293b" stroke="#fbbf24" />
+  <text x="993" y="474" fill="#fbbf24" font-size="12" font-weight="700" text-anchor="middle">Panel Depan</text>
+  <text x="993" y="496" fill="#e2e8f0" font-size="11" text-anchor="middle">SW1: Tombol PAIR/PAGE</text>
+  <text x="993" y="516" fill="#fbbf24" font-size="11" text-anchor="middle">LED1: PWR (Amber)</text>
+  <text x="993" y="536" fill="#38bdf8" font-size="11" text-anchor="middle">LED2: Wi-Fi (Biru)</text>
+
+  <!-- Connections Safe side -->
+  <line x1="638" y1="204" x2="694" y2="190" stroke="#fbbf24" stroke-width="2" />
+  <line x1="638" y1="336" x2="656" y2="336" stroke="#38bdf8" stroke-width="2" />
+  <line x1="656" y1="336" x2="656" y2="204" stroke="#38bdf8" stroke-width="2" />
+  <line x1="656" y1="204" x2="638" y2="204" stroke="#38bdf8" stroke-width="2" />
+  <line x1="638" y1="458" x2="694" y2="334" stroke="#f472b6" stroke-width="2" />
+  <line x1="638" y1="472" x2="694" y2="348" stroke="#f472b6" stroke-width="2" />
+  <line x1="900" y1="384" x2="920" y2="384" stroke="#93c5fd" stroke-width="2" />
+  <line x1="900" y1="520" x2="920" y2="496" stroke="#fbbf24" stroke-width="2" />
+</svg>

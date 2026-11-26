@@ -1,0 +1,40 @@
+Designator,Quantity,Comment,Footprint,LCSC_Part,Unit_Price_IDR_Est,Domain,Notes
+U1,1,BL0942,Package_SO:SSOP-10_3.9x4.9mm_P1.0mm,C2681911,8500,MAINS_ISO,Single-phase energy metering IC (UART/SPI)
+U2,1,B0505S-1WR3,Converter_DCDC:Converter_DCDC_MORNSUN_B05xxS-1WR3_THT,C181448,14000,ISOLATION,1500VDC isolated DC-DC 5V->5V 1W
+U3,1,ADuM1201ARZ,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,C12142,16500,ISOLATION,2500Vrms dual-channel digital isolator (UART)
+U4,1,ESP32-C3_SuperMini,Module:ESP32-C3-SuperMini-18x22.5mm,C2913202,28000,SAFE_DC,WiFi 2.4GHz BLE RISC-V MCU + onboard USB-C
+U5,1,ME6211C33M5G-N,Package_TO_SOT_SMD:SOT-23-5,C82942,1800,SAFE_DC,3.3V 500mA low-dropout regulator (Safe DC side)
+U6,1,ME6211C33M5G-N,Package_TO_SOT_SMD:SOT-23-5,C82942,1800,MAINS_ISO,3.3V 500mA LDO for BL0942 isolated rail
+PS1,1,HLK-PM01_5V_3W,Converter_ACDC:Converter_ACDC_HiLink_HLK-PM01,C209903,18000,MAINS_TO_SAFE,4000VAC isolated AC-DC 220V->5V 3W PSU (off-board bay connected)
+RV1,1,10D471K,Varistor:RV_Disc_D10mm_W4.9mm_P7.5mm,C414098,1200,MAINS_AC,300VAC MOV surge/transient protection across L-N
+F1,1,5x20mm_0.5A_SlowBlow,Fuse:Fuseholder_Cylinder-5x20mm_Stelvio-Kontek_PTF78_Horizontal,C41913,2500,MAINS_AC,0.5A 250VAC safety fuse on Live (L) line
+J1,1,KF301-2P_7.62mm,TerminalBlock:TerminalBlock_bornier-2_P7.62mm,C474880,2500,MAINS_AC,AC 220V L/N screw terminal block
+J2,1,JST_XH_2P_CT,Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical,C157929,800,MAINS_ISO,External Split-Core CT clamp connector (CT+ / CT-)
+J3,1,TFT_IPS_1.3_8P,Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical,C124375,1200,SAFE_DC,ST7789 240x240 1.3in IPS display header (3.3V SPI)
+SW1,1,TS-1187A_Tactile,Button_Switch_SMD:SW_SPST_CK_RS282G05A3,C318884,500,SAFE_DC,Front-panel pairing/page button (GPIO9 active-low)
+D1,1,SMAJ5.0CA,Diode_SMD:D_SMA,C16999,900,MAINS_ISO,Bidirectional TVS clamp protecting BL0942 IP/IN CT inputs
+LED1,1,LED_0603_Amber,LED_SMD:LED_0603_1608Metric,C72038,200,SAFE_DC,PWR 3.3V status indicator
+LED2,1,LED_0603_Blue,LED_SMD:LED_0603_1608Metric,C72041,250,SAFE_DC,WIFI/MQTT telemetry indicator (GPIO21)
+R1,1,390k_1%_1206,Resistor_SMD:R_1206_3216Metric,C17921,150,MAINS_AC,HV voltage divider chain #1 (L -> VP)
+R2,1,390k_1%_1206,Resistor_SMD:R_1206_3216Metric,C17921,150,MAINS_AC,HV voltage divider chain #2
+R3,1,390k_1%_1206,Resistor_SMD:R_1206_3216Metric,C17921,150,MAINS_AC,HV voltage divider chain #3
+R4,1,390k_1%_1206,Resistor_SMD:R_1206_3216Metric,C17921,150,MAINS_AC,HV voltage divider chain #4
+R5,1,390k_1%_1206,Resistor_SMD:R_1206_3216Metric,C17921,150,MAINS_AC,HV voltage divider chain #5 (total 1.95MOhm)
+R6,1,510R_1%_0603,Resistor_SMD:R_0603_1608Metric,C23193,80,MAINS_ISO,Voltage divider bottom resistor (57.5mVrms @ 220V)
+R7,1,510R_1%_0603,Resistor_SMD:R_0603_1608Metric,C23193,80,MAINS_ISO,Current sense input series damping IP
+R8,1,510R_1%_0603,Resistor_SMD:R_0603_1608Metric,C23193,80,MAINS_ISO,Current sense input series damping IN
+R9,1,1R_1%_1206,Resistor_SMD:R_1206_3216Metric,C17987,120,MAINS_ISO,CT burden #1 (parallel w/ R10 = 0.5Ohm <= 25mVrms @ 50mA)
+R10,1,1R_1%_1206,Resistor_SMD:R_1206_3216Metric,C17987,120,MAINS_ISO,CT burden #2 (parallel w/ R9 = 0.5Ohm)
+R11,1,5.1k_5%_0603,Resistor_SMD:R_0603_1608Metric,C23186,60,MAINS_ISO,BL0942 UART RX pull-up to 3.3V_ISO
+R12,1,5.1k_5%_0603,Resistor_SMD:R_0603_1608Metric,C23186,60,MAINS_ISO,BL0942 UART TX pull-up to 3.3V_ISO
+R13,1,1k_5%_0603,Resistor_SMD:R_0603_1608Metric,C21190,60,SAFE_DC,LED1 current limiter
+R14,1,1k_5%_0603,Resistor_SMD:R_0603_1608Metric,C21190,60,SAFE_DC,LED2 current limiter
+C1,1,10uF_16V_0805,Capacitor_SMD:C_0805_2012Metric,C15850,150,SAFE_DC,5V_SAFE bulk decoupling
+C2,1,100nF_50V_0603,Capacitor_SMD:C_0603_1608Metric,C14663,50,SAFE_DC,U3 ADuM1201 VDD1 bypass
+C3,1,68nF_50V_0603,Capacitor_SMD:C_0603_1608Metric,C1629,80,MAINS_ISO,VP voltage anti-aliasing filter
+C4,1,68nF_50V_0603,Capacitor_SMD:C_0603_1608Metric,C1629,80,MAINS_ISO,IP current filter
+C5,1,68nF_50V_0603,Capacitor_SMD:C_0603_1608Metric,C1629,80,MAINS_ISO,IN current filter
+C6,1,10uF_16V_0805,Capacitor_SMD:C_0805_2012Metric,C15850,150,MAINS_ISO,3.3V_ISO bulk decoupling for BL0942
+C7,1,100nF_50V_0603,Capacitor_SMD:C_0603_1608Metric,C14663,50,MAINS_ISO,U3 ADuM1201 VDD2 bypass
+C8,1,10uF_16V_0805,Capacitor_SMD:C_0805_2012Metric,C15850,150,SAFE_DC,3.3V_SAFE LDO output cap
+C9,1,100nF_50V_0603,Capacitor_SMD:C_0603_1608Metric,C14663,50,MAINS_ISO,BL0942 VDD HF bypass
