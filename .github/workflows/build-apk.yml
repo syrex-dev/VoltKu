@@ -57,6 +57,15 @@ jobs:
             echo "$ANDROID_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
           fi
 
+      - name: Pasang google-services.json dari Secret (opsional untuk Push FCM)
+        env:
+          GOOGLE_SERVICES_JSON_RAW: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_RAW" ]; then
+            printf '%s\n' "$GOOGLE_SERVICES_JSON_RAW" > frontend/android/app/google-services.json
+            echo "google-services.json aktif untuk FCM Push Instan."
+          fi
+
       - name: Install dependencies frontend
         working-directory: frontend
         run: npm ci
