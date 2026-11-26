@@ -1,6 +1,8 @@
 #include <unity.h>
 #include <cstdio>
 #include <cstring>
+#include <bl0942_driver.hpp>
+#include <calibration.hpp>
 #include <payload_formatter.hpp>
 #include <provisioning_helper.hpp>
 #include <ring_buffer.hpp>
@@ -503,6 +505,106 @@ void test_provisioning_device_id_and_ap_ssid_formatting(void) {
     TEST_ASSERT_TRUE(is_valid_device_id("esp32_device_1"));
 }
 
+void test_calibration_low_load_noise_floor_and_ct_scaling(void) {
+    CalibrationConfig cfg{};
+    cfg.v_gain = 1.02f;
+    cfg.v_offset = -1.5f;
+    cfg.i_gain = 1.05f;
+    cfg.p_gain = 1.04f;
+    cfg.p_low_corr_w = 1.2f;
+    cfg.noise_floor_a = 0.015f;
+    cfg.ct_rating_a = 50;
+
+    // 1. Arus di bawah noise floor harus di-nol-kan (hilangkan ghost standby power)
+    CalibratedReading standby = apply_calibration(220.0f, 0.008f, 1.5f, 50.0f, 0.8f, cfg);
+    TEST_ASSERT_TRUE(standby.below_noise_floor);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, standby.i);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, standby.p);
+    TEST_ASSERT_FLOAT_WITHIN(0.2f, 222.9f, standby.v);
+
+    // 2. Beban nyata 100W terkalibrasi dengan gain & low-load offset
+    CalibratedReading load = apply_calibration(220.0f, 0.50f, 100.0f, 49.9f, 0.91f, cfg);
+    TEST_ASSERT_FALSE(load.below_noise_floor);
+    TEST_ASSERT_FLOAT_WITHIN(0.005f, 0.525f, load.i);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 105.2f, load.p);
+    TEST_ASSERT_FLOAT_WITHIN(0.02f, 0.90f, load.pf);
+
+    // 3. CT ratio lookup
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 1000.0f, ct_turns_ratio_for_rating(30));
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 1000.0f, ct_turns_ratio_for_rating(50));
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 2000.0f, ct_turns_ratio_for_rating(100));
+}
+
+void test_daily_rupiah_tracker_and_peak_tracker(void) {
+    // 3.2 kWh pada tarif Rp1.444,70/kWh = 144470 sen -> 3200W selama 3.600.000 ms (1 jam)
+    DailyRupiahTracker tracker(144470, 0);
+    tracker.add_power_sample(3200.0f, 3600000UL, 20000);
+    TEST_ASSERT_FLOAT_WITHIN(0.005f, 3.200f, tracker.kwh());
+    TEST_ASSERT_EQUAL_INT64(4623LL, tracker.cost_rp());
+
+    // Pergantian hari otomatis reset akumulator
+    tracker.add_power_sample(100.0f, 1000UL, 20001);
+    TEST_ASSERT_EQUAL_INT(20001, tracker.day_key());
+    TEST_ASSERT_LESS_THAN_INT64(100LL, tracker.energy_mwh());
+
+    // Peak tracker
+    PeakTracker pt;
+    pt.observe(180.0f, 0.9f);
+    pt.observe(1450.0f, 6.8f);
+    pt.observe(420.0f, 2.0f);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 1450.0f, pt.peak_power_w());
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 6.8f, pt.peak_current_a());
+}
+
+void test_bl0942_golden_packet_parsing_and_checksum(void) {
+    // Bangun paket 23-byte valid: V=220V (~3494300), I=10A (CT 2000:1, Rb=0.5 -> I_pin=2.5mV -> 628034),
+    // WATT=+2200W (~342912), FREQ=50Hz (20000), CF_CNT=100
+    uint8_t pkt[BL0942_FULL_PACKET_LEN] = {0};
+    pkt[0] = BL0942_FRAME_HEAD;
+
+    uint32_t i_raw = 628034UL;
+    pkt[1] = i_raw & 0xFF;
+    pkt[2] = (i_raw >> 8) & 0xFF;
+    pkt[3] = (i_raw >> 16) & 0xFF;
+
+    uint32_t v_raw = 3494300UL;
+    pkt[4] = v_raw & 0xFF;
+    pkt[5] = (v_raw >> 8) & 0xFF;
+    pkt[6] = (v_raw >> 16) & 0xFF;
+
+    uint32_t w_raw = 342912UL;
+    pkt[10] = w_raw & 0xFF;
+    pkt[11] = (w_raw >> 8) & 0xFF;
+    pkt[12] = (w_raw >> 16) & 0xFF;
+
+    uint32_t cf_raw = 100UL;
+    pkt[13] = cf_raw & 0xFF;
+    pkt[14] = (cf_raw >> 8) & 0xFF;
+    pkt[15] = (cf_raw >> 16) & 0xFF;
+
+    uint16_t freq_raw = 20000U;
+    pkt[16] = freq_raw & 0xFF;
+    pkt[17] = (freq_raw >> 8) & 0xFF;
+
+    pkt[22] = bl0942_checksum(pkt);
+
+    BL0942HardwareScale hw{};
+    BL0942Reading res = parse_bl0942_full_packet(pkt, sizeof(pkt), hw);
+    TEST_ASSERT_TRUE(res.valid);
+    TEST_ASSERT_FALSE(res.reverse_power);
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 220.0f, res.v);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 10.0f, res.i);
+    TEST_ASSERT_FLOAT_WITHIN(5.0f, 2200.0f, res.p);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 50.0f, res.f);
+    TEST_ASSERT_FLOAT_WITHIN(0.02f, 1.0f, res.pf);
+    TEST_ASSERT_GREATER_THAN_FLOAT(0.0f, res.e_kwh);
+
+    // Checksum rusak harus ditolak
+    pkt[22] ^= 0xFF;
+    BL0942Reading bad = parse_bl0942_full_packet(pkt, sizeof(pkt), hw);
+    TEST_ASSERT_FALSE(bad.valid);
+}
+
 int main(int argc, char** argv) {
     UNITY_BEGIN();
     RUN_TEST(test_payload_formatting_and_golden_export);
@@ -522,5 +624,8 @@ int main(int argc, char** argv) {
     RUN_TEST(test_ring_buffer_early_acks_overflow_drops_oldest);
     RUN_TEST(test_ring_buffer_disconnect_clears_early_acks);
     RUN_TEST(test_provisioning_device_id_and_ap_ssid_formatting);
+    RUN_TEST(test_calibration_low_load_noise_floor_and_ct_scaling);
+    RUN_TEST(test_daily_rupiah_tracker_and_peak_tracker);
+    RUN_TEST(test_bl0942_golden_packet_parsing_and_checksum);
     return UNITY_END();
 }

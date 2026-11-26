@@ -181,3 +181,21 @@ Lakukan verifikasi secara bertahap di meja kerja sebelum dipasang ke instalasi p
 | **Buffer Overflow** | `[BUFFER] Peringatan: Overflow terjadi! Total sampel terbuang: <N>` | Terjadi jika offline > 1 jam (> 360 sampel) |
 | **MQTT Terputus** | `[MQTT] Terputus dari broker. Alasan: <KODE>` | Masuk mode offline, antrean in-flight dikembalikan ke PENDING |
 | **MQTT Reconnect** | `[MQTT] Mencoba menyambung ke broker (backoff <N>s)...` | Percobaan ulang koneksi dengan backoff eksponensial |
+
+---
+
+## 6. Target Perangkat Keras Komersial VoltKu v3.0 (`[env:voltku_v3_c3]`)
+
+Target build `voltku_v3_c3` dirancang untuk papan **ESP32-C3 SuperMini + IC Metering BL0942 + Layar TFT IPS 1.3" (ST7789 240×240)** pada casing DIN-Rail v3.0:
+
+- **Kompilasi Target v3.0:**
+  ```powershell
+  python -m platformio run -d firmware -e voltku_v3_c3
+  ```
+- **Alasan Penambahan Dependensi Baru (Khusus `[env:voltku_v3_c3]`):**
+  - `lovyan03/LovyanGFX@^1.2.0`: Driver SPI berkecepatan tinggi dengan dukungan PWM backlight untuk layar warna TFT IPS 1.3" ST7789 240×240 pada ESP32-C3 (`SCK=GPIO4, MOSI=GPIO6, DC=GPIO5, RST=GPIO7, CS=GPIO10, BLK=GPIO3`).
+  - `ricmoo/QRCode@^0.0.1`: Pembangkit QR Code ringan tanpa dependensi eksternal untuk menampilkan QR setup Wi-Fi langsung di layar saat mode pairing.
+  - *(Build bawaan `[env:esp32dev]` tidak menyertakan library layar ini sehingga tetap ringkas dan kompatibel mundur).*
+- **Fitur Kalibrasi Presisi (`lib/energy_core/calibration.hpp`):**
+  - Profil CT Split-Core (**30A / 50A / 100A**), `v_gain`, `i_gain`, `p_gain`, koreksi beban rendah (`p_low_corr`), *noise floor* (`0.012A`), dan tarif Rupiah tersimpan di NVS (`energy_cfg`) serta dapat disetel melalui Captive Portal (`/save`).
+  - Menekan tombol fisik `SW1` (`GPIO9`) singkat akan berpindah halaman layar (`Live Watt & Rupiah` → `kWh & Peak Inrush` → `QR & Info`), sedangkan menahan `>= 3 detik` mengaktifkan mode SoftAP Captive Portal.

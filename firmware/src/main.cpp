@@ -1,7 +1,9 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <DNSServer.h>
+#if !defined(SENSOR_DRIVER_BL0942) || !SENSOR_DRIVER_BL0942
 #include <PZEM004Tv30.h>
+#endif
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
@@ -34,16 +36,50 @@
 #endif
 
 #ifndef FIRMWARE_VERSION
+#if defined(VOLTKU_V3_HARDWARE) && VOLTKU_V3_HARDWARE
+#define FIRMWARE_VERSION "3.0.0"
+#else
 #define FIRMWARE_VERSION "1.1.0"
 #endif
+#endif
 
+#ifndef SENSOR_RX_PIN
+#if defined(VOLTKU_V3_HARDWARE) && VOLTKU_V3_HARDWARE
+#define SENSOR_RX_PIN 0
+#else
+#define SENSOR_RX_PIN 16
+#endif
+#endif
+
+#ifndef SENSOR_TX_PIN
+#if defined(VOLTKU_V3_HARDWARE) && VOLTKU_V3_HARDWARE
+#define SENSOR_TX_PIN 1
+#else
+#define SENSOR_TX_PIN 17
+#endif
+#endif
+
+#include <bl0942_driver.hpp>
+#include <calibration.hpp>
 #include <payload_formatter.hpp>
 #include <provisioning_helper.hpp>
 #include <ring_buffer.hpp>
+#if defined(ENABLE_TFT_DISPLAY) && ENABLE_TFT_DISPLAY
+#include "display_ui.hpp"
+#endif
 
+#if defined(SENSOR_DRIVER_BL0942) && SENSOR_DRIVER_BL0942
+HardwareSerial SensorSerial(1);
+#else
 // Port Serial PZEM-004T (UART2): RX=GPIO16, TX=GPIO17
 HardwareSerial PZEMSerial(2);
-PZEM004Tv30 pzem(PZEMSerial, 16, 17);
+PZEM004Tv30 pzem(PZEMSerial, SENSOR_RX_PIN, SENSOR_TX_PIN);
+#endif
+
+#if defined(ENABLE_TFT_DISPLAY) && ENABLE_TFT_DISPLAY
+voltku_ui::DisplayController displayCtrl;
+unsigned long lastDisplayUpdateMs = 0;
+#endif
 
 espMqttClient mqttClient;
 Preferences preferences;
@@ -131,6 +167,14 @@ int64_t lastPublishedTs = 0;
 
 bool timeSynchronized = false;
 
+// Kalibrasi presisi multi-titik, tracker harian Rupiah, dan pelacak puncak inrush
+energy_core::CalibrationConfig calConfig;
+energy_core::DailyRupiahTracker dailyTracker(144470, 0);
+energy_core::PeakTracker peakTracker;
+energy_core::CalibratedReading latestReading{};
+unsigned long lastCalSampleMs = 0;
+uint32_t runtimeTariffSen = 144470;
+
 static void copyBounded(char *dest, size_t destSize, const char *src) {
   if (!dest || destSize == 0) {
     return;
@@ -153,7 +197,17 @@ void loadRuntimeConfig() {
   String nvsMqttUser = preferences.getString("mqtt_user", "");
   String nvsMqttPass = preferences.getString("mqtt_pass", "");
   String nvsDevId = preferences.getString("device_id", "");
+  calConfig.v_gain = preferences.getFloat("v_gain", 1.0f);
+  calConfig.v_offset = preferences.getFloat("v_offset", 0.0f);
+  calConfig.i_gain = preferences.getFloat("i_gain", 1.0f);
+  calConfig.i_offset = preferences.getFloat("i_offset", 0.0f);
+  calConfig.p_gain = preferences.getFloat("p_gain", 1.0f);
+  calConfig.p_low_corr_w = preferences.getFloat("p_low_corr", 0.0f);
+  calConfig.ct_rating_a = preferences.getUShort("ct_rating", 100);
+  runtimeTariffSen = preferences.getULong("tariff_sen", 144470UL);
   preferences.end();
+  energy_core::sanitize_calibration(calConfig);
+  dailyTracker.set_tariff(runtimeTariffSen, 0);
 
   if (nvsSsid.length() > 0) {
     copyBounded(runtimeWifiSsid, sizeof(runtimeWifiSsid), nvsSsid.c_str());
@@ -244,6 +298,20 @@ void handlePortalRoot() {
       "<input name='mqtt_host' value='" + String(runtimeMqttHost) + "'>"
       "<label>Port MQTT</label>"
       "<input name='mqtt_port' type='number' value='" + String(runtimeMqttPort) + "'>"
+      "<label>Profil CT Clamp (A)</label>"
+      "<select name='ct_rating'>"
+      "<option value='30'" + String(calConfig.ct_rating_a == 30 ? " selected" : "") + ">30A (Rumah <= 6.6kW)</option>"
+      "<option value='50'" + String(calConfig.ct_rating_a == 50 ? " selected" : "") + ">50A (Rumah <= 11kW)</option>"
+      "<option value='100'" + String(calConfig.ct_rating_a == 100 ? " selected" : "") + ">100A (Universal / Ruko)</option>"
+      "</select>"
+      "<label>Gain Kalibrasi (V / I / P)</label>"
+      "<input name='v_gain' type='number' step='0.001' value='" + String(calConfig.v_gain, 3) + "'>"
+      "<input name='i_gain' type='number' step='0.001' value='" + String(calConfig.i_gain, 3) + "' style='margin-top:4px'>"
+      "<input name='p_gain' type='number' step='0.001' value='" + String(calConfig.p_gain, 3) + "' style='margin-top:4px'>"
+      "<label>Koreksi Beban Rendah (W)</label>"
+      "<input name='p_low_corr' type='number' step='0.1' value='" + String(calConfig.p_low_corr_w, 1) + "'>"
+      "<label>Tarif Listrik Layar (sen/kWh, mis. 144470 = Rp1.444,70)</label>"
+      "<input name='tariff_sen' type='number' value='" + String(runtimeTariffSen) + "'>"
       "</details>"
       "<button type='submit'>Simpan &amp; Hubungkan</button>"
       "</form></div>"
@@ -321,6 +389,30 @@ void handlePortalSave() {
   }
   if (mport > 0 && mport <= 65535) {
     preferences.putUShort("mqtt_port", static_cast<uint16_t>(mport));
+  }
+  if (portalServer.hasArg("ct_rating")) {
+    uint16_t ct = static_cast<uint16_t>(portalServer.arg("ct_rating").toInt());
+    if (ct == 30 || ct == 50 || ct == 100) {
+      preferences.putUShort("ct_rating", ct);
+    }
+  }
+  if (portalServer.hasArg("v_gain")) {
+    preferences.putFloat("v_gain", portalServer.arg("v_gain").toFloat());
+  }
+  if (portalServer.hasArg("i_gain")) {
+    preferences.putFloat("i_gain", portalServer.arg("i_gain").toFloat());
+  }
+  if (portalServer.hasArg("p_gain")) {
+    preferences.putFloat("p_gain", portalServer.arg("p_gain").toFloat());
+  }
+  if (portalServer.hasArg("p_low_corr")) {
+    preferences.putFloat("p_low_corr", portalServer.arg("p_low_corr").toFloat());
+  }
+  if (portalServer.hasArg("tariff_sen")) {
+    unsigned long tsen = static_cast<unsigned long>(portalServer.arg("tariff_sen").toInt());
+    if (tsen >= 10000UL && tsen <= 1000000UL) {
+      preferences.putULong("tariff_sen", tsen);
+    }
   }
   preferences.end();
 
@@ -428,46 +520,127 @@ void checkTimeSync() {
   }
 }
 
-void readPZEM() {
-  float v = pzem.voltage();
-  float i = pzem.current();
-  float p = pzem.power();
-  float e = pzem.energy();
-  float f = pzem.frequency();
-  float pf = pzem.pf();
+void initSensorPort() {
+#if defined(SENSOR_DRIVER_BL0942) && SENSOR_DRIVER_BL0942
+  SensorSerial.begin(4800, SERIAL_8N1, SENSOR_RX_PIN, SENSOR_TX_PIN);
+#else
+  PZEMSerial.begin(9600, SERIAL_8N1, SENSOR_RX_PIN, SENSOR_TX_PIN);
+#endif
+}
 
-  if (!isnan(v) && !isnan(i) && !isnan(p) && !isnan(e)) {
-    vAccum += v;
-    iAccum += i;
-    pAccum += p;
-    lastValidEnergy = e;
+bool readRawSensor(
+    float &rawV,
+    float &rawI,
+    float &rawP,
+    float &rawE,
+    float &rawF,
+    float &rawPf
+) {
+#if defined(SENSOR_DRIVER_BL0942) && SENSOR_DRIVER_BL0942
+  while (SensorSerial.available() > 0) {
+    SensorSerial.read();
+  }
+  const uint8_t req[2] = {
+      energy_core::BL0942_READ_CMD_BYTE,
+      energy_core::BL0942_READ_ALL_ADDR,
+  };
+  SensorSerial.write(req, sizeof(req));
+  SensorSerial.flush();
+
+  uint8_t pkt[energy_core::BL0942_FULL_PACKET_LEN] = {0};
+  size_t idx = 0;
+  unsigned long waitStart = millis();
+  while (idx < energy_core::BL0942_FULL_PACKET_LEN &&
+         (millis() - waitStart) < 90UL) {
+    if (SensorSerial.available() > 0) {
+      uint8_t b = static_cast<uint8_t>(SensorSerial.read());
+      if (idx == 0 && b != energy_core::BL0942_FRAME_HEAD) {
+        continue;
+      }
+      pkt[idx++] = b;
+    }
+  }
+
+  energy_core::BL0942HardwareScale hw{};
+  hw.ct_ratio = energy_core::ct_turns_ratio_for_rating(calConfig.ct_rating_a);
+  energy_core::BL0942Reading br =
+      energy_core::parse_bl0942_full_packet(pkt, idx, hw);
+  if (!br.valid) {
+    return false;
+  }
+  rawV = br.v;
+  rawI = br.i;
+  rawP = br.p;
+  rawE = br.e_kwh;
+  rawF = br.f;
+  rawPf = br.pf;
+  return true;
+#else
+  rawV = pzem.voltage();
+  rawI = pzem.current();
+  rawP = pzem.power();
+  rawE = pzem.energy();
+  rawF = pzem.frequency();
+  rawPf = pzem.pf();
+  return !isnan(rawV) && !isnan(rawI) && !isnan(rawP) && !isnan(rawE);
+#endif
+}
+
+void readEnergySensor() {
+  float rawV = NAN, rawI = NAN, rawP = NAN, rawE = NAN, rawF = NAN, rawPf = NAN;
+  unsigned long nowMs = millis();
+
+  if (readRawSensor(rawV, rawI, rawP, rawE, rawF, rawPf)) {
+    energy_core::CalibratedReading cal = energy_core::apply_calibration(
+        rawV, rawI, rawP, rawF, rawPf, calConfig);
+    latestReading = cal;
+
+    vAccum += cal.v;
+    iAccum += cal.i;
+    pAccum += cal.p;
+    lastValidEnergy = rawE;
     ++sampleCount;
-    lastPzemSuccessMs = millis();
+    lastPzemSuccessMs = nowMs;
 
-    if (!isnan(f)) {
-      fAccum += f;
-      ++fSampleCount;
-      lastValidF = f;
-    }
+    fAccum += cal.f;
+    ++fSampleCount;
+    lastValidF = cal.f;
 
-    if (!isnan(pf)) {
-      pfAccum += pf;
-      ++pfSampleCount;
-      lastValidPf = pf;
+    pfAccum += cal.pf;
+    ++pfSampleCount;
+    lastValidPf = cal.pf;
+
+    peakTracker.observe(cal.p, cal.i);
+
+    if (lastCalSampleMs > 0) {
+      uint32_t dtMs = static_cast<uint32_t>(nowMs - lastCalSampleMs);
+      if (dtMs > 0 && dtMs <= 10000UL) {
+        int dayKey = -1;
+        if (timeSynchronized) {
+          time_t nowWib = time(nullptr) + (7 * 3600);
+          dayKey = static_cast<int>(nowWib / 86400);
+        }
+        dailyTracker.add_power_sample(cal.p, dtMs, dayKey);
+      }
     }
+    lastCalSampleMs = nowMs;
 
     if (pzemErrorActive) {
       pzemErrorActive = false;
-      Serial.println("[PZEM] Sensor pulih dan kembali membaca data normal.");
+      Serial.println("[SENSOR] Sensor pulih dan kembali membaca data normal.");
     }
   } else {
-    if (millis() - lastPzemSuccessMs > 30000) {
+    if (nowMs - lastPzemSuccessMs > 30000UL) {
       Serial.println(
-          "[PZEM] Tidak ada respons > 30 detik! Me-restart UART2...");
+          "[SENSOR] Tidak ada respons > 30 detik! Me-restart port serial...");
       pzemErrorActive = true;
+#if defined(SENSOR_DRIVER_BL0942) && SENSOR_DRIVER_BL0942
+      SensorSerial.end();
+#else
       PZEMSerial.end();
-      PZEMSerial.begin(9600, SERIAL_8N1, 16, 17);
-      lastPzemSuccessMs = millis();
+#endif
+      initSensorPort();
+      lastPzemSuccessMs = nowMs;
     }
   }
 }
@@ -525,6 +698,12 @@ void handlePairingButton(unsigned long nowMs) {
       startPairingPortal();
     }
   } else {
+    if (pairingBtnPressStartMs > 0 && !pairingBtnHeldHandled &&
+        (nowMs - pairingBtnPressStartMs >= 45UL)) {
+#if defined(ENABLE_TFT_DISPLAY) && ENABLE_TFT_DISPLAY
+      displayCtrl.next_page();
+#endif
+    }
     pairingBtnPressStartMs = 0;
     pairingBtnHeldHandled = false;
   }
@@ -570,8 +749,12 @@ void setup() {
   Serial.print("[DEVICE] ID Perangkat: ");
   Serial.println(runtimeDeviceId);
 
-  PZEMSerial.begin(9600, SERIAL_8N1, 16, 17);
+  initSensorPort();
   lastPzemSuccessMs = millis();
+
+#if defined(ENABLE_TFT_DISPLAY) && ENABLE_TFT_DISPLAY
+  displayCtrl.begin();
+#endif
 
   if (energy_core::is_placeholder_value(runtimeWifiSsid)) {
     Serial.println("[PROVISION] Belum ada Wi-Fi tersimpan, membuka Captive Portal...");
@@ -605,6 +788,39 @@ void loop() {
     Serial.println("[SYSTEM] Restart untuk menerapkan konfigurasi Wi-Fi baru...");
     ESP.restart();
   }
+
+#if defined(ENABLE_TFT_DISPLAY) && ENABLE_TFT_DISPLAY
+  if (nowMs - lastDisplayUpdateMs >= 500UL) {
+    lastDisplayUpdateMs = nowMs;
+    voltku_ui::DisplaySnapshot snap{};
+    snap.v = latestReading.v;
+    snap.i = latestReading.i;
+    snap.p = latestReading.p;
+    snap.e_kwh = lastValidEnergy;
+    snap.f = latestReading.f > 0.0f ? latestReading.f : lastValidF;
+    snap.pf = latestReading.pf;
+    snap.peak_w = peakTracker.peak_power_w();
+    snap.cost_rp = dailyTracker.cost_rp();
+    snap.rssi = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -99;
+    {
+      RingBufferLock lock;
+      snap.buf_count = ringBuffer.size();
+    }
+    snap.ct_rating_a = calConfig.ct_rating_a;
+    snap.wifi_ok = (WiFi.status() == WL_CONNECTED);
+    snap.mqtt_ok = mqttClient.connected();
+    snap.sensor_ok = !pzemErrorActive;
+    snap.pairing_mode = pairingMode;
+    snap.device_id = runtimeDeviceId;
+    snap.ap_ssid = softApSsid;
+#if defined(SENSOR_DRIVER_BL0942) && SENSOR_DRIVER_BL0942
+    snap.driver_name = "BL0942";
+#else
+    snap.driver_name = "PZEM";
+#endif
+    displayCtrl.render(snap);
+  }
+#endif
 
   if (pairingMode) {
     dnsServer.processNextRequest();
@@ -644,10 +860,10 @@ void loop() {
     }
   }
 
-  // 4. Pembacaan sensor PZEM setiap 1 detik
+  // 4. Pembacaan sensor energi setiap 1 detik
   if (nowMs - lastSensorReadMs >= 1000) {
     lastSensorReadMs = nowMs;
-    readPZEM();
+    readEnergySensor();
   }
 
   // 5. Agregasi dan pembentukan payload telemetri setiap interval
