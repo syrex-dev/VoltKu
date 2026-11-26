@@ -85,6 +85,19 @@ def test_forgot_and_reset_password_full_flow(monkeypatch):
     )
     assert bad_tok_res.status_code == 400
 
+    # 5.5 Input kata sandi lama ditolak dengan reason same_as_old_password & token tetap utuh
+    st_ok = client.get(f"/api/users/reset-password/status?token={raw_token}")
+    assert st_ok.status_code == 200
+    assert st_ok.json()["valid"] is True
+    assert st_ok.json()["email_masked"] == "lu***@example.com"
+
+    same_res = client.post(
+        "/api/users/reset-password",
+        json={"token": raw_token, "new_password": "PasswordLama123"},
+    )
+    assert same_res.status_code == 422
+    assert same_res.json()["error"]["reason"] == "same_as_old_password"
+
     # 6. Reset kata sandi dengan token valid berhasil & token langsung hangus
     reset_res = client.post(
         "/api/users/reset-password",

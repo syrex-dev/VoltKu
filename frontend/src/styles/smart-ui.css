@@ -7943,6 +7943,184 @@ button,
   flex-wrap: wrap;
 }
 
+.reset-page-card {
+  max-width: 440px;
+}
+
+.reset-page-brand-head {
+  margin-bottom: 14px;
+}
+
+.reset-security-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  background: var(--accent-cyan-glow);
+  color: var(--text-accent);
+}
+
+.auth-sub-icon-box.is-warn {
+  background: var(--accent-amber-glow);
+  color: var(--accent-amber);
+}
+
+.reset-account-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border-radius: 11px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+
+.reset-account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: var(--accent-emerald);
+}
+
+.reset-expiry-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.reset-old-pass-alert {
+  padding: 12px 13px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  margin-bottom: 14px;
+}
+
+.reset-old-pass-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #b45309;
+  margin-bottom: 4px;
+}
+
+[data-theme="dark"] .reset-old-pass-head {
+  color: #fbbf24;
+}
+
+.reset-old-pass-desc {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.48;
+  color: var(--text-secondary);
+}
+
+.reset-old-pass-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset-strength-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.reset-strength-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+.reset-strength-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.reset-strength-fill.is-weak {
+  background: #ef4444;
+}
+
+.reset-strength-fill.is-fair {
+  background: #f59e0b;
+}
+
+.reset-strength-fill.is-good {
+  background: #0ea5e9;
+}
+
+.reset-strength-fill.is-strong {
+  background: #10b981;
+}
+
+.reset-strength-label {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.reset-strength-label.is-weak {
+  color: #ef4444;
+}
+
+.reset-strength-label.is-fair {
+  color: #d97706;
+}
+
+.reset-strength-label.is-good {
+  color: #0284c7;
+}
+
+.reset-strength-label.is-strong {
+  color: #059669;
+}
+
+.reset-rules-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 2px 0 12px;
+}
+
+.reset-rule-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.reset-rule-item.ok {
+  color: var(--accent-emerald);
+  font-weight: 600;
+}
+
+.reset-standalone-footer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
 .admin-pm-form-card {
   margin-top: 14px;
   padding: 14px;

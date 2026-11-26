@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select, update
@@ -893,6 +893,48 @@ def request_password_reset(
     return neutral_response
 
 
+def _mask_email(email: str) -> str:
+    clean = (email or "").strip()
+    if "@" not in clean:
+        return "***"
+    local, domain = clean.split("@", 1)
+    prefix = local[:2] if len(local) >= 2 else local[:1]
+    return f"{prefix}***@{domain}"
+
+
+@router.get("/reset-password/status", response_model=dict[str, Any])
+def get_reset_token_status(
+    token: str = Query(""),
+    session: Session = Depends(get_db),
+):
+    """Memeriksa keabsahan awal tautan reset kata sandi untuk tampilan halaman standalone."""
+    raw_token = (token or "").strip()
+    if len(raw_token) < 16 or len(raw_token) > 256:
+        return {"valid": False, "reason": "missing_or_invalid"}
+
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    reset_row = session.scalar(
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+    )
+    if not reset_row:
+        return {"valid": False, "reason": "invalid"}
+    if reset_row.used_at is not None:
+        return {"valid": False, "reason": "used"}
+    if reset_row.expires_at <= now_utc:
+        return {"valid": False, "reason": "expired"}
+
+    user = session.get(User, reset_row.user_id)
+    if not user or not user.is_active:
+        return {"valid": False, "reason": "inactive"}
+
+    return {
+        "valid": True,
+        "email_masked": _mask_email(user.email),
+        "expires_in_seconds": max(0, int(reset_row.expires_at - now_utc)),
+    }
+
+
 @router.post("/reset-password", response_model=dict[str, Any])
 def reset_password_with_token(
     req: ResetPasswordRequest,
@@ -941,7 +983,25 @@ def reset_password_with_token(
             "Akun tidak ditemukan atau sedang dinonaktifkan.",
         )
 
+    has_local_pw = not str(getattr(user, "password_hash", "") or "").startswith("!")
+    if has_local_pw and verify_user_password(req.new_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "reason": "same_as_old_password",
+                    "message": (
+                        "Jangan sama dengan kata sandi lama Anda. Kata sandi tersebut masih aktif "
+                        "— Anda dapat langsung masuk atau buat kata sandi baru yang berbeda."
+                    ),
+                }
+            },
+        )
+
     user.password_hash = hash_password(req.new_password)
+    if (user.auth_provider or "").lower() == "google":
+        user.auth_provider = "both"
     session.execute(
         update(PasswordResetToken)
         .where(

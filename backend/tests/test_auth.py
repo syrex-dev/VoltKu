@@ -202,6 +202,7 @@ def test_route_audit_security_lockdown():
     public_get_paths = {
         "/healthz",
         "/api/users/oauth-config",
+        "/api/users/reset-password/status",
         "/api/public/access",
         "/api/public/app-config",
         "/api/public/devices",
