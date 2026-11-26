@@ -2,35 +2,30 @@
   <title>VoltKu</title>
   <defs>
     <linearGradient id="fv-bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#132B52"/>
-      <stop offset="55%" stop-color="#0B1933"/>
-      <stop offset="100%" stop-color="#071022"/>
-    </linearGradient>
-    <radialGradient id="fv-glow" cx="32" cy="14" r="38" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.24"/>
-      <stop offset="100%" stop-color="#1677FF" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="fv-w" x1="12" y1="12" x2="34" y2="52" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="100%" stop-color="#D7E6FF"/>
+      <stop offset="65%" stop-color="#F2F7FF"/>
+      <stop offset="100%" stop-color="#E4EEFF"/>
     </linearGradient>
-    <linearGradient id="fv-b" x1="52" y1="12" x2="30" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#38BDF8"/>
+    <linearGradient id="fv-l1" x1="10" y1="10" x2="34" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0B1B3A"/>
+      <stop offset="100%" stop-color="#1E40AF"/>
+    </linearGradient>
+    <linearGradient id="fv-l2" x1="54" y1="10" x2="30" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0EA5E9"/>
       <stop offset="52%" stop-color="#1677FF"/>
       <stop offset="100%" stop-color="#1D4ED8"/>
     </linearGradient>
-    <linearGradient id="fv-s" x1="30" y1="36" x2="38" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#09204A" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="#09204A" stop-opacity="0"/>
+    <linearGradient id="fv-ls" x1="30" y1="36" x2="38" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#081530" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#081530" stop-opacity="0"/>
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="16" fill="url(#fv-bg)"/>
-  <rect width="64" height="64" rx="16" fill="url(#fv-glow)"/>
-  <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="15.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="1.5"/>
-  <g transform="translate(8 8) scale(0.75)">
-    <path fill="url(#fv-w)" d="M10.4 14.4C9.8 12.9 10.9 11.4 12.5 11.4H20.8C21.8 11.4 22.7 12 23.1 12.9L36.2 44.3L33.4 50.6C32.4 52.8 29.2 52.8 28.2 50.6L10.4 14.4Z"/>
-    <path fill="url(#fv-b)" d="M43.2 11.4H51.5C53.1 11.4 54.2 12.9 53.6 14.4L36.2 50.5C35.4 52.1 33.8 52.6 32 52.6C30.4 52.6 29 51.8 28.3 50.5L32.8 40.3L40.9 13C41.3 12 42.2 11.4 43.2 11.4Z"/>
-    <path fill="url(#fv-s)" d="M32.8 40.3L36.2 44.3L33.4 50.6L28.3 50.5L32.8 40.3Z"/>
-    <circle cx="32" cy="17.5" r="3.4" fill="#FBBF24"/>
+  <rect x="1" y="1" width="62" height="62" rx="15" fill="none" stroke="#C9DCFF" stroke-width="2"/>
+  <g transform="translate(2.5 2.5) scale(0.92)">
+    <path fill="url(#fv-l1)" d="M10.4 14.4C9.8 12.9 10.9 11.4 12.5 11.4H20.8C21.8 11.4 22.7 12 23.1 12.9L36.2 44.3L33.4 50.6C32.4 52.8 29.2 52.8 28.2 50.6L10.4 14.4Z"/>
+    <path fill="url(#fv-l2)" d="M43.2 11.4H51.5C53.1 11.4 54.2 12.9 53.6 14.4L36.2 50.5C35.4 52.1 33.8 52.6 32 52.6C30.4 52.6 29 51.8 28.3 50.5L32.8 40.3L40.9 13C41.3 12 42.2 11.4 43.2 11.4Z"/>
+    <path fill="url(#fv-ls)" d="M32.8 40.3L36.2 44.3L33.4 50.6L28.3 50.5L32.8 40.3Z"/>
+    <circle cx="32" cy="17.5" r="3.6" fill="#F59E0B"/>
   </g>
 </svg>
