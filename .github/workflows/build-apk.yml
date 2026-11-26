@@ -45,16 +45,17 @@ jobs:
       - name: Siapkan Android Debug Keystore persisten (agar SHA-1 Google Sign-In stabil)
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: voltku-android-debug-keystore-v1
+          path: /home/runner/.android/debug.keystore
+          key: voltku-android-debug-keystore-v2
 
       - name: Pulihkan keystore dari Secret (opsional)
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$ANDROID_KEYSTORE_B64" ]; then
-            mkdir -p ~/.android
-            printf '%s' "$ANDROID_KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > ~/.android/debug.keystore
+            mkdir -p "$HOME/.android"
+            printf '%s' "$ANDROID_KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "$HOME/.android/debug.keystore"
+            echo "Pulihkan keystore permanen dari Secret ANDROID_DEBUG_KEYSTORE_BASE64."
           fi
 
       - name: Pasang google-services.json dari Secret (opsional untuk Push FCM)
