@@ -338,6 +338,7 @@ def test_manual_payment_methods_and_proof_verification_flow():
     assert inv["payment_account_number"] == "1234567890"
     assert inv["amount_rp"] == 30000
     assert inv["expires_at"] is not None
+    assert inv["expires_at"] - inv["created_at"] == 1800
 
     # Tidak boleh unggah payload non-gambar (harus ditolak 422)
     bad_proof = client.post(

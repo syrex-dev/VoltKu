@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.models import PaymentMethod, UpgradeRequest
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
-DEFAULT_PAYMENT_TTL_SECONDS = 24 * 3600
+DEFAULT_PAYMENT_TTL_SECONDS = 30 * 60  # 30 menit
 ORDER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 ALLOWED_PAYMENT_TYPES = {"qris", "bank", "ewallet"}
 

@@ -33,10 +33,10 @@ const TYPE_META = {
 function formatCountdown(expiresAtEpoch, nowEpoch) {
   if (!expiresAtEpoch) return ''
   const diff = Math.max(0, expiresAtEpoch - nowEpoch)
-  const hrs = String(Math.floor(diff / 3600)).padStart(2, '0')
+  const hrs = Math.floor(diff / 3600)
   const mins = String(Math.floor((diff % 3600) / 60)).padStart(2, '0')
   const secs = String(diff % 60).padStart(2, '0')
-  return `${hrs}:${mins}:${secs}`
+  return hrs > 0 ? `${String(hrs).padStart(2, '0')}:${mins}:${secs}` : `${mins}:${secs}`
 }
 
 export function PlanUpgradeModal({
