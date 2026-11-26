@@ -151,3 +151,60 @@ def test_email_builder_url():
     url = build_reset_password_url("abc_123")
     assert url.endswith("/?reset_token=abc_123")
     assert User is not None
+
+
+def test_admin_edit_email_and_trigger_reset_link(monkeypatch):
+    from app.auth import create_access_token
+
+    _, session = open_clean_test_session()
+    captured: list[str] = []
+
+    def fake_admin_send(
+        *, to_email: str, user_name: str, raw_token: str, expires_minutes: int = 30
+    ):
+        captured.append(f"{to_email}:{raw_token}")
+        return True
+
+    monkeypatch.setattr("app.routers.admin.send_password_reset_email", fake_admin_send)
+
+    admin_tok = create_access_token(subject="admin", role="admin")
+    adm_headers = {"Authorization": f"Bearer {admin_tok}"}
+
+    u1 = client.post(
+        "/api/admin/users",
+        headers=adm_headers,
+        json={"name": "Pembeli Awal", "email": "lama@example.com", "password": "PasswordAwal1"},
+    )
+    assert u1.status_code == 201
+    uid = u1.json()["id"]
+
+    # Edit email pembeli
+    upd = client.patch(
+        f"/api/admin/users/{uid}",
+        headers=adm_headers,
+        json={"email": "baru@example.com"},
+    )
+    assert upd.status_code == 200
+    assert upd.json()["email"] == "baru@example.com"
+
+    # Admin memicu pengiriman tautan reset ke email baru
+    trig = client.post(f"/api/admin/users/{uid}/send-reset-link", headers=adm_headers)
+    assert trig.status_code == 200
+    assert trig.json()["sent"] is True
+    assert trig.json()["email"] == "baru@example.com"
+    assert len(captured) == 1
+    sent_email, raw_tok = captured[0].split(":", 1)
+    assert sent_email == "baru@example.com"
+
+    # Pembeli memakai token untuk menyetel kata sandi baru
+    rst = client.post(
+        "/api/users/reset-password",
+        json={"token": raw_tok, "new_password": "PasswordBaru88"},
+    )
+    assert rst.status_code == 200
+    login_ok = client.post(
+        "/api/users/login",
+        json={"email": "baru@example.com", "password": "PasswordBaru88"},
+    )
+    assert login_ok.status_code == 200
+    session.close()

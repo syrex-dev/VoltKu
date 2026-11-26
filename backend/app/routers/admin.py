@@ -2,7 +2,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
@@ -39,12 +39,17 @@ from app.routers.devices import (
 )
 from app.routers.public import PUBLIC_ACCESS_KEY, is_public_dashboard_enabled
 from app.routers.settings import format_settings_response, get_all_settings
-from app.routers.users import EMAIL_RE, _serialize_user
+from app.routers.users import EMAIL_RE, _serialize_user, _validate_password_policy
 from app.services.app_config import (
     get_active_terms_version,
     get_admin_app_settings,
     get_app_config_map,
     update_admin_app_settings,
+)
+from app.services.email_service import (
+    is_smtp_configured,
+    issue_password_reset_token,
+    send_password_reset_email,
 )
 from app.services.payments import (
     ALLOWED_PAYMENT_TYPES,
@@ -84,6 +89,7 @@ class AdminUserCreateRequest(BaseModel):
 
 class AdminUserUpdateRequest(BaseModel):
     name: Optional[str] = None
+    email: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
     plan_tier: Optional[str] = None
@@ -360,11 +366,20 @@ def update_admin_user(
         if len(clean_name) < 2 or len(clean_name) > 128:
             raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, "Nama minimal 2 karakter")
         user.name = clean_name
+    if req.email is not None:
+        clean_email = req.email.strip().lower()
+        if not EMAIL_RE.match(clean_email) or len(clean_email) > 128:
+            raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, "Format email tidak valid")
+        conflict = session.scalar(
+            select(User).where(User.email == clean_email, User.id != user.id)
+        )
+        if conflict:
+            raise _admin_err(status.HTTP_409_CONFLICT, "Email sudah dipakai oleh akun lain")
+        user.email = clean_email
     if req.is_active is not None:
         user.is_active = 1 if req.is_active else 0
     if req.password is not None and req.password.strip():
-        if len(req.password) < 6:
-            raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, "Kata sandi minimal 6 karakter")
+        _validate_password_policy(req.password)
         user.password_hash = hash_password(req.password)
 
     if (
@@ -391,6 +406,43 @@ def update_admin_user(
     item = _serialize_user(user, session=session, cfg_map=cfg_map, device_count=dev_count)
     item["device_count"] = dev_count
     return item
+
+
+@router.post("/users/{user_id}/send-reset-link", response_model=dict[str, Any])
+def admin_send_user_reset_link(
+    user_id: int,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_db),
+):
+    """Memicu pengiriman tautan reset kata sandi ke email pembeli langsung dari Panel Admin."""
+    user = session.get(User, user_id)
+    if not user:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Akun pengguna tidak ditemukan")
+    if not user.is_active:
+        raise _admin_err(
+            status.HTTP_409_CONFLICT,
+            "Aktifkan akun terlebih dahulu sebelum mengirim tautan reset kata sandi.",
+        )
+
+    raw_token = issue_password_reset_token(session, user.id)
+    smtp_ready = is_smtp_configured()
+    background_tasks.add_task(
+        send_password_reset_email,
+        to_email=user.email,
+        user_name=user.name,
+        raw_token=raw_token,
+        expires_minutes=30,
+    )
+    return {
+        "sent": True,
+        "smtp_configured": smtp_ready,
+        "email": user.email,
+        "message": (
+            f"Tautan reset kata sandi dikirim ke {user.email}."
+            if smtp_ready
+            else f"Token reset dibuat untuk {user.email}, namun SMTP_HOST di server belum diatur."
+        ),
+    }
 
 
 @router.delete("/users/{user_id}", response_model=dict[str, Any])

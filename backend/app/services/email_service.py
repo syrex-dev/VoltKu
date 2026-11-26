@@ -1,15 +1,49 @@
 """Layanan pengiriman email transaksional (reset kata sandi) via SMTP standar."""
 
+import hashlib
 import html
 import logging
+import secrets
 import smtplib
 import ssl
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from urllib.parse import urlencode
 
+from sqlalchemy import update
+from sqlalchemy.orm import Session
+
 from app.config import get_settings
+from app.models import PasswordResetToken
 
 logger = logging.getLogger(__name__)
+
+PASSWORD_RESET_TTL_SECONDS = 30 * 60
+
+
+def issue_password_reset_token(session: Session, user_id: int) -> str:
+    """Membatalkan token reset lama milik user dan membuat token baru sekali pakai (30 menit)."""
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+    session.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == int(user_id),
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now_utc)
+    )
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    session.add(
+        PasswordResetToken(
+            user_id=int(user_id),
+            token_hash=token_hash,
+            expires_at=now_utc + PASSWORD_RESET_TTL_SECONDS,
+            created_at=now_utc,
+        )
+    )
+    session.commit()
+    return raw_token
 
 
 def is_smtp_configured() -> bool:

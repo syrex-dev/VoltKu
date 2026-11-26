@@ -1,6 +1,5 @@
 import hashlib
 import re
-import secrets
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -30,7 +29,7 @@ from app.services.app_config import (
     is_registration_enabled,
     record_terms_consent,
 )
-from app.services.email_service import send_password_reset_email
+from app.services.email_service import issue_password_reset_token, send_password_reset_email
 from app.services.google_oauth import GoogleTokenError, verify_google_id_token
 from app.services.payments import (
     DEFAULT_PAYMENT_TTL_SECONDS,
@@ -791,26 +790,7 @@ def request_password_reset(
     if email_limited:
         return neutral_response
 
-    now_utc = int(datetime.now(timezone.utc).timestamp())
-    session.execute(
-        update(PasswordResetToken)
-        .where(
-            PasswordResetToken.user_id == user.id,
-            PasswordResetToken.used_at.is_(None),
-        )
-        .values(used_at=now_utc)
-    )
-
-    raw_token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-    reset_entry = PasswordResetToken(
-        user_id=user.id,
-        token_hash=token_hash,
-        expires_at=now_utc + PASSWORD_RESET_TTL_SECONDS,
-        created_at=now_utc,
-    )
-    session.add(reset_entry)
-    session.commit()
+    raw_token = issue_password_reset_token(session, user.id)
 
     background_tasks.add_task(
         send_password_reset_email,

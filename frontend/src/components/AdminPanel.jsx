@@ -27,6 +27,7 @@ import { BrandLogo } from './BrandLogo'
 import { InAppSelect } from './InAppSelect'
 import { AdminAppSettingsTab } from './AdminAppSettingsTab'
 import { AdminUsersSection } from './AdminUsersSection'
+import { AdminUserModal } from './AdminUserModal'
 import {
   AdminPaymentSummaryStrip,
   AdminUpgradeRequestsCard,
@@ -71,13 +72,6 @@ export function AdminPanel({
   // User Create / Edit Modal State
   const [userModalMode, setUserModalMode] = useState(null) // 'create' | 'edit'
   const [editingUser, setEditingUser] = useState(null)
-  const [uName, setUName] = useState('')
-  const [uEmail, setUEmail] = useState('')
-  const [uPassword, setUPassword] = useState('')
-  const [uActive, setUActive] = useState(true)
-  const [uPlanTier, setUPlanTier] = useState('free')
-  const [uPlanDuration, setUPlanDuration] = useState('keep')
-  const [savingUser, setSavingUser] = useState(false)
 
   const [togglingAccess, setTogglingAccess] = useState(false)
   const [pmSummaryCounts, setPmSummaryCounts] = useState(null)
@@ -195,72 +189,11 @@ export function AdminPanel({
   const openCreateUser = () => {
     setUserModalMode('create')
     setEditingUser(null)
-    setUName('')
-    setUEmail('')
-    setUPassword('')
-    setUActive(true)
-    setUPlanTier('free')
-    setUPlanDuration('0')
   }
 
   const openEditUser = (u) => {
     setUserModalMode('edit')
     setEditingUser(u)
-    setUName(u.name || '')
-    setUEmail(u.email || '')
-    setUPassword('')
-    setUActive(Boolean(u.is_active))
-    setUPlanTier(u.plan_tier || 'free')
-    setUPlanDuration('keep')
-  }
-
-  const handleSaveUser = async (e) => {
-    e.preventDefault()
-    setSavingUser(true)
-    setNotice(null)
-    try {
-      if (userModalMode === 'create') {
-        const body = {
-          name: uName.trim(),
-          email: uEmail.trim(),
-          password: uPassword,
-          plan_tier: uPlanTier,
-        }
-        if (uPlanTier === 'pro' && uPlanDuration !== '0' && Number(uPlanDuration) > 0) {
-          body.plan_duration_days = Number(uPlanDuration)
-        }
-        await apiRequest(
-          '/api/admin/users',
-          { method: 'POST', body },
-          token,
-          onLogout
-        )
-        setNotice({ type: 'success', text: 'Akun pengguna baru berhasil dibuat.' })
-      } else if (editingUser) {
-        const payload = { name: uName.trim(), is_active: uActive, plan_tier: uPlanTier }
-        if (uPassword.trim()) payload.password = uPassword
-        if (uPlanTier === 'pro') {
-          if (uPlanDuration === '0') {
-            payload.clear_plan_expiration = true
-          } else if (uPlanDuration !== 'keep' && Number(uPlanDuration) > 0) {
-            payload.plan_duration_days = Number(uPlanDuration)
-          }
-        }
-        await apiRequest(
-          `/api/admin/users/${editingUser.id}`,
-          { method: 'PATCH', body: payload },
-          token,
-          onLogout
-        )
-        setNotice({ type: 'success', text: 'Data akun pengguna diperbarui.' })
-      }
-      setUserModalMode(null)
-      await loadAdminData()
-    } catch (err) {
-      setNotice({ type: 'error', text: err.message || 'Gagal menyimpan akun pengguna.' })
-    } finally {
-      setSavingUser(false)
-    }
   }
 
   const handleDeleteUser = async (uid) => {
@@ -992,135 +925,17 @@ export function AdminPanel({
       )}
 
       {/* Modal Buat / Edit Tenant User */}
-      {userModalMode && (
-        <div className="modal-overlay pwa-guide-overlay" onClick={() => setUserModalMode(null)}>
-          <div className="modal-dialog-modern pwa-guide-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="pwa-guide-head">
-              <div>
-                <h3 className="pwa-guide-title">
-                  {userModalMode === 'create' ? 'Buat Akun Pembeli' : 'Edit Akun Pembeli'}
-                </h3>
-                {editingUser && <p className="pwa-guide-sub">{editingUser.email}</p>}
-              </div>
-              <button
-                type="button"
-                className="btn-icon-close"
-                onClick={() => setUserModalMode(null)}
-                aria-label="Tutup"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleSaveUser}>
-              <div className="form-field-group">
-                <label className="field-label" htmlFor="admin-user-name">
-                  Nama Lengkap
-                </label>
-                <input
-                  id="admin-user-name"
-                  type="text"
-                  className="modern-input"
-                  value={uName}
-                  onChange={(e) => setUName(e.target.value)}
-                  required
-                />
-              </div>
-              {userModalMode === 'create' && (
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="admin-user-email">
-                    Email
-                  </label>
-                  <input
-                    id="admin-user-email"
-                    type="email"
-                    className="modern-input"
-                    value={uEmail}
-                    onChange={(e) => setUEmail(e.target.value)}
-                    required
-                  />
-                </div>
-              )}
-              <div className="form-field-group">
-                <label className="field-label" htmlFor="admin-user-pass">
-                  {userModalMode === 'create'
-                    ? 'Kata Sandi Awal'
-                    : 'Kata Sandi Baru (kosongkan jika tetap)'}
-                </label>
-                <input
-                  id="admin-user-pass"
-                  type="password"
-                  className="modern-input"
-                  value={uPassword}
-                  onChange={(e) => setUPassword(e.target.value)}
-                  minLength={userModalMode === 'create' ? 6 : undefined}
-                  required={userModalMode === 'create'}
-                />
-              </div>
-              <div className="form-field-group">
-                <label className="field-label" htmlFor="admin-user-plan">
-                  Paket Langganan
-                </label>
-                <InAppSelect
-                  id="admin-user-plan"
-                  value={uPlanTier}
-                  onChange={setUPlanTier}
-                  options={[
-                    { value: 'free', label: appSettings?.free_plan_name || 'VoltKu Gratis' },
-                    { value: 'pro', label: appSettings?.pro_plan_name || 'VoltKu Pro' },
-                  ]}
-                />
-              </div>
-
-              {uPlanTier === 'pro' && (
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="admin-user-duration">
-                    Masa Aktif Pro
-                  </label>
-                  <InAppSelect
-                    id="admin-user-duration"
-                    value={uPlanDuration}
-                    onChange={setUPlanDuration}
-                    options={[
-                      ...(userModalMode === 'edit'
-                        ? [{ value: 'keep', label: 'Pertahankan masa aktif saat ini' }]
-                        : []),
-                      { value: '30', label: '+ 30 Hari (1 Bulan)' },
-                      { value: '90', label: '+ 90 Hari (3 Bulan)' },
-                      { value: '365', label: '+ 365 Hari (1 Tahun)' },
-                      { value: '0', label: 'Permanen (Tanpa Kedaluwarsa)' },
-                    ]}
-                  />
-                </div>
-              )}
-
-              {userModalMode === 'edit' && (
-                <label className="admin-checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={uActive}
-                    onChange={(e) => setUActive(e.target.checked)}
-                  />
-                  <span>Akun Aktif (boleh login ke dashboard)</span>
-                </label>
-              )}
-
-              <div className="pwa-guide-footer" style={{ gap: 8, marginTop: 16 }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setUserModalMode(null)}
-                >
-                  Batal
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={savingUser}>
-                  <Save size={15} />
-                  <span>{savingUser ? 'Menyimpan...' : 'Simpan'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AdminUserModal
+        mode={userModalMode}
+        user={editingUser ? users.find((x) => x.id === editingUser.id) || editingUser : null}
+        devices={devices}
+        appSettings={appSettings}
+        token={token}
+        onLogout={onLogout}
+        onClose={() => setUserModalMode(null)}
+        onSaved={loadAdminData}
+        onNotice={setNotice}
+      />
     </div>
   )
 }
