@@ -34,7 +34,15 @@ function UserAvatar({ user }) {
   return <span className="admin-user-avatar-fallback">{initial}</span>
 }
 
-function UserDetailModal({ user, ownedDevices, busyId, onClose, onEdit, onQuickPro }) {
+function UserDetailModal({
+  user,
+  ownedDevices,
+  busyId,
+  defaultPaidName = 'VoltKu Pro',
+  onClose,
+  onEdit,
+  onQuickPro,
+}) {
   if (!user) return null
   const isPro = Boolean(user.plan?.is_pro)
   const planLabel = user.plan?.plan_name || (isPro ? 'VoltKu Pro' : 'VoltKu Gratis')
@@ -67,7 +75,7 @@ function UserDetailModal({ user, ownedDevices, busyId, onClose, onEdit, onQuickP
               {planLabel}
             </strong>
             <small>
-              {user.plan_tier === 'pro'
+              {isPro
                 ? user.plan_expires_at
                   ? `Berlaku s.d. ${formatDateTimeWIB(user.plan_expires_at)}`
                   : 'Aktif Permanen'
@@ -140,7 +148,7 @@ function UserDetailModal({ user, ownedDevices, busyId, onClose, onEdit, onQuickP
             }}
           >
             <Sparkles size={14} />
-            <span>{isPro ? 'Perpanjang +30 Hr Pro' : 'Aktifkan Pro 30 Hr'}</span>
+            <span>{isPro ? 'Perpanjang +30 Hr' : `Aktifkan ${defaultPaidName} 30 Hr`}</span>
           </button>
           <button
             type="button"
@@ -162,6 +170,7 @@ function UserDetailModal({ user, ownedDevices, busyId, onClose, onEdit, onQuickP
 export function AdminUsersSection({
   users = [],
   devices = [],
+  plans = [],
   token,
   onLogout,
   onNotice,
@@ -272,26 +281,39 @@ export function AdminUsersSection({
     }
   }
 
+  const defaultPaidPlan = useMemo(() => {
+    return (
+      plans.find((p) => p.slug === 'pro' && p.is_active) ||
+      plans.find((p) => !p.is_default_free && p.slug !== 'free' && p.is_active) || {
+        slug: 'pro',
+        name: 'VoltKu Pro',
+      }
+    )
+  }, [plans])
+
   const handleQuickPro = async (u) => {
     setBusyId(u.id)
     if (onNotice) onNotice(null)
+    const targetSlug = u.plan?.is_pro && u.plan_tier ? u.plan_tier : defaultPaidPlan.slug
+    const targetName =
+      plans.find((p) => p.slug === targetSlug)?.name || u.plan?.plan_name || defaultPaidPlan.name
     try {
       await apiRequest(
         `/api/admin/users/${u.id}`,
-        { method: 'PATCH', body: { plan_tier: 'pro', plan_duration_days: 30 } },
+        { method: 'PATCH', body: { plan_tier: targetSlug, plan_duration_days: 30 } },
         token,
         onLogout
       )
       if (onNotice) {
         onNotice({
           type: 'success',
-          text: `Paket VoltKu Pro 30 hari diterapkan untuk ${u.name}.`,
+          text: `Paket ${targetName} 30 hari diterapkan untuk ${u.name}.`,
         })
       }
       if (onReload) await onReload()
     } catch (err) {
       if (onNotice) {
-        onNotice({ type: 'error', text: err.message || 'Gagal memperbarui paket Pro.' })
+        onNotice({ type: 'error', text: err.message || 'Gagal memperbarui paket berbayar.' })
       }
     } finally {
       setBusyId(null)
@@ -462,7 +484,7 @@ export function AdminUsersSection({
                           {isPro && <Crown size={12} />}
                           <span>{planLabel}</span>
                         </span>
-                        {u.plan_tier === 'pro' && (
+                        {isPro && (
                           <div className="admin-dev-id num-tabular" style={{ marginTop: 3 }}>
                             {u.plan_expires_at
                               ? `s.d. ${formatDateTimeWIB(u.plan_expires_at)}`
@@ -646,6 +668,7 @@ export function AdminUsersSection({
         user={detailUser}
         ownedDevices={detailUser ? devicesByOwner[detailUser.id] || [] : []}
         busyId={busyId}
+        defaultPaidName={defaultPaidPlan.name}
         onClose={() => setDetailUser(null)}
         onEdit={onOpenEditUser}
         onQuickPro={handleQuickPro}

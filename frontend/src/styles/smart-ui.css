@@ -11514,3 +11514,503 @@ button,
     height: 40px;
   }
 }
+
+/* =========================================================================
+   Admin Paket & Diskon + Multi-Plan Customer Checkout Styles
+   ========================================================================= */
+
+@media (max-width: 768px) {
+  .admin-shell .bottom-nav-inner {
+    overflow-x: auto;
+    justify-content: flex-start !important;
+    gap: 4px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .admin-shell .bottom-nav-inner::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-shell .bottom-nav-item {
+    flex: 0 0 auto;
+    min-width: 72px;
+    padding: 4px 8px;
+  }
+}
+
+.admin-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 12px;
+}
+
+.admin-plan-card {
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-inset);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.admin-plan-card.is-recommended {
+  border-color: rgba(22, 119, 255, 0.35);
+  background: linear-gradient(155deg, var(--surface-card) 0%, rgba(22, 119, 255, 0.05) 100%);
+}
+
+.admin-plan-card.is-inactive {
+  opacity: 0.72;
+}
+
+.admin-plan-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-plan-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-plan-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.admin-plan-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-plan-icon.is-free {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.admin-plan-icon.is-paid {
+  background: rgba(245, 158, 11, 0.14);
+  color: #d97706;
+}
+
+.admin-plan-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.admin-plan-slug {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.admin-plan-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.admin-plan-desc {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.admin-plan-price-box {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.admin-plan-price-line {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.admin-plan-price-line strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.admin-plan-price-line > span:last-child {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.admin-plan-price-sub {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.admin-plan-price-sub strong {
+  color: var(--text-secondary);
+}
+
+.price-strike,
+.plan-price-strike {
+  text-decoration: line-through;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-plan-save-tag {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #059669;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .admin-plan-save-tag {
+  color: #34d399;
+}
+
+.admin-plan-promo-sched {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #b45309;
+  font-size: 11.5px;
+}
+
+[data-theme="dark"] .admin-plan-promo-sched {
+  color: #fbbf24;
+}
+
+.admin-plan-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.admin-cap-chip {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.admin-cap-chip.is-on {
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #059669;
+}
+
+[data-theme="dark"] .admin-cap-chip.is-on {
+  color: #34d399;
+}
+
+.admin-cap-chip.is-off {
+  opacity: 0.6;
+}
+
+.admin-plan-foot {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.admin-plan-subs {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.admin-dc-code-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-dc-code-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: rgba(22, 119, 255, 0.1);
+  border: 1px dashed rgba(22, 119, 255, 0.35);
+  color: #1677ff;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+[data-theme="dark"] .admin-dc-code-badge {
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+.admin-promo-preview-bar {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #047857;
+  font-size: 12.5px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+[data-theme="dark"] .admin-promo-preview-bar {
+  color: #34d399;
+}
+
+.admin-switches-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-tx-discount-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.admin-plan-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-plan-mini-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border-radius: 10px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+/* Customer Multi-Plan, Promo Harga Coret & Kupon Checkout */
+
+.plan-modal-dialog.is-wide {
+  max-width: 780px;
+}
+
+.plan-compare-grid.is-multi {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.plan-tier-badge-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.plan-tier-badge.is-promo {
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+  color: #ffffff;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.plan-tier-price-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.plan-price-strike-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plan-promo-save-note {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+[data-theme="dark"] .plan-promo-save-note {
+  color: #fca5a5;
+}
+
+.plan-duration-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.plan-order-summary-card.is-detailed {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.plan-order-summary-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plan-order-breakdown {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plan-order-bk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.plan-order-bk-row.is-save {
+  color: #059669;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .plan-order-bk-row.is-save {
+  color: #34d399;
+}
+
+.pay-coupon-box {
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pay-coupon-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.pay-coupon-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pay-coupon-input {
+  flex: 1;
+  min-width: 0;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.pay-coupon-msg {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pay-coupon-msg.is-success {
+  color: #059669;
+}
+
+[data-theme="dark"] .pay-coupon-msg.is-success {
+  color: #34d399;
+}
+
+.pay-coupon-msg.is-error {
+  color: #dc2626;
+}
+
+[data-theme="dark"] .pay-coupon-msg.is-error {
+  color: #f87171;
+}
+
+.pay-discount-breakdown {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pay-discount-pill {
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pay-discount-pill.is-voucher {
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+}
+
+[data-theme="dark"] .pay-discount-pill {
+  color: #fbbf24;
+}
+
+[data-theme="dark"] .pay-discount-pill.is-voucher {
+  color: #34d399;
+}

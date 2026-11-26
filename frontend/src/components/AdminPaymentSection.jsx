@@ -58,6 +58,11 @@ function AdminProofPreviewModal({ req, token, resolvingId, onClose, onApprove, o
   if (!req) return null
   const isActive = ACTIVE_UPGRADE_STATUSES.includes(req.status)
   const defaultDays = req.billing_cycle === 'yearly' ? 365 : 30
+  const planLabel =
+    req.plan_name_snapshot || (req.requested_tier === 'pro' ? 'VoltKu Pro' : req.requested_tier)
+  const promoDisc = Number(req.promo_discount_rp || 0)
+  const voucherDisc = Number(req.voucher_discount_rp || 0)
+  const hasDiscount = promoDisc > 0 || voucherDisc > 0
 
   return (
     <div className="modal-overlay pwa-guide-overlay" onClick={onClose}>
@@ -72,6 +77,11 @@ function AdminProofPreviewModal({ req, token, resolvingId, onClose, onApprove, o
             </h3>
             <p className="pwa-guide-sub">
               {req.user_name || `User #${req.user_id}`} ({req.user_email || '—'}) ·{' '}
+              {hasDiscount && Number(req.base_amount_rp || 0) > 0 && (
+                <span className="price-strike num-tabular" style={{ marginRight: 5 }}>
+                  {formatRp(req.base_amount_rp)}
+                </span>
+              )}
               <strong className="num-tabular">{formatRp(req.amount_rp)}</strong>
             </p>
           </div>
@@ -82,9 +92,19 @@ function AdminProofPreviewModal({ req, token, resolvingId, onClose, onApprove, o
 
         <div className="pay-verifying-summary" style={{ marginBottom: 12 }}>
           <div>
-            Metode: <strong>{req.payment_method_label || 'Manual'}</strong> · Paket{' '}
-            <strong>{req.billing_cycle === 'yearly' ? 'Tahunan' : 'Bulanan'}</strong>
+            Paket: <strong>{planLabel}</strong> (
+            {req.billing_cycle === 'yearly' ? 'Tahunan' : 'Bulanan'}) · Metode:{' '}
+            <strong>{req.payment_method_label || 'Manual'}</strong>
           </div>
+          {hasDiscount && (
+            <div className="pay-verifying-sub num-tabular">
+              Rincian diskon:
+              {promoDisc > 0 && ` Promo -${formatRp(promoDisc)}`}
+              {promoDisc > 0 && voucherDisc > 0 && ' ·'}
+              {voucherDisc > 0 &&
+                ` Kupon ${req.discount_code || ''} -${formatRp(voucherDisc)}`}
+            </div>
+          )}
           {req.submitted_at && (
             <div className="pay-verifying-sub">
               Dikirim pada {formatDateTimeWIB(req.submitted_at)}
@@ -139,7 +159,7 @@ function AdminProofPreviewModal({ req, token, resolvingId, onClose, onApprove, o
               >
                 <CheckCircle2 size={15} />
                 <span>
-                  Konfirmasi &amp; Aktifkan Pro ({req.billing_cycle === 'yearly' ? '1 Thn' : '30 Hr'})
+                  Konfirmasi &amp; Aktifkan ({req.billing_cycle === 'yearly' ? '1 Thn' : '30 Hr'})
                 </span>
               </button>
               <button
@@ -279,7 +299,7 @@ export function AdminUpgradeRequestsCard({
           type: 'success',
           text:
             action === 'approve'
-              ? 'Pembayaran dikonfirmasi dan paket VoltKu Pro langsung aktif.'
+              ? 'Pembayaran dikonfirmasi dan paket pelanggan langsung aktif.'
               : 'Tagihan ditolak beserta catatan ke pembeli.',
         })
       }
@@ -299,7 +319,7 @@ export function AdminUpgradeRequestsCard({
         <div className="admin-card-head is-split">
           <div>
             <h3>
-              Konfirmasi Pembayaran &amp; Upgrade Pro
+              Konfirmasi Pembayaran &amp; Upgrade Paket
               {counts.verifying > 0 && (
                 <span className="admin-pill warn" style={{ marginLeft: 8 }}>
                   {counts.verifying} Perlu Dicek
@@ -307,7 +327,7 @@ export function AdminUpgradeRequestsCard({
               )}
             </h3>
             <p className="admin-row-sub">
-              Periksa bukti transfer masuk lalu aktifkan paket Pro pelanggan secara instan.
+              Periksa bukti transfer masuk lalu aktifkan paket berbayar pelanggan secara instan.
             </p>
           </div>
           <div className="admin-pm-filter-tabs">
@@ -378,6 +398,12 @@ export function AdminUpgradeRequestsCard({
               const isActive = ACTIVE_UPGRADE_STATUSES.includes(req.status)
               const defaultDays = req.billing_cycle === 'yearly' ? 365 : 30
               const initialLetter = (req.user_name || req.user_email || 'U').charAt(0).toUpperCase()
+              const planLabel =
+                req.plan_name_snapshot ||
+                (req.requested_tier === 'pro' ? 'VoltKu Pro' : req.requested_tier || 'Paket Berbayar')
+              const promoDisc = Number(req.promo_discount_rp || 0)
+              const voucherDisc = Number(req.voucher_discount_rp || 0)
+              const hasDiscount = promoDisc > 0 || voucherDisc > 0
               return (
                 <div
                   key={req.id}
@@ -398,14 +424,34 @@ export function AdminUpgradeRequestsCard({
                       </div>
 
                       <div className="admin-tx-meta-line num-tabular">
+                        {hasDiscount && Number(req.base_amount_rp || 0) > 0 && (
+                          <span className="price-strike">{formatRp(req.base_amount_rp)}</span>
+                        )}
                         <span className="admin-tx-amount">{formatRp(req.amount_rp)}</span>
                         <span>·</span>
-                        <span>{req.billing_cycle === 'yearly' ? 'Paket Tahunan' : 'Paket Bulanan'}</span>
+                        <span>
+                          {planLabel} ({req.billing_cycle === 'yearly' ? 'Tahunan' : 'Bulanan'})
+                        </span>
                         <span>·</span>
                         <span>{req.payment_method_label || 'Manual'}</span>
                         <span>·</span>
                         <span>{formatDateTimeWIB(req.submitted_at || req.created_at)}</span>
                       </div>
+
+                      {hasDiscount && (
+                        <div className="admin-tx-discount-pills num-tabular">
+                          {promoDisc > 0 && (
+                            <span className="admin-pill warn">
+                              Promo -{formatRp(promoDisc)}
+                            </span>
+                          )}
+                          {voucherDisc > 0 && (
+                            <span className="admin-pill pro">
+                              Kupon {req.discount_code || ''} -{formatRp(voucherDisc)}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {req.user_note && (
                         <div className="admin-tx-note">Catatan pembeli: &ldquo;{req.user_note}&rdquo;</div>

@@ -21,6 +21,8 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarDays,
+  Tag,
+  Ticket,
 } from 'lucide-react'
 import { apiRequest, buildApiUrl } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
@@ -52,13 +54,18 @@ export function PlanUpgradeModal({
   onUpgradeSubmitted,
   lockedReason = '',
 }) {
-  // 'tier' (Pilih Gratis / Pro) -> 'cycle' (Bulanan / Tahunan) -> 'method' (Pilih Pembayaran)
+  // 'tier' (Pilih Paket) -> 'cycle' (Bulanan / Tahunan) -> 'method' (Pilih Pembayaran & Kupon)
   const [browseStage, setBrowseStage] = useState('tier')
+  const [selectedPlanSlug, setSelectedPlanSlug] = useState('pro')
   const [billingCycle, setBillingCycle] = useState('monthly')
   const [paymentMethods, setPaymentMethods] = useState([])
   const [methodsLoading, setMethodsLoading] = useState(false)
   const [selectedMethodId, setSelectedMethodId] = useState(null)
   const [userNote, setUserNote] = useState('')
+  const [couponInput, setCouponInput] = useState('')
+  const [appliedDiscount, setAppliedDiscount] = useState(null)
+  const [applyingCoupon, setApplyingCoupon] = useState(false)
+  const [couponFeedback, setCouponFeedback] = useState(null)
   const [proofBase64, setProofBase64] = useState('')
   const [proofName, setProofName] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -73,15 +80,94 @@ export function PlanUpgradeModal({
   const freeCfg = plans.free || {}
   const proCfg = plans.pro || {}
 
-  const proName = proCfg.name || 'VoltKu Pro'
-  const freeName = freeCfg.name || 'VoltKu Gratis'
-  const monthlyPrice = Number(proCfg.price_monthly_rp ?? 30000)
-  const yearlyPrice = Number(proCfg.price_yearly_rp ?? 300000)
-  const freeMaxDevices = Number(freeCfg.max_devices ?? 1)
-  const freeHistoryDays = Number(freeCfg.history_days ?? 3)
-  const proMaxDevices = Number(proCfg.max_devices ?? 10)
-  const proHistoryDays = Number(proCfg.history_days ?? 90)
-  const instructions = proCfg.upgrade_instructions || ''
+  const catalogPlans = useMemo(() => {
+    if (Array.isArray(plans.items) && plans.items.length > 0) {
+      return plans.items
+    }
+    const baseMonthly = Number(proCfg.price_monthly_rp ?? 30000)
+    const baseYearly = Number(proCfg.price_yearly_rp ?? 300000)
+    const effMonthly = Number(proCfg.effective_monthly_price_rp ?? baseMonthly)
+    const effYearly = Number(proCfg.effective_yearly_price_rp ?? baseYearly)
+    const fullYearly = effMonthly * 12
+    const yrSaveRp = fullYearly > effYearly ? fullYearly - effYearly : 0
+    const yrSavePct =
+      yrSaveRp > 0 && fullYearly > 0 ? Math.round((yrSaveRp / fullYearly) * 100) : 0
+    return [
+      {
+        slug: 'free',
+        name: freeCfg.name || 'VoltKu Gratis',
+        description: 'Cocok untuk mulai memantau 1 panel listrik rumah',
+        price_monthly_rp: 0,
+        price_yearly_rp: 0,
+        effective_monthly_price_rp: 0,
+        effective_yearly_price_rp: 0,
+        promo_active: false,
+        max_devices: Number(freeCfg.max_devices ?? 1),
+        history_days: Number(freeCfg.history_days ?? 3),
+        forecast_enabled: Boolean(freeCfg.forecast_enabled),
+        export_enabled: Boolean(freeCfg.export_enabled),
+        anomaly_advanced: Boolean(freeCfg.anomaly_advanced),
+        is_default_free: true,
+        is_recommended: false,
+      },
+      {
+        slug: proCfg.slug || 'pro',
+        name: proCfg.name || 'VoltKu Pro',
+        description: 'Kendali energi lengkap dengan proyeksi tagihan & ekspor CSV',
+        price_monthly_rp: baseMonthly,
+        price_yearly_rp: baseYearly,
+        effective_monthly_price_rp: effMonthly,
+        effective_yearly_price_rp: effYearly,
+        monthly_promo_discount_rp: Math.max(0, baseMonthly - effMonthly),
+        yearly_promo_discount_rp: Math.max(0, baseYearly - effYearly),
+        promo_active: Boolean(proCfg.promo_active),
+        promo_discount_type: proCfg.promo_discount_type || null,
+        promo_discount_value: proCfg.promo_discount_value || 0,
+        promo_label: proCfg.promo_label || '',
+        yearly_savings_rp: Number(proCfg.yearly_savings_rp ?? yrSaveRp),
+        yearly_savings_pct: Number(proCfg.yearly_savings_pct ?? yrSavePct),
+        max_devices: Number(proCfg.max_devices ?? 10),
+        history_days: Number(proCfg.history_days ?? 90),
+        forecast_enabled: proCfg.forecast_enabled !== false,
+        export_enabled: proCfg.export_enabled !== false,
+        anomaly_advanced: proCfg.anomaly_advanced !== false,
+        is_default_free: false,
+        is_recommended: true,
+      },
+    ]
+  }, [plans.items, freeCfg, proCfg])
+
+  const paidPlans = useMemo(
+    () => catalogPlans.filter((p) => !p.is_default_free && p.slug !== 'free'),
+    [catalogPlans]
+  )
+
+  const defaultPaidPlan = useMemo(
+    () => paidPlans.find((p) => p.is_recommended) || paidPlans[0] || { slug: 'pro', name: 'VoltKu Pro' },
+    [paidPlans]
+  )
+
+  const selectedPlan = useMemo(
+    () => paidPlans.find((p) => p.slug === selectedPlanSlug) || defaultPaidPlan,
+    [paidPlans, selectedPlanSlug, defaultPaidPlan]
+  )
+
+  const freePlanObj = useMemo(
+    () => catalogPlans.find((p) => p.is_default_free || p.slug === 'free') || freeCfg,
+    [catalogPlans, freeCfg]
+  )
+
+  const selectedPlanName = selectedPlan?.name || 'VoltKu Pro'
+  const freeName = freePlanObj?.name || 'VoltKu Gratis'
+  const baseMonthlyPrice = Number(selectedPlan?.price_monthly_rp ?? 30000)
+  const baseYearlyPrice = Number(selectedPlan?.price_yearly_rp ?? 300000)
+  const effMonthlyPrice = Number(selectedPlan?.effective_monthly_price_rp ?? baseMonthlyPrice)
+  const effYearlyPrice = Number(selectedPlan?.effective_yearly_price_rp ?? baseYearlyPrice)
+  const hasMonthlyPromo =
+    Boolean(selectedPlan?.promo_active) && baseMonthlyPrice > effMonthlyPrice
+  const hasYearlyPromo =
+    Boolean(selectedPlan?.promo_active) && baseYearlyPrice > effYearlyPrice
+  const instructions = plans.upgrade_instructions || proCfg.upgrade_instructions || ''
   const waRaw = (appConfig?.support_whatsapp || '').replace(/[^0-9]/g, '')
 
   const userPlan = currentUser?.plan || {}
@@ -91,8 +177,8 @@ export function PlanUpgradeModal({
   const activeStepStatus = pending?.status || ''
 
   // Hitung penghematan paket tahunan secara deterministik dari harga bulanan x 12
-  const yearlyFullPrice = monthlyPrice * 12
-  const yearlySavingsRp = yearlyFullPrice > yearlyPrice ? yearlyFullPrice - yearlyPrice : 0
+  const yearlyFullPrice = effMonthlyPrice * 12
+  const yearlySavingsRp = yearlyFullPrice > effYearlyPrice ? yearlyFullPrice - effYearlyPrice : 0
   const yearlySavingsPct =
     yearlySavingsRp > 0 && yearlyFullPrice > 0
       ? Math.round((yearlySavingsRp / yearlyFullPrice) * 100)
@@ -112,6 +198,9 @@ export function PlanUpgradeModal({
     if (!isOpen) {
       setBrowseStage('tier')
       setFeedback(null)
+      setCouponInput('')
+      setAppliedDiscount(null)
+      setCouponFeedback(null)
       setProofBase64('')
       setProofName('')
       setZoomImageSrc('')
@@ -119,6 +208,10 @@ export function PlanUpgradeModal({
       return
     }
     setBrowseStage('tier')
+    setSelectedPlanSlug(defaultPaidPlan.slug || 'pro')
+    setCouponInput('')
+    setAppliedDiscount(null)
+    setCouponFeedback(null)
     setLocalPending(undefined)
     let cancelled = false
     setMethodsLoading(true)
@@ -178,11 +271,30 @@ export function PlanUpgradeModal({
 
   if (!isOpen) return null
 
-  const selectedPrice = billingCycle === 'yearly' ? yearlyPrice : monthlyPrice
+  const activeQuoteMatch = Boolean(
+    appliedDiscount &&
+      appliedDiscount.plan_slug === selectedPlan.slug &&
+      appliedDiscount.billing_cycle === billingCycle
+  )
+  const baseOrderAmount = billingCycle === 'yearly' ? baseYearlyPrice : baseMonthlyPrice
+  const afterPromoAmount = billingCycle === 'yearly' ? effYearlyPrice : effMonthlyPrice
+  const promoDiscAmount = Math.max(0, baseOrderAmount - afterPromoAmount)
+  const voucherDiscAmount = activeQuoteMatch
+    ? Number(appliedDiscount.voucher_discount_rp || 0)
+    : 0
+  const selectedPrice = activeQuoteMatch
+    ? Number(appliedDiscount.final_amount_rp ?? afterPromoAmount)
+    : afterPromoAmount
+
   const selectedMethod = paymentMethods.find((m) => m.id === selectedMethodId) || null
   const isExpiredInvoice = Boolean(
     pending?.expires_at && activeStepStatus === 'awaiting_payment' && pending.expires_at <= nowSec
   )
+
+  const activeOrderPlanName =
+    pending?.plan_name_snapshot ||
+    catalogPlans.find((p) => p.slug === pending?.requested_tier)?.name ||
+    selectedPlanName
 
   const waHref = (() => {
     if (!waRaw) return ''
@@ -191,7 +303,7 @@ export function PlanUpgradeModal({
     const cycleText =
       (pending?.billing_cycle || billingCycle) === 'yearly' ? 'Tahunan' : 'Bulanan'
     const text = encodeURIComponent(
-      `Halo Admin VoltKu, saya ${currentUser?.name || 'Pengguna'} (${currentUser?.email || '-'}) ingin konfirmasi upgrade ${proName} paket ${cycleText}${orderInfo}.`
+      `Halo Admin VoltKu, saya ${currentUser?.name || 'Pengguna'} (${currentUser?.email || '-'}) ingin konfirmasi upgrade ${activeOrderPlanName} paket ${cycleText}${orderInfo}.`
     )
     return `https://wa.me/${waNumber}?text=${text}`
   })()
@@ -224,6 +336,52 @@ export function PlanUpgradeModal({
     }
   }
 
+  const handleApplyCoupon = async (overrideCode = null, overridePlanSlug = null, overrideCycle = null) => {
+    if (!token) return
+    const codeText = String(overrideCode !== null ? overrideCode : couponInput).trim().toUpperCase()
+    const planSlug = overridePlanSlug || selectedPlan.slug
+    const cycle = overrideCycle || billingCycle
+    if (!codeText) {
+      setAppliedDiscount(null)
+      setCouponFeedback({ type: 'error', text: 'Masukkan kode kupon terlebih dahulu.' })
+      return
+    }
+    setApplyingCoupon(true)
+    setCouponFeedback(null)
+    try {
+      const quote = await apiRequest(
+        '/api/users/apply-discount',
+        {
+          method: 'POST',
+          body: {
+            plan_slug: planSlug,
+            billing_cycle: cycle,
+            discount_code: codeText,
+          },
+        },
+        token,
+        onLogout
+      )
+      setCouponInput(quote.discount_code || codeText)
+      setAppliedDiscount(quote)
+      setCouponFeedback({
+        type: 'success',
+        text: `Kupon ${quote.discount_code} berhasil diterapkan (-${formatRp(quote.voucher_discount_rp)})`,
+      })
+    } catch (err) {
+      setAppliedDiscount(null)
+      setCouponFeedback({ type: 'error', text: err.message || 'Kode kupon tidak valid.' })
+    } finally {
+      setApplyingCoupon(false)
+    }
+  }
+
+  const handleRemoveCoupon = () => {
+    setCouponInput('')
+    setAppliedDiscount(null)
+    setCouponFeedback(null)
+  }
+
   const handleCreateOrder = async () => {
     if (!token) return
     setSubmitting(true)
@@ -234,7 +392,9 @@ export function PlanUpgradeModal({
         {
           method: 'POST',
           body: {
+            plan_slug: selectedPlan.slug,
             billing_cycle: billingCycle,
+            discount_code: activeQuoteMatch ? appliedDiscount.discount_code : null,
             payment_method_id: selectedMethod ? selectedMethod.id : null,
             user_note: userNote.trim() || null,
           },
@@ -329,7 +489,9 @@ export function PlanUpgradeModal({
   return (
     <div className="modal-overlay pwa-guide-overlay" onClick={onClose}>
       <div
-        className="modal-dialog-modern pwa-guide-sheet plan-modal-dialog"
+        className={`modal-dialog-modern pwa-guide-sheet plan-modal-dialog ${
+          !isPro && !pending && browseStage === 'tier' && catalogPlans.length > 2 ? 'is-wide' : ''
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="plan-sticky-head">
@@ -341,23 +503,23 @@ export function PlanUpgradeModal({
               <div>
                 <h3 className="pwa-guide-title">
                   {pending
-                    ? `Pembayaran ${proName}`
+                    ? `Pembayaran ${activeOrderPlanName}`
                     : checkoutStepNum === 2
-                      ? `Pilih Durasi ${proName}`
+                      ? `Pilih Durasi ${selectedPlanName}`
                       : checkoutStepNum === 3
-                        ? `Metode Pembayaran`
+                        ? 'Metode Pembayaran & Kupon'
                         : `Pilih Paket ${appConfig?.app_name || 'VoltKu'}`}
                 </h3>
                 <p className="pwa-guide-sub">
                   {isPro
-                    ? `Langganan ${proName} Anda sedang aktif`
+                    ? `Langganan ${userPlan.plan_name || selectedPlanName} Anda sedang aktif`
                     : pending
                       ? `Tagihan ${pending.order_code || `#${pending.id}`}`
                       : checkoutStepNum === 2
                         ? 'Pilih siklus langganan bulanan atau tahunan'
                         : checkoutStepNum === 3
-                          ? 'Pilih metode transfer atau QRIS yang diinginkan'
-                          : `Mulai gratis selamanya atau buka kendali energi penuh`}
+                          ? 'Gunakan kode promo bila ada & pilih metode transfer / QRIS'
+                          : 'Mulai gratis selamanya atau pilih paket sesuai kebutuhan panel'}
                 </p>
               </div>
             </div>
@@ -418,7 +580,7 @@ export function PlanUpgradeModal({
             </div>
           )}
 
-        {/* 1. User sudah Pro */}
+        {/* 1. User sudah berlangganan berbayar */}
         {isPro && (
           <div className="plan-pro-active-card">
             <div className="plan-pro-active-head">
@@ -427,7 +589,7 @@ export function PlanUpgradeModal({
               </div>
               <div className="plan-pro-active-copy">
                 <div className="plan-pro-active-title">
-                  <strong>{proName} Aktif</strong>
+                  <strong>{userPlan.plan_name || selectedPlanName} Aktif</strong>
                   <span className="plan-tier-badge pro">Prioritas</span>
                 </div>
                 <div className="plan-sub-note">
@@ -443,23 +605,41 @@ export function PlanUpgradeModal({
                 <span>Panel Terpakai</span>
                 <strong className="num-tabular">
                   {userPlan.usage?.device_count || 0} /{' '}
-                  {proMaxDevices < 0 ? '∞' : proMaxDevices}
+                  {(userPlan.limits?.max_devices ?? 10) < 0 ? '∞' : userPlan.limits?.max_devices ?? 10}
                 </strong>
               </div>
               <div className="plan-pro-stat-box">
                 <span>Retensi Riwayat</span>
-                <strong className="num-tabular">{proHistoryDays} Hari</strong>
+                <strong className="num-tabular">
+                  {userPlan.limits?.history_days ?? 90} Hari
+                </strong>
               </div>
             </div>
 
             <ul className="plan-feature-list" style={{ marginTop: 12 }}>
               <li>
-                <Check size={14} className="plan-check-icon" />
+                {userPlan.limits?.forecast_enabled !== false ? (
+                  <Check size={14} className="plan-check-icon" />
+                ) : (
+                  <Lock size={14} className="plan-lock-icon" />
+                )}
                 <span>Proyeksi tagihan PLN otomatis akhir bulan</span>
               </li>
               <li>
-                <Check size={14} className="plan-check-icon" />
-                <span>Ekspor laporan konsumsi CSV &amp; analisis anomali lengkap</span>
+                {userPlan.limits?.export_enabled !== false ? (
+                  <Check size={14} className="plan-check-icon" />
+                ) : (
+                  <Lock size={14} className="plan-lock-icon" />
+                )}
+                <span>Ekspor laporan konsumsi CSV</span>
+              </li>
+              <li>
+                {userPlan.limits?.anomaly_advanced !== false ? (
+                  <Check size={14} className="plan-check-icon" />
+                ) : (
+                  <Lock size={14} className="plan-lock-icon" />
+                )}
+                <span>Deteksi anomali lengkap L2/L3</span>
               </li>
             </ul>
           </div>
@@ -476,8 +656,8 @@ export function PlanUpgradeModal({
                   </span>
                   <div className="pay-order-cycle">
                     {pending.billing_cycle === 'yearly'
-                      ? `${proName} · Tahunan`
-                      : `${proName} · Bulanan`}
+                      ? `${activeOrderPlanName} · Tahunan`
+                      : `${activeOrderPlanName} · Bulanan`}
                   </div>
                 </div>
                 <span className={`pay-status-badge ${isExpiredInvoice ? 'expired' : 'awaiting'}`}>
@@ -491,6 +671,23 @@ export function PlanUpgradeModal({
                   </span>
                 </span>
               </div>
+
+              {(Number(pending.promo_discount_rp || 0) > 0 ||
+                Number(pending.voucher_discount_rp || 0) > 0) && (
+                <div className="pay-discount-breakdown num-tabular">
+                  <span>Harga normal {formatRp(pending.base_amount_rp)}</span>
+                  {Number(pending.promo_discount_rp || 0) > 0 && (
+                    <span className="pay-discount-pill">
+                      Promo -{formatRp(pending.promo_discount_rp)}
+                    </span>
+                  )}
+                  {Number(pending.voucher_discount_rp || 0) > 0 && (
+                    <span className="pay-discount-pill is-voucher">
+                      Kupon {pending.discount_code || ''} -{formatRp(pending.voucher_discount_rp)}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="pay-amount-row">
                 <div>
@@ -685,17 +882,24 @@ export function PlanUpgradeModal({
               <div>
                 Paket{' '}
                 <strong>
-                  {pending.billing_cycle === 'yearly' ? `${proName} Tahunan` : `${proName} Bulanan`}
+                  {pending.billing_cycle === 'yearly'
+                    ? `${activeOrderPlanName} Tahunan`
+                    : `${activeOrderPlanName} Bulanan`}
                 </strong>{' '}
                 · <strong className="num-tabular">{formatRp(pending.amount_rp)}</strong>
               </div>
+              {pending.discount_code && Number(pending.voucher_discount_rp || 0) > 0 && (
+                <div className="pay-verifying-sub num-tabular">
+                  Kupon {pending.discount_code} (-{formatRp(pending.voucher_discount_rp)})
+                </div>
+              )}
               <div className="pay-verifying-sub">
                 Metode: {pending.payment_method_label || 'Manual'}
                 {pending.submitted_at ? ` · Dikirim ${formatDateTimeWIB(pending.submitted_at)}` : ''}
               </div>
               <p className="pay-verifying-desc">
                 Terima kasih! Bukti pembayaran Anda sudah kami terima dan sedang diperiksa oleh
-                pengelola. Paket {proName} akan aktif otomatis setelah dikonfirmasi.
+                pengelola. Paket {activeOrderPlanName} akan aktif otomatis setelah dikonfirmasi.
               </p>
             </div>
 
@@ -754,123 +958,220 @@ export function PlanUpgradeModal({
               </div>
             )}
 
-            {/* TAHAP 1: Hanya Tampilkan Kartu Gratis & Pro (bisa diklik) */}
+            {/* TAHAP 1: Daftar Paket Dinamis dari Admin (Gratis + Semua Paket Berbayar Aktif) */}
             {browseStage === 'tier' && (
-              <div className="plan-compare-grid">
-                <button
-                  type="button"
-                  className="plan-tier-card is-current is-clickable-card"
-                  onClick={() => {
-                    setFeedback({
-                      type: 'success',
-                      text: `Anda saat ini sudah aktif menggunakan paket ${freeName}. Pilih ${proName} untuk upgrade.`,
-                    })
-                  }}
-                >
-                  <div className="plan-tier-head">
-                    <span className="plan-tier-name">{freeName}</span>
-                    <span className="plan-tier-badge current">Aktif</span>
-                  </div>
-                  <div className="plan-tier-price num-tabular">
-                    Rp 0<span className="plan-tier-unit">/selamanya</span>
-                  </div>
-                  <div className="plan-alt-price">Cocok untuk coba 1 panel rumah</div>
-                  <ul className="plan-feature-list">
-                    <li>
-                      <Check size={14} className="plan-check-icon" />
-                      <span>Maks. {freeMaxDevices} panel aktif</span>
-                    </li>
-                    <li>
-                      <Check size={14} className="plan-check-icon" />
-                      <span>Pantau Live real-time 10 detik</span>
-                    </li>
-                    <li>
-                      <Check size={14} className="plan-check-icon" />
-                      <span>Grafik hingga {freeHistoryDays} hari</span>
-                    </li>
-                    <li>
-                      {freeCfg.forecast_enabled ? (
-                        <Check size={14} className="plan-check-icon" />
-                      ) : (
-                        <Lock size={14} className="plan-lock-icon" />
-                      )}
-                      <span className={!freeCfg.forecast_enabled ? 'plan-feat-locked' : ''}>
-                        Proyeksi tagihan akhir bulan
-                      </span>
-                    </li>
-                    <li>
-                      {freeCfg.export_enabled ? (
-                        <Check size={14} className="plan-check-icon" />
-                      ) : (
-                        <Lock size={14} className="plan-lock-icon" />
-                      )}
-                      <span className={!freeCfg.export_enabled ? 'plan-feat-locked' : ''}>
-                        Ekspor laporan CSV
-                      </span>
-                    </li>
-                  </ul>
-                  <div className="plan-tier-footer-cta is-current">
-                    <Check size={14} />
-                    <span>Paket Anda Saat Ini</span>
-                  </div>
-                </button>
+              <div
+                className={`plan-compare-grid ${catalogPlans.length > 2 ? 'is-multi' : ''}`}
+              >
+                {catalogPlans.map((planItem) => {
+                  const isFreeCard = Boolean(planItem.is_default_free || planItem.slug === 'free')
+                  const pBaseMonth = Number(planItem.price_monthly_rp ?? 0)
+                  const pEffMonth = Number(planItem.effective_monthly_price_rp ?? pBaseMonth)
+                  const pBaseYear = Number(planItem.price_yearly_rp ?? 0)
+                  const pEffYear = Number(planItem.effective_yearly_price_rp ?? pBaseYear)
+                  const hasCardPromo =
+                    !isFreeCard && Boolean(planItem.promo_active) && pBaseMonth > pEffMonth
+                  const cardYrSavePct = Number(planItem.yearly_savings_pct ?? 0)
+                  const pMaxDev = Number(planItem.max_devices ?? 1)
+                  const pHistDays = Number(planItem.history_days ?? 3)
+                  const customBullets = Array.isArray(planItem.features)
+                    ? planItem.features.slice(0, 3)
+                    : []
 
-                <button
-                  type="button"
-                  className="plan-tier-card is-pro is-clickable-card"
-                  onClick={() => {
-                    setFeedback(null)
-                    setBrowseStage('cycle')
-                  }}
-                >
-                  <div className="plan-tier-head">
-                    <span className="plan-tier-name">
-                      <Crown size={14} className="plan-pro-crown" /> {proName}
-                    </span>
-                    <span className="plan-tier-badge pro">
-                      <Sparkles size={10} /> Rekomendasi
-                    </span>
-                  </div>
-                  <div className="plan-tier-price num-tabular">
-                    <span className="plan-tier-prefix">Mulai</span> {formatRp(monthlyPrice)}
-                    <span className="plan-tier-unit">/bulan</span>
-                  </div>
-                  <div className="plan-alt-price num-tabular">
-                    {yearlySavingsPct > 0
-                      ? `Atau ${formatRp(yearlyPrice)}/tahun (hemat ${yearlySavingsPct}%)`
-                      : `Atau ${formatRp(yearlyPrice)}/tahun`}
-                  </div>
-                  <ul className="plan-feature-list">
-                    <li>
-                      <Check size={14} className="plan-check-icon" />
-                      <span>
-                        {proMaxDevices < 0
-                          ? 'Panel aktif tanpa batas'
-                          : `Hingga ${proMaxDevices} panel aktif`}
-                      </span>
-                    </li>
-                    <li>
-                      <Check size={14} className="plan-check-icon" />
-                      <span>Grafik historis hingga {proHistoryDays} hari</span>
-                    </li>
-                    <li>
-                      <Check size={14} className="plan-check-icon" />
-                      <span>Proyeksi tagihan akhir bulan otomatis</span>
-                    </li>
-                    <li>
-                      <Check size={14} className="plan-check-icon" />
-                      <span>Ekspor laporan konsumsi CSV</span>
-                    </li>
-                    <li>
-                      <Check size={14} className="plan-check-icon" />
-                      <span>Deteksi anomali lengkap L2/L3</span>
-                    </li>
-                  </ul>
-                  <div className="plan-tier-footer-cta is-pro">
-                    <span>Pilih {proName}</span>
-                    <ArrowRight size={15} />
-                  </div>
-                </button>
+                  if (isFreeCard) {
+                    return (
+                      <button
+                        key={planItem.slug || 'free'}
+                        type="button"
+                        className="plan-tier-card is-current is-clickable-card"
+                        onClick={() => {
+                          setFeedback({
+                            type: 'success',
+                            text: `Anda saat ini sudah aktif menggunakan paket ${freeName}. Pilih paket berbayar untuk upgrade.`,
+                          })
+                        }}
+                      >
+                        <div className="plan-tier-head">
+                          <span className="plan-tier-name">{planItem.name || freeName}</span>
+                          <span className="plan-tier-badge current">Aktif</span>
+                        </div>
+                        <div className="plan-tier-price num-tabular">
+                          Rp 0<span className="plan-tier-unit">/selamanya</span>
+                        </div>
+                        <div className="plan-alt-price">
+                          {planItem.description || 'Cocok untuk coba pantau panel rumah'}
+                        </div>
+                        <ul className="plan-feature-list">
+                          <li>
+                            <Check size={14} className="plan-check-icon" />
+                            <span>
+                              {pMaxDev < 0
+                                ? 'Panel aktif tanpa batas'
+                                : `Maks. ${pMaxDev} panel aktif`}
+                            </span>
+                          </li>
+                          <li>
+                            <Check size={14} className="plan-check-icon" />
+                            <span>Pantau Live real-time 10 detik</span>
+                          </li>
+                          <li>
+                            <Check size={14} className="plan-check-icon" />
+                            <span>Grafik hingga {pHistDays} hari</span>
+                          </li>
+                          <li>
+                            {planItem.forecast_enabled ? (
+                              <Check size={14} className="plan-check-icon" />
+                            ) : (
+                              <Lock size={14} className="plan-lock-icon" />
+                            )}
+                            <span className={!planItem.forecast_enabled ? 'plan-feat-locked' : ''}>
+                              Proyeksi tagihan akhir bulan
+                            </span>
+                          </li>
+                          <li>
+                            {planItem.export_enabled ? (
+                              <Check size={14} className="plan-check-icon" />
+                            ) : (
+                              <Lock size={14} className="plan-lock-icon" />
+                            )}
+                            <span className={!planItem.export_enabled ? 'plan-feat-locked' : ''}>
+                              Ekspor laporan CSV
+                            </span>
+                          </li>
+                        </ul>
+                        <div className="plan-tier-footer-cta is-current">
+                          <Check size={14} />
+                          <span>Paket Anda Saat Ini</span>
+                        </div>
+                      </button>
+                    )
+                  }
+
+                  const promoBadgeLabel =
+                    planItem.promo_label ||
+                    (planItem.promo_discount_type === 'percent' && planItem.promo_discount_value
+                      ? `Promo -${planItem.promo_discount_value}%`
+                      : 'Promo Spesial')
+
+                  return (
+                    <button
+                      key={planItem.slug}
+                      type="button"
+                      className={`plan-tier-card is-pro is-clickable-card ${
+                        planItem.is_recommended ? 'is-recommended' : ''
+                      }`}
+                      onClick={() => {
+                        setFeedback(null)
+                        if (selectedPlanSlug !== planItem.slug) {
+                          setAppliedDiscount(null)
+                          setCouponFeedback(null)
+                        }
+                        setSelectedPlanSlug(planItem.slug)
+                        setBrowseStage('cycle')
+                      }}
+                    >
+                      <div className="plan-tier-head">
+                        <span className="plan-tier-name">
+                          <Crown size={14} className="plan-pro-crown" /> {planItem.name}
+                        </span>
+                        <div className="plan-tier-badge-group">
+                          {hasCardPromo && (
+                            <span className="plan-tier-badge is-promo">
+                              <Tag size={10} /> {promoBadgeLabel}
+                            </span>
+                          )}
+                          {(planItem.badge_text || planItem.is_recommended) && (
+                            <span className="plan-tier-badge pro">
+                              <Sparkles size={10} /> {planItem.badge_text || 'Rekomendasi'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="plan-tier-price-stack num-tabular">
+                        {hasCardPromo && (
+                          <div className="plan-price-strike-row">
+                            <span className="plan-price-strike">{formatRp(pBaseMonth)}</span>
+                            <span className="plan-promo-save-note">Harga Promo</span>
+                          </div>
+                        )}
+                        <div className="plan-tier-price">
+                          <span className="plan-tier-prefix">Mulai</span> {formatRp(pEffMonth)}
+                          <span className="plan-tier-unit">/bulan</span>
+                        </div>
+                      </div>
+
+                      <div className="plan-alt-price num-tabular">
+                        {cardYrSavePct > 0
+                          ? `Atau ${formatRp(pEffYear)}/tahun (hemat ${cardYrSavePct}%)`
+                          : `Atau ${formatRp(pEffYear)}/tahun`}
+                      </div>
+
+                      <ul className="plan-feature-list">
+                        <li>
+                          <Check size={14} className="plan-check-icon" />
+                          <span>
+                            {pMaxDev < 0 ? 'Panel aktif tanpa batas' : `Hingga ${pMaxDev} panel aktif`}
+                          </span>
+                        </li>
+                        <li>
+                          <Check size={14} className="plan-check-icon" />
+                          <span>Grafik historis hingga {pHistDays} hari</span>
+                        </li>
+                        <li>
+                          {planItem.forecast_enabled !== false ? (
+                            <Check size={14} className="plan-check-icon" />
+                          ) : (
+                            <Lock size={14} className="plan-lock-icon" />
+                          )}
+                          <span
+                            className={
+                              planItem.forecast_enabled === false ? 'plan-feat-locked' : ''
+                            }
+                          >
+                            Proyeksi tagihan akhir bulan otomatis
+                          </span>
+                        </li>
+                        <li>
+                          {planItem.export_enabled !== false ? (
+                            <Check size={14} className="plan-check-icon" />
+                          ) : (
+                            <Lock size={14} className="plan-lock-icon" />
+                          )}
+                          <span
+                            className={planItem.export_enabled === false ? 'plan-feat-locked' : ''}
+                          >
+                            Ekspor laporan konsumsi CSV
+                          </span>
+                        </li>
+                        <li>
+                          {planItem.anomaly_advanced !== false ? (
+                            <Check size={14} className="plan-check-icon" />
+                          ) : (
+                            <Lock size={14} className="plan-lock-icon" />
+                          )}
+                          <span
+                            className={
+                              planItem.anomaly_advanced === false ? 'plan-feat-locked' : ''
+                            }
+                          >
+                            Deteksi anomali lengkap L2/L3
+                          </span>
+                        </li>
+                        {customBullets.map((bText, bIdx) => (
+                          <li key={bIdx}>
+                            <Check size={14} className="plan-check-icon" />
+                            <span>{bText}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="plan-tier-footer-cta is-pro">
+                        <span>Pilih {planItem.name}</span>
+                        <ArrowRight size={15} />
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             )}
 
@@ -881,7 +1182,7 @@ export function PlanUpgradeModal({
                   <div className="plan-selected-bar-copy">
                     <Crown size={15} className="plan-pro-crown" />
                     <span>
-                      Paket dipilih: <strong>{proName}</strong>
+                      Paket dipilih: <strong>{selectedPlanName}</strong>
                     </span>
                   </div>
                   <button
@@ -900,7 +1201,11 @@ export function PlanUpgradeModal({
                   <button
                     type="button"
                     className={`plan-duration-card ${billingCycle === 'monthly' ? 'selected' : ''}`}
-                    onClick={() => setBillingCycle('monthly')}
+                    onClick={() => {
+                      setBillingCycle('monthly')
+                      setAppliedDiscount(null)
+                      setCouponFeedback(null)
+                    }}
                   >
                     <div className="plan-duration-top">
                       <span className="plan-duration-radio" aria-hidden="true">
@@ -914,7 +1219,10 @@ export function PlanUpgradeModal({
                       </div>
                     </div>
                     <div className="plan-duration-price-row num-tabular">
-                      <strong>{formatRp(monthlyPrice)}</strong>
+                      {hasMonthlyPromo && (
+                        <span className="plan-price-strike">{formatRp(baseMonthlyPrice)}</span>
+                      )}
+                      <strong>{formatRp(effMonthlyPrice)}</strong>
                       <span>/bulan</span>
                     </div>
                   </button>
@@ -922,7 +1230,11 @@ export function PlanUpgradeModal({
                   <button
                     type="button"
                     className={`plan-duration-card is-best ${billingCycle === 'yearly' ? 'selected' : ''}`}
-                    onClick={() => setBillingCycle('yearly')}
+                    onClick={() => {
+                      setBillingCycle('yearly')
+                      setAppliedDiscount(null)
+                      setCouponFeedback(null)
+                    }}
                   >
                     <div className="plan-duration-top">
                       <span className="plan-duration-radio" aria-hidden="true">
@@ -940,14 +1252,17 @@ export function PlanUpgradeModal({
                         <span className="plan-duration-desc">
                           {yearlySavingsRp > 0
                             ? `Aktif 1 tahun penuh · Hemat ${formatRp(yearlySavingsRp)} (${formatRp(
-                                Math.round(yearlyPrice / 12)
+                                Math.round(effYearlyPrice / 12)
                               )}/bln)`
                             : 'Aktif 1 tahun penuh (365 hari)'}
                         </span>
                       </div>
                     </div>
                     <div className="plan-duration-price-row num-tabular">
-                      <strong>{formatRp(yearlyPrice)}</strong>
+                      {hasYearlyPromo && (
+                        <span className="plan-price-strike">{formatRp(baseYearlyPrice)}</span>
+                      )}
+                      <strong>{formatRp(effYearlyPrice)}</strong>
                       <span>/tahun</span>
                     </div>
                   </button>
@@ -980,29 +1295,114 @@ export function PlanUpgradeModal({
               </div>
             )}
 
-            {/* TAHAP 3A: Pilih Metode Pembayaran & Buat Tagihan */}
+            {/* TAHAP 3A: Kode Kupon, Pilih Metode Pembayaran & Buat Tagihan */}
             {browseStage === 'method' && (
               <div className="plan-stage-stack">
-                <div className="plan-order-summary-card">
-                  <div className="plan-order-summary-left">
-                    <span className="plan-order-summary-label">Ringkasan Pesanan</span>
-                    <div className="plan-order-summary-name">
-                      {proName} · {billingCycle === 'yearly' ? 'Tahunan (12 Bulan)' : 'Bulanan (1 Bulan)'}
+                <div className="plan-order-summary-card is-detailed">
+                  <div className="plan-order-summary-top">
+                    <div className="plan-order-summary-left">
+                      <span className="plan-order-summary-label">Ringkasan Pesanan</span>
+                      <div className="plan-order-summary-name">
+                        {selectedPlanName} ·{' '}
+                        {billingCycle === 'yearly' ? 'Tahunan (12 Bulan)' : 'Bulanan (1 Bulan)'}
+                      </div>
+                    </div>
+                    <div className="plan-order-summary-right num-tabular">
+                      {(promoDiscAmount > 0 || voucherDiscAmount > 0) && (
+                        <span className="plan-price-strike">{formatRp(baseOrderAmount)}</span>
+                      )}
+                      <strong className="plan-order-summary-total">{formatRp(selectedPrice)}</strong>
+                      <button
+                        type="button"
+                        className="plan-change-link"
+                        onClick={() => {
+                          setFeedback(null)
+                          setBrowseStage('cycle')
+                        }}
+                      >
+                        Ubah Durasi
+                      </button>
                     </div>
                   </div>
-                  <div className="plan-order-summary-right num-tabular">
-                    <strong className="plan-order-summary-total">{formatRp(selectedPrice)}</strong>
-                    <button
-                      type="button"
-                      className="plan-change-link"
-                      onClick={() => {
-                        setFeedback(null)
-                        setBrowseStage('cycle')
-                      }}
-                    >
-                      Ubah Durasi
-                    </button>
+
+                  {(promoDiscAmount > 0 || voucherDiscAmount > 0) && (
+                    <div className="plan-order-breakdown num-tabular">
+                      <div className="plan-order-bk-row">
+                        <span>Harga Reguler</span>
+                        <span>{formatRp(baseOrderAmount)}</span>
+                      </div>
+                      {promoDiscAmount > 0 && (
+                        <div className="plan-order-bk-row is-save">
+                          <span>
+                            Diskon Promo
+                            {selectedPlan?.promo_label ? ` (${selectedPlan.promo_label})` : ''}
+                          </span>
+                          <span>-{formatRp(promoDiscAmount)}</span>
+                        </div>
+                      )}
+                      {voucherDiscAmount > 0 && (
+                        <div className="plan-order-bk-row is-save">
+                          <span>Kupon {appliedDiscount?.discount_code}</span>
+                          <span>-{formatRp(voucherDiscAmount)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Kotak Kode Kupon / Voucher Promo */}
+                <div className="pay-coupon-box">
+                  <div className="pay-coupon-head">
+                    <Ticket size={14} />
+                    <span>Punya Kode Kupon / Voucher?</span>
                   </div>
+                  <div className="pay-coupon-row">
+                    <input
+                      id="upgrade-coupon-input"
+                      type="text"
+                      className="modern-input pay-coupon-input num-tabular"
+                      placeholder="Masukkan kode kupon (mis. HEMAT30)"
+                      value={couponInput}
+                      disabled={applyingCoupon}
+                      onChange={(e) =>
+                        setCouponInput(e.target.value.toUpperCase().replace(/\s+/g, ''))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleApplyCoupon()
+                        }
+                      }}
+                    />
+                    {activeQuoteMatch ? (
+                      <button
+                        type="button"
+                        className="btn btn-danger-ghost btn-compact"
+                        onClick={handleRemoveCoupon}
+                      >
+                        <X size={14} />
+                        <span>Hapus</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-compact"
+                        disabled={applyingCoupon || !couponInput.trim()}
+                        onClick={() => handleApplyCoupon()}
+                      >
+                        <span>{applyingCoupon ? 'Mengecek...' : 'Terapkan'}</span>
+                      </button>
+                    )}
+                  </div>
+                  {couponFeedback && (
+                    <div
+                      className={`pay-coupon-msg ${
+                        couponFeedback.type === 'error' ? 'is-error' : 'is-success'
+                      }`}
+                    >
+                      {couponFeedback.text}
+                    </div>
+                  )}
                 </div>
 
                 {/* Pilihan Metode Pembayaran Manual */}

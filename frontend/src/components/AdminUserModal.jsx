@@ -21,6 +21,7 @@ export function AdminUserModal({
   mode,
   user,
   devices = [],
+  plans = [],
   appSettings,
   token,
   onLogout,
@@ -80,6 +81,25 @@ export function AdminUserModal({
     }
   }, [unclaimedDevices, assignDeviceId])
 
+  const planOptions = useMemo(() => {
+    if (Array.isArray(plans) && plans.length > 0) {
+      return plans.map((p) => ({
+        value: p.slug,
+        label: p.is_active ? p.name : `${p.name} (Nonaktif)`,
+      }))
+    }
+    return [
+      { value: 'free', label: appSettings?.free_plan_name || 'VoltKu Gratis' },
+      { value: 'pro', label: appSettings?.pro_plan_name || 'VoltKu Pro' },
+    ]
+  }, [plans, appSettings])
+
+  const selectedPlanObj = useMemo(
+    () => (Array.isArray(plans) ? plans.find((p) => p.slug === planTier) : null),
+    [plans, planTier]
+  )
+  const isSelectedPaid = selectedPlanObj ? !selectedPlanObj.is_default_free : planTier !== 'free'
+
   if (!mode) return null
 
   const isProCurrent = Boolean(user?.plan?.is_pro)
@@ -101,7 +121,7 @@ export function AdminUserModal({
           password,
           plan_tier: planTier,
         }
-        if (planTier === 'pro' && planDuration !== '0' && durationValue > 0) {
+        if (isSelectedPaid && planDuration !== '0' && durationValue > 0) {
           body.plan_duration_days = durationValue
         }
         await apiRequest('/api/admin/users', { method: 'POST', body }, token, onLogout)
@@ -116,7 +136,7 @@ export function AdminUserModal({
         if (password.trim()) {
           payload.password = password
         }
-        if (planTier === 'pro') {
+        if (isSelectedPaid) {
           if (planDuration === '0') {
             payload.clear_plan_expiration = true
           } else if (planDuration !== 'keep' && durationValue > 0) {
@@ -366,17 +386,14 @@ export function AdminUserModal({
                   id="admin-user-plan"
                   value={planTier}
                   onChange={setPlanTier}
-                  options={[
-                    { value: 'free', label: appSettings?.free_plan_name || 'VoltKu Gratis' },
-                    { value: 'pro', label: appSettings?.pro_plan_name || 'VoltKu Pro' },
-                  ]}
+                  options={planOptions}
                 />
               </div>
 
-              {planTier === 'pro' && (
+              {isSelectedPaid && (
                 <div className="form-field-group" style={{ marginBottom: 0 }}>
                   <label className="field-label" htmlFor="admin-user-duration">
-                    Masa Aktif Pro
+                    Masa Aktif Paket Berbayar
                   </label>
                   <InAppSelect
                     id="admin-user-duration"
@@ -398,10 +415,10 @@ export function AdminUserModal({
               )}
             </div>
 
-            {planTier === 'pro' && planDuration === 'custom' && (
+            {isSelectedPaid && planDuration === 'custom' && (
               <div className="form-field-group" style={{ marginTop: 10, marginBottom: 0 }}>
                 <label className="field-label" htmlFor="admin-user-custom-days">
-                  Tambah / Set Durasi Pro (Hari)
+                  Tambah / Set Durasi Paket (Hari)
                 </label>
                 <input
                   id="admin-user-custom-days"
@@ -415,7 +432,7 @@ export function AdminUserModal({
               </div>
             )}
 
-            {isEdit && user?.plan_tier === 'pro' && (
+            {isEdit && user?.plan_tier && user.plan_tier !== 'free' && (
               <div className="admin-dev-id num-tabular" style={{ marginTop: 8 }}>
                 Masa aktif saat ini:{' '}
                 <strong>

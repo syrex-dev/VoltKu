@@ -13,6 +13,7 @@ import {
   Save,
   RefreshCw,
   CreditCard,
+  Crown,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatTimeWIB } from '../utils/formatters'
@@ -22,6 +23,7 @@ import { AdminAppSettingsTab } from './AdminAppSettingsTab'
 import { AdminUsersSection } from './AdminUsersSection'
 import { AdminDevicesSection } from './AdminDevicesSection'
 import { AdminUserModal } from './AdminUserModal'
+import { AdminPlansDiscountsSection } from './AdminPlansDiscountsSection'
 import {
   AdminPaymentSummaryStrip,
   AdminUpgradeRequestsCard,
@@ -44,6 +46,8 @@ export function AdminPanel({
   const [appSettings, setAppSettings] = useState(null)
   const [consentsData, setConsentsData] = useState(null)
   const [upgradeRequests, setUpgradeRequests] = useState([])
+  const [plans, setPlans] = useState([])
+  const [discounts, setDiscounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState(null)
 
@@ -70,15 +74,18 @@ export function AdminPanel({
   const loadAdminData = useCallback(async () => {
     if (!token) return
     try {
-      const [ov, usrs, devs, anoms, appCfg, consents, upgReqs] = await Promise.all([
-        apiRequest('/api/admin/overview', {}, token, onLogout),
-        apiRequest('/api/admin/users', {}, token, onLogout),
-        apiRequest('/api/admin/devices', {}, token, onLogout),
-        apiRequest('/api/admin/anomalies?limit=100', {}, token, onLogout),
-        apiRequest('/api/admin/app-settings', {}, token, onLogout).catch(() => null),
-        apiRequest('/api/admin/consents?limit=100', {}, token, onLogout).catch(() => null),
-        apiRequest('/api/admin/upgrade-requests?limit=100', {}, token, onLogout).catch(() => []),
-      ])
+      const [ov, usrs, devs, anoms, appCfg, consents, upgReqs, admPlans, admDiscounts] =
+        await Promise.all([
+          apiRequest('/api/admin/overview', {}, token, onLogout),
+          apiRequest('/api/admin/users', {}, token, onLogout),
+          apiRequest('/api/admin/devices', {}, token, onLogout),
+          apiRequest('/api/admin/anomalies?limit=100', {}, token, onLogout),
+          apiRequest('/api/admin/app-settings', {}, token, onLogout).catch(() => null),
+          apiRequest('/api/admin/consents?limit=100', {}, token, onLogout).catch(() => null),
+          apiRequest('/api/admin/upgrade-requests?limit=100', {}, token, onLogout).catch(() => []),
+          apiRequest('/api/admin/plans', {}, token, onLogout).catch(() => []),
+          apiRequest('/api/admin/discounts', {}, token, onLogout).catch(() => []),
+        ])
       setOverview(ov)
       setUsers(usrs || [])
       setDevices(devs || [])
@@ -86,6 +93,8 @@ export function AdminPanel({
       if (appCfg) setAppSettings(appCfg)
       if (consents) setConsentsData(consents)
       setUpgradeRequests(Array.isArray(upgReqs) ? upgReqs : [])
+      setPlans(Array.isArray(admPlans) ? admPlans : [])
+      setDiscounts(Array.isArray(admDiscounts) ? admDiscounts : [])
     } catch (err) {
       setNotice({ type: 'error', text: err.message || 'Gagal memuat data Panel Admin.' })
     } finally {
@@ -221,6 +230,7 @@ export function AdminPanel({
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
     { id: 'users', label: 'Pengguna', icon: Users },
     { id: 'payments', label: 'Pembayaran', icon: CreditCard, badge: pendingUpgradesCount },
+    { id: 'plans', label: 'Paket & Diskon', icon: Crown },
     { id: 'devices', label: 'Perangkat', icon: Cpu },
     { id: 'anomalies', label: 'Anomali', icon: ShieldAlert },
     { id: 'settings', label: 'Pengaturan', icon: Sliders },
@@ -430,6 +440,7 @@ export function AdminPanel({
               <AdminUsersSection
                 users={users}
                 devices={devices}
+                plans={plans}
                 token={token}
                 onLogout={onLogout}
                 onNotice={setNotice}
@@ -557,11 +568,24 @@ export function AdminPanel({
               </div>
             )}
 
+            {adminTab === 'plans' && (
+              <AdminPlansDiscountsSection
+                plans={plans}
+                discounts={discounts}
+                token={token}
+                onLogout={onLogout}
+                onReload={loadAdminData}
+                onNotice={setNotice}
+              />
+            )}
+
             {adminTab === 'settings' && (
               <AdminAppSettingsTab
                 token={token}
                 appSettings={appSettings}
                 consentsData={consentsData}
+                plans={plans}
+                onOpenPlansTab={() => setAdminTab('plans')}
                 onLogout={onLogout}
                 onNotice={setNotice}
                 onSettingsUpdated={async () => {
@@ -721,6 +745,7 @@ export function AdminPanel({
         mode={userModalMode}
         user={editingUser ? users.find((x) => x.id === editingUser.id) || editingUser : null}
         devices={devices}
+        plans={plans}
         appSettings={appSettings}
         token={token}
         onLogout={onLogout}

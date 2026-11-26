@@ -14,9 +14,10 @@ import {
   Globe,
   UserCheck,
   Crown,
+  ArrowRight,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
-import { formatTimeWIB } from '../utils/formatters'
+import { formatTimeWIB, formatRp } from '../utils/formatters'
 import { InAppSelect } from './InAppSelect'
 
 const SUB_TABS = [
@@ -40,6 +41,8 @@ export function AdminAppSettingsTab({
   token,
   appSettings,
   consentsData,
+  plans = [],
+  onOpenPlansTab = null,
   onLogout,
   onSettingsUpdated,
   onNotice,
@@ -885,7 +888,8 @@ export function AdminAppSettingsTab({
                   <div className="admin-row-title">Aktifkan Pembatasan Paket (Freemium)</div>
                   <div className="admin-row-sub">
                     Jika aktif, pengguna baru masuk ke paket Gratis sesuai kuota panel &amp;
-                    riwayat di bawah. Jika dimatikan, seluruh pengguna otomatis terbuka penuh.
+                    riwayat masing-masing paket. Jika dimatikan, seluruh pengguna otomatis terbuka
+                    penuh.
                   </div>
                 </div>
                 <button
@@ -897,166 +901,6 @@ export function AdminAppSettingsTab({
                 >
                   <span className="admin-switch-thumb" />
                 </button>
-              </div>
-            </section>
-
-            <section className="clean-sheet admin-card-block">
-              <div className="admin-card-head">
-                <h3>Paket Gratis (Free Tier)</h3>
-              </div>
-              <div className="settings-fields-grid">
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="cfg-free-name">
-                    Nama Paket Gratis
-                  </label>
-                  <input
-                    id="cfg-free-name"
-                    type="text"
-                    className="modern-input"
-                    value={form.free_plan_name || ''}
-                    onChange={(e) => updateField('free_plan_name', e.target.value)}
-                  />
-                </div>
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="cfg-free-max-dev">
-                    Maksimal Panel Aktif
-                  </label>
-                  <input
-                    id="cfg-free-max-dev"
-                    type="number"
-                    min="1"
-                    max="100"
-                    className="modern-input num-tabular"
-                    value={form.free_max_devices ?? 1}
-                    onChange={(e) => updateField('free_max_devices', e.target.value)}
-                  />
-                </div>
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="cfg-free-days">
-                    Batas Riwayat Grafik (Hari)
-                  </label>
-                  <input
-                    id="cfg-free-days"
-                    type="number"
-                    min="1"
-                    max="366"
-                    className="modern-input num-tabular"
-                    value={form.free_history_days ?? 3}
-                    onChange={(e) => updateField('free_history_days', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="admin-toggle-row" style={{ marginTop: 12 }}>
-                <div>
-                  <div className="admin-row-title">Izinkan Proyeksi Tagihan di Paket Gratis</div>
-                  <div className="admin-row-sub">
-                    Matikan agar fitur Perkiraan Akhir Bulan eksklusif untuk pelanggan Pro.
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={Boolean(form.free_forecast_enabled)}
-                  className={`admin-switch ${form.free_forecast_enabled ? 'on' : ''}`}
-                  onClick={() =>
-                    updateField('free_forecast_enabled', !form.free_forecast_enabled)
-                  }
-                >
-                  <span className="admin-switch-thumb" />
-                </button>
-              </div>
-
-              <div className="admin-toggle-row" style={{ marginTop: 12 }}>
-                <div>
-                  <div className="admin-row-title">Izinkan Ekspor CSV di Paket Gratis</div>
-                  <div className="admin-row-sub">
-                    Matikan agar unduhan laporan konsumsi CSV hanya untuk pelanggan Pro.
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={Boolean(form.free_export_enabled)}
-                  className={`admin-switch ${form.free_export_enabled ? 'on' : ''}`}
-                  onClick={() => updateField('free_export_enabled', !form.free_export_enabled)}
-                >
-                  <span className="admin-switch-thumb" />
-                </button>
-              </div>
-            </section>
-
-            <section className="clean-sheet admin-card-block">
-              <div className="admin-card-head">
-                <h3>Paket Pro (Berbayar)</h3>
-              </div>
-              <div className="settings-fields-grid">
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="cfg-pro-name">
-                    Nama Paket Pro
-                  </label>
-                  <input
-                    id="cfg-pro-name"
-                    type="text"
-                    className="modern-input"
-                    value={form.pro_plan_name || ''}
-                    onChange={(e) => updateField('pro_plan_name', e.target.value)}
-                  />
-                </div>
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="cfg-pro-month">
-                    Harga Bulanan (Rp)
-                  </label>
-                  <input
-                    id="cfg-pro-month"
-                    type="number"
-                    min="0"
-                    className="modern-input num-tabular"
-                    value={form.pro_monthly_price_rp ?? 30000}
-                    onChange={(e) => updateField('pro_monthly_price_rp', e.target.value)}
-                  />
-                </div>
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="cfg-pro-year">
-                    Harga Tahunan (Rp)
-                  </label>
-                  <input
-                    id="cfg-pro-year"
-                    type="number"
-                    min="0"
-                    className="modern-input num-tabular"
-                    value={form.pro_yearly_price_rp ?? 300000}
-                    onChange={(e) => updateField('pro_yearly_price_rp', e.target.value)}
-                  />
-                </div>
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="cfg-pro-max-dev">
-                    Maksimal Panel Pro (-1 = Tanpa Batas)
-                  </label>
-                  <input
-                    id="cfg-pro-max-dev"
-                    type="number"
-                    min="-1"
-                    max="10000"
-                    className="modern-input num-tabular"
-                    value={form.pro_max_devices ?? 10}
-                    onChange={(e) => updateField('pro_max_devices', e.target.value)}
-                  />
-                </div>
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor="cfg-pro-days">
-                    Riwayat Grafik Pro (Hari)
-                  </label>
-                  <input
-                    id="cfg-pro-days"
-                    type="number"
-                    min="1"
-                    max="366"
-                    className="modern-input num-tabular"
-                    value={form.pro_history_days ?? 90}
-                    onChange={(e) => updateField('pro_history_days', e.target.value)}
-                  />
-                </div>
               </div>
 
               <div className="form-field-group" style={{ marginTop: 8, marginBottom: 0 }}>
@@ -1072,6 +916,46 @@ export function AdminAppSettingsTab({
                   onChange={(e) => updateField('upgrade_instructions', e.target.value)}
                 />
               </div>
+            </section>
+
+            <section className="clean-sheet admin-card-block">
+              <div className="admin-card-head is-split">
+                <div>
+                  <h3>Katalog Paket, Harga Promo &amp; Kode Kupon</h3>
+                  <p className="admin-row-sub">
+                    Pengelolaan daftar paket (Gratis/Pro/Kustom), harga coret, kuota fitur, dan
+                    kode voucher dikelola penuh di tab <strong>Paket &amp; Diskon</strong>.
+                  </p>
+                </div>
+                {onOpenPlansTab && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-compact"
+                    onClick={onOpenPlansTab}
+                  >
+                    <Crown size={14} />
+                    <span>Kelola Paket &amp; Diskon</span>
+                    <ArrowRight size={14} />
+                  </button>
+                )}
+              </div>
+
+              {plans.length > 0 && (
+                <div className="admin-plan-summary-strip num-tabular">
+                  {plans.map((p) => (
+                    <div key={p.id || p.slug} className="admin-plan-mini-chip">
+                      <strong>{p.name}</strong>
+                      <span>
+                        {p.is_default_free
+                          ? 'Gratis'
+                          : `${formatRp(p.effective_monthly_price_rp)}/bln`}
+                      </span>
+                      {p.promo_active && <span className="admin-pill warn">Promo</span>}
+                      {!p.is_active && <span className="admin-pill muted">Nonaktif</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           </>
         )}

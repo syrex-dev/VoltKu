@@ -43,13 +43,24 @@ export function HeroBannerCarousel({
   const suppressClickRef = useRef(false)
 
   const slides = useMemo(() => {
-    const proCfg = appConfig.plans?.pro || {
-      name: 'VoltKu Pro',
-      price_monthly_rp: 30000,
-      max_devices: 10,
-      history_days: 90,
-    }
+    const planItems = Array.isArray(appConfig.plans?.items) ? appConfig.plans.items : []
+    const paidPlans = planItems.filter((p) => !p.is_default_free && p.slug !== 'free')
+    const proCfg = paidPlans.find((p) => p.is_recommended) ||
+      paidPlans[0] ||
+      appConfig.plans?.pro || {
+        name: 'VoltKu Pro',
+        price_monthly_rp: 30000,
+        effective_monthly_price_rp: 30000,
+        max_devices: 10,
+        history_days: 90,
+        promo_active: false,
+      }
+    const effPrice = Number(proCfg.effective_monthly_price_rp ?? proCfg.price_monthly_rp ?? 30000)
+    const basePrice = Number(proCfg.price_monthly_rp ?? effPrice)
+    const hasPromo = Boolean(proCfg.promo_active) && basePrice > effPrice
     const isPro = Boolean(currentUser?.plan?.is_pro)
+    const activePlanName = currentUser?.plan?.plan_name || proCfg.name || 'VoltKu Pro'
+    const activeHistDays = currentUser?.plan?.limits?.history_days || proCfg.history_days || 90
     const maxDevsText =
       proCfg.max_devices < 0 ? 'panel tanpa batas' : `hingga ${proCfg.max_devices} panel`
 
@@ -106,8 +117,8 @@ export function HeroBannerCarousel({
       list.push({
         id: 'pro-active',
         tone: 'is-emerald',
-        badge: 'PRO AKTIF',
-        title: 'Proteksi & Riwayat 90 Hari Aktif',
+        badge: `${activePlanName.toUpperCase()} AKTIF`,
+        title: `Proteksi & Riwayat ${activeHistDays} Hari Aktif`,
         subtitle: 'Pantau catatan anomali & tegangan panel secara real-time',
         cta: 'Cek Peringatan',
         Icon: BellRing,
@@ -117,9 +128,13 @@ export function HeroBannerCarousel({
       list.push({
         id: 'upgrade-pro',
         tone: 'is-gold-dark',
-        badge: proCfg.name?.toUpperCase() || 'VOLTKU PRO',
-        title: `Pantau ${maxDevsText} dengan Pro`,
-        subtitle: `Riwayat ${proCfg.history_days} hari · Mulai ${formatRp(proCfg.price_monthly_rp)}/bulan`,
+        badge: hasPromo
+          ? proCfg.promo_label?.toUpperCase() || 'PROMO SPESIAL'
+          : proCfg.name?.toUpperCase() || 'VOLTKU PRO',
+        title: `Pantau ${maxDevsText} dengan ${proCfg.name || 'Pro'}`,
+        subtitle: hasPromo
+          ? `Promo mulai ${formatRp(effPrice)}/bln (normal ${formatRp(basePrice)}) · Riwayat ${proCfg.history_days} hr`
+          : `Riwayat ${proCfg.history_days} hari · Mulai ${formatRp(effPrice)}/bulan`,
         cta: 'Lihat Paket',
         Icon: Crown,
         onClick: () => {

@@ -230,14 +230,26 @@ export function ProfileModal({
     currentUser?.auth_provider === 'google' || currentUser?.auth_provider === 'both'
 
   const plan = currentUser?.plan
-  const proCfg = appConfig.plans?.pro || {
-    name: 'VoltKu Pro',
-    price_monthly_rp: 30000,
-    max_devices: 10,
-    history_days: 90,
-  }
+  const allPublicPlans = Array.isArray(appConfig.plans?.items) ? appConfig.plans.items : []
+  const paidPublicPlans = allPublicPlans.filter((p) => !p.is_default_free && p.slug !== 'free')
+  const proCfg = paidPublicPlans.find((p) => p.is_recommended) ||
+    paidPublicPlans[0] ||
+    appConfig.plans?.pro || {
+      name: 'VoltKu Pro',
+      price_monthly_rp: 30000,
+      effective_monthly_price_rp: 30000,
+      max_devices: 10,
+      history_days: 90,
+      promo_active: false,
+    }
+  const proEffPrice = Number(proCfg.effective_monthly_price_rp ?? proCfg.price_monthly_rp ?? 30000)
+  const proBasePrice = Number(proCfg.price_monthly_rp ?? proEffPrice)
+  const proHasPromo = Boolean(proCfg.promo_active) && proBasePrice > proEffPrice
   const showPlanCard = Boolean(plan && plan.freemium_enabled !== false)
   const isPro = Boolean(plan?.is_pro)
+  const tierShortLabel = isPro
+    ? (plan?.plan_name || 'Pro').replace(/^VoltKu\s+/i, '').trim() || 'Pro'
+    : 'Free'
   const usedDevices = plan?.usage?.device_count ?? devices.length ?? 0
   const maxDevices = plan?.limits?.max_devices ?? 1
   const historyDays = plan?.limits?.history_days ?? (isPro ? proCfg.history_days : 3)
@@ -404,7 +416,7 @@ export function ProfileModal({
                         {showPlanCard && (
                           <span className={`profile-tier-chip ${isPro ? 'is-pro' : 'is-free'}`}>
                             {isPro ? <Crown size={11} /> : <Sparkles size={11} />}
-                            <span>{isPro ? 'Pro' : 'Free'}</span>
+                            <span>{tierShortLabel}</span>
                           </span>
                         )}
                       </div>
@@ -440,8 +452,10 @@ export function ProfileModal({
                             {isPro
                               ? plan.expires_at
                                 ? `Berlaku hingga ${formatDateTimeWIB(plan.expires_at)}`
-                                : 'Keanggotaan Pro aktif permanen'
-                              : `${proMaxText} & riwayat ${proCfg.history_days} hari · Mulai ${formatRp(proCfg.price_monthly_rp)}/bln`}
+                                : 'Keanggotaan berbayar aktif permanen'
+                              : proHasPromo
+                                ? `${proMaxText} & riwayat ${proCfg.history_days} hari · Promo ${formatRp(proEffPrice)}/bln (normal ${formatRp(proBasePrice)})`
+                                : `${proMaxText} & riwayat ${proCfg.history_days} hari · Mulai ${formatRp(proEffPrice)}/bln`}
                           </div>
                         </div>
                         {onOpenPlanModal && (
