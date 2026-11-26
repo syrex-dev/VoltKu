@@ -300,6 +300,11 @@ class IngestService:
         )
         if settings.mqtt_user and settings.mqtt_pass:
             client.username_pw_set(settings.mqtt_user, settings.mqtt_pass)
+        if settings.mqtt_use_tls:
+            ca_path = (settings.mqtt_ca_cert or "").strip() or None
+            client.tls_set(ca_certs=ca_path)
+            if settings.mqtt_tls_insecure:
+                client.tls_insecure_set(True)
 
         def on_connect(
             c: mqtt.Client, userdata: Any, flags: Any, rc: Any, properties: Any = None

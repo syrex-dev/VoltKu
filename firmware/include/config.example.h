@@ -15,6 +15,8 @@
 
 #define MQTT_HOST "192.168.1.100"
 #define MQTT_PORT 1883
+#define MQTT_USE_TLS 0
+#define MQTT_CA_CERT ""
 #define MQTT_USER "energy_backend"
 #define MQTT_PASS "PASSWORD_MQTT_ANDA"
 

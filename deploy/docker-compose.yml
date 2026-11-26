@@ -3,12 +3,15 @@ services:
     image: eclipse-mosquitto:2.0
     container_name: energy_mosquitto
     restart: unless-stopped
+    # Port 1883 hanya di-bind ke loopback host agar tidak terbuka ke internet tanpa TLS.
+    # Untuk perangkat ESP32 jarak jauh, aktifkan mosquitto-tls.conf & port 8883:8883.
     ports:
-      - "1883:1883"
+      - "127.0.0.1:1883:1883"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./passwd:/mosquitto/config/passwd:ro
       - ./acl:/mosquitto/config/acl:ro
+      - ./certs:/mosquitto/certs:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
 

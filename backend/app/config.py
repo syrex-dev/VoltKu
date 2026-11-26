@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     mqtt_port: int = 1883
     mqtt_user: str = "energy_backend"
     mqtt_pass: str = ""
+    mqtt_use_tls: bool = False
+    mqtt_ca_cert: Optional[str] = None
+    mqtt_tls_insecure: bool = False
 
     # Kredensial & Rahasia (Opsional di M0, diwajibkan di milestone yang memakainya)
     dashboard_password: Optional[str] = None

@@ -81,7 +81,15 @@ voltku_ui::DisplayController displayCtrl;
 unsigned long lastDisplayUpdateMs = 0;
 #endif
 
+#ifndef MQTT_USE_TLS
+#define MQTT_USE_TLS 0
+#endif
+
+#if MQTT_USE_TLS
+espMqttClientSecure mqttClient;
+#else
 espMqttClient mqttClient;
+#endif
 Preferences preferences;
 WebServer portalServer(80);
 DNSServer dnsServer;
@@ -764,6 +772,18 @@ void setup() {
 
   setupWiFi();
   syncNTP();
+
+#if MQTT_USE_TLS
+#ifdef MQTT_CA_CERT
+  if (strlen(MQTT_CA_CERT) > 20) {
+    mqttClient.setCACert(MQTT_CA_CERT);
+  } else {
+    mqttClient.setInsecure();
+  }
+#else
+  mqttClient.setInsecure();
+#endif
+#endif
 
   mqttClient.setServer(runtimeMqttHost, runtimeMqttPort);
   mqttClient.setCredentials(runtimeMqttUser, runtimeMqttPass);

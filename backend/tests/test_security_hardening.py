@@ -125,3 +125,35 @@ def test_trusted_client_ip_ignores_spoofed_headers_from_untrusted_peer():
     # Peer dari Nginx lokal -> percaya CF-Connecting-IP
     proxied = _FakeReq("127.0.0.1", {"cf-connecting-ip": "203.0.113.99"})
     assert get_trusted_client_ip(proxied) == "203.0.113.99"
+
+
+def test_mqtt_ingest_client_applies_tls_when_enabled(monkeypatch):
+    from unittest.mock import patch
+
+    import paho.mqtt.client as paho_mqtt
+    from app.config import get_settings
+    from app.mqtt_ingest import IngestService
+
+    svc = IngestService()
+
+    # Non-TLS default
+    get_settings.cache_clear()
+    with patch.object(paho_mqtt.Client, "tls_set") as mock_tls_set:
+        svc.init_mqtt_client()
+        mock_tls_set.assert_not_called()
+
+    # TLS aktif dengan CA cert custom
+    monkeypatch.setenv("MQTT_USE_TLS", "true")
+    monkeypatch.setenv("MQTT_CA_CERT", "/mosquitto/certs/ca.crt")
+    monkeypatch.setenv("MQTT_TLS_INSECURE", "false")
+    get_settings.cache_clear()
+
+    with (
+        patch.object(paho_mqtt.Client, "tls_set") as mock_tls_set,
+        patch.object(paho_mqtt.Client, "tls_insecure_set") as mock_insecure,
+    ):
+        svc.init_mqtt_client()
+        mock_tls_set.assert_called_once_with(ca_certs="/mosquitto/certs/ca.crt")
+        mock_insecure.assert_not_called()
+    get_settings.cache_clear()
+
