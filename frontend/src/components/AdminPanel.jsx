@@ -18,7 +18,6 @@ import {
   X,
   Save,
   RefreshCw,
-  UserPlus,
   Crown,
   CreditCard,
 } from 'lucide-react'
@@ -27,6 +26,7 @@ import { formatNum, formatTimeWIB } from '../utils/formatters'
 import { BrandLogo } from './BrandLogo'
 import { InAppSelect } from './InAppSelect'
 import { AdminAppSettingsTab } from './AdminAppSettingsTab'
+import { AdminUsersSection } from './AdminUsersSection'
 import {
   AdminPaymentSummaryStrip,
   AdminUpgradeRequestsCard,
@@ -55,7 +55,6 @@ export function AdminPanel({
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [userSearch, setUserSearch] = useState('')
   const [anomDeviceFilter, setAnomDeviceFilter] = useState('')
   const [anomSeverityFilter, setAnomSeverityFilter] = useState('')
 
@@ -79,8 +78,6 @@ export function AdminPanel({
   const [uPlanTier, setUPlanTier] = useState('free')
   const [uPlanDuration, setUPlanDuration] = useState('keep')
   const [savingUser, setSavingUser] = useState(false)
-  const [resolvingUpgradeId, setResolvingUpgradeId] = useState(null)
-  const [confirmDeleteUserId, setConfirmDeleteUserId] = useState(null)
 
   const [togglingAccess, setTogglingAccess] = useState(false)
   const [pmSummaryCounts, setPmSummaryCounts] = useState(null)
@@ -266,38 +263,10 @@ export function AdminPanel({
     }
   }
 
-  const handleResolveUpgrade = async (reqId, action, durationDays = null) => {
-    setResolvingUpgradeId(reqId)
-    setNotice(null)
-    try {
-      const body = { action }
-      if (durationDays !== null) body.duration_days = durationDays
-      await apiRequest(
-        `/api/admin/upgrade-requests/${reqId}`,
-        { method: 'PATCH', body },
-        token,
-        onLogout
-      )
-      setNotice({
-        type: 'success',
-        text:
-          action === 'approve'
-            ? 'Permintaan upgrade disetujui dan paket VoltKu Pro langsung aktif.'
-            : 'Permintaan upgrade ditolak.',
-      })
-      await loadAdminData()
-    } catch (err) {
-      setNotice({ type: 'error', text: err.message || 'Gagal memproses permintaan upgrade.' })
-    } finally {
-      setResolvingUpgradeId(null)
-    }
-  }
-
   const handleDeleteUser = async (uid) => {
     setNotice(null)
     try {
       await apiRequest(`/api/admin/users/${uid}`, { method: 'DELETE' }, token, onLogout)
-      setConfirmDeleteUserId(null)
       setNotice({ type: 'success', text: 'Akun pengguna dihapus dan unitnya dilepas ke stok.' })
       await loadAdminData()
     } catch (err) {
@@ -322,14 +291,6 @@ export function AdminPanel({
       )
     })
   }, [devices, searchQuery, statusFilter])
-
-  const filteredUsers = useMemo(() => {
-    const q = userSearch.trim().toLowerCase()
-    if (!q) return users
-    return users.filter(
-      (u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
-    )
-  }, [users, userSearch])
 
   const filteredAnomalies = useMemo(() => {
     return anomalies.filter((a) => {
@@ -555,180 +516,17 @@ export function AdminPanel({
             )}
 
             {adminTab === 'users' && (
-              <div className="admin-section-stack tab-pane-fade">
-                <div className="clean-sheet admin-toolbar-card">
-                  <div className="admin-search-wrap">
-                    <Search size={16} className="admin-search-icon" />
-                    <input
-                      type="text"
-                      className="modern-input admin-search-input"
-                      placeholder="Cari nama atau email pembeli..."
-                      value={userSearch}
-                      onChange={(e) => setUserSearch(e.target.value)}
-                    />
-                  </div>
-                  <button type="button" className="btn btn-primary btn-compact" onClick={openCreateUser}>
-                    <UserPlus size={15} />
-                    <span>Buat Akun</span>
-                  </button>
-                </div>
-
-                {filteredUsers.length === 0 ? (
-                  <div className="clean-sheet admin-empty-box">
-                    Belum ada pengguna terdaftar yang cocok.
-                  </div>
-                ) : (
-                  <>
-                    <div className="clean-sheet admin-table-desktop">
-                      <table className="admin-table">
-                        <thead>
-                          <tr>
-                            <th>Nama &amp; Email</th>
-                            <th>Paket</th>
-                            <th>Status</th>
-                            <th>Jumlah Unit</th>
-                            <th>Login Terakhir</th>
-                            <th style={{ textAlign: 'right' }}>Aksi</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredUsers.map((u) => {
-                            const isPro = Boolean(u.plan?.is_pro)
-                            const planLabel = u.plan?.plan_name || (isPro ? 'VoltKu Pro' : 'Gratis')
-                            return (
-                              <tr key={u.id}>
-                                <td>
-                                  <div className="admin-dev-name">{u.name}</div>
-                                  <div className="admin-dev-id">{u.email}</div>
-                                </td>
-                                <td>
-                                  <span className={`admin-pill ${isPro ? 'pro' : 'muted'}`}>
-                                    {isPro && <Crown size={12} />}
-                                    <span>{planLabel}</span>
-                                  </span>
-                                  {u.plan_tier === 'pro' && (
-                                    <div className="admin-dev-id num-tabular" style={{ marginTop: 3 }}>
-                                      {u.plan_expires_at
-                                        ? `s.d. ${formatTimeWIB(u.plan_expires_at)}`
-                                        : 'Permanen'}
-                                    </div>
-                                  )}
-                                </td>
-                                <td>
-                                  <span className={`admin-pill ${u.is_active ? 'ok' : 'warn'}`}>
-                                    {u.is_active ? 'Aktif' : 'Nonaktif'}
-                                  </span>
-                                </td>
-                                <td className="num-tabular">{u.device_count} unit</td>
-                                <td className="num-tabular">
-                                  {u.last_login_at ? formatTimeWIB(u.last_login_at) : 'Belum pernah'}
-                                </td>
-                                <td>
-                                  <div className="admin-row-actions">
-                                    <button
-                                      type="button"
-                                      className="admin-icon-action"
-                                      title="Edit Akun & Paket"
-                                      onClick={() => openEditUser(u)}
-                                    >
-                                      <Pencil size={15} />
-                                    </button>
-                                    {confirmDeleteUserId === u.id ? (
-                                      <button
-                                        type="button"
-                                        className="btn btn-danger-solid btn-compact"
-                                        onClick={() => handleDeleteUser(u.id)}
-                                      >
-                                        Hapus?
-                                      </button>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        className="admin-icon-action danger"
-                                        title="Hapus Akun"
-                                        onClick={() => setConfirmDeleteUserId(u.id)}
-                                      >
-                                        <Trash2 size={15} />
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="admin-cards-mobile">
-                      {filteredUsers.map((u) => {
-                        const isPro = Boolean(u.plan?.is_pro)
-                        const planLabel = u.plan?.plan_name || (isPro ? 'VoltKu Pro' : 'Gratis')
-                        return (
-                          <div key={u.id} className="clean-sheet admin-device-card-m">
-                            <div className="admin-m-top">
-                              <div className="admin-m-ident">
-                                <div className="admin-dev-name">{u.name}</div>
-                                <div className="admin-dev-id">{u.email}</div>
-                              </div>
-                              <span className={`admin-pill ${isPro ? 'pro' : 'muted'}`}>
-                                {isPro && <Crown size={12} />}
-                                <span>{planLabel}</span>
-                              </span>
-                            </div>
-                            <div className="admin-m-metrics admin-m-metrics-2col num-tabular">
-                              <div>
-                                <span>Status &amp; Unit</span>
-                                <strong>
-                                  {u.is_active ? 'Aktif' : 'Nonaktif'} · {u.device_count} unit
-                                </strong>
-                              </div>
-                              <div>
-                                <span>Masa Aktif / Login</span>
-                                <strong>
-                                  {u.plan_tier === 'pro' && u.plan_expires_at
-                                    ? `s.d. ${formatTimeWIB(u.plan_expires_at)}`
-                                    : u.last_login_at
-                                      ? formatTimeWIB(u.last_login_at)
-                                      : 'Belum pernah'}
-                                </strong>
-                              </div>
-                            </div>
-                            <div className="admin-m-actions admin-m-actions-2col">
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-compact"
-                                onClick={() => openEditUser(u)}
-                              >
-                                <Pencil size={14} />
-                                <span>Edit</span>
-                              </button>
-                              {confirmDeleteUserId === u.id ? (
-                                <button
-                                  type="button"
-                                  className="btn btn-danger-solid btn-compact"
-                                  onClick={() => handleDeleteUser(u.id)}
-                                >
-                                  <span>Yakin Hapus</span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="btn btn-danger-ghost btn-compact"
-                                  onClick={() => setConfirmDeleteUserId(u.id)}
-                                >
-                                  <Trash2 size={14} />
-                                  <span>Hapus</span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
+              <AdminUsersSection
+                users={users}
+                devices={devices}
+                token={token}
+                onLogout={onLogout}
+                onNotice={setNotice}
+                onReload={loadAdminData}
+                onOpenCreateUser={openCreateUser}
+                onOpenEditUser={openEditUser}
+                onDeleteUser={handleDeleteUser}
+              />
             )}
 
             {adminTab === 'devices' && (
