@@ -147,10 +147,18 @@ def test_forgot_password_rate_limit(monkeypatch):
 
 
 def test_email_builder_url():
-    from app.services.email_service import build_reset_password_url
+    from app.services.email_service import build_password_reset_message, build_reset_password_url
 
     url = build_reset_password_url("abc_123")
     assert url.endswith("/?reset_token=abc_123")
+    msg = build_password_reset_message(
+        to_email="uji@example.com",
+        user_name="Uji",
+        raw_token="abc_123",
+    )
+    assert msg["Date"]
+    assert msg["Message-ID"]
+    assert msg["Reply-To"]
     assert User is not None
 
 
