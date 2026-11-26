@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   CheckCircle2,
   XCircle,
@@ -12,6 +12,10 @@ import {
   Upload,
   X,
   Save,
+  Search,
+  Copy,
+  Clock,
+  ZoomIn,
 } from 'lucide-react'
 import { apiRequest, buildApiUrl } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
@@ -25,10 +29,16 @@ const STATUS_BADGE = {
   verifying: { cls: 'verifying', label: 'Perlu Dicek' },
   awaiting_payment: { cls: 'awaiting', label: 'Menunggu Bayar' },
   pending: { cls: 'awaiting', label: 'Menunggu' },
-  approved: { cls: 'approved', label: 'Disetujui' },
+  approved: { cls: 'approved', label: 'Lunas / Disetujui' },
   rejected: { cls: 'rejected', label: 'Ditolak' },
   cancelled: { cls: 'muted', label: 'Dibatalkan' },
   expired: { cls: 'expired', label: 'Kedaluwarsa' },
+}
+
+const TYPE_META = {
+  qris: { label: 'QRIS', icon: QrCode },
+  bank: { label: 'Transfer Bank', icon: Landmark },
+  ewallet: { label: 'E-Wallet', icon: Wallet },
 }
 
 const PM_TYPES = [
@@ -120,7 +130,7 @@ function AdminProofPreviewModal({ req, token, resolvingId, onClose, onApprove, o
             <div className="plan-cta-row">
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-primary plan-cta-primary"
                 disabled={resolvingId === req.id}
                 onClick={async () => {
                   await onApprove(req.id, defaultDays, rejectReason.trim() || null)
@@ -152,6 +162,63 @@ function AdminProofPreviewModal({ req, token, resolvingId, onClose, onApprove, o
   )
 }
 
+export function AdminPaymentSummaryStrip({ upgradeRequests = [], methodsCount = null }) {
+  const stats = useMemo(() => {
+    let verifying = 0
+    let awaiting = 0
+    let approved = 0
+    let approvedRevenueRp = 0
+
+    for (const r of upgradeRequests) {
+      if (r.status === 'verifying' || r.status === 'pending') {
+        verifying += 1
+      } else if (r.status === 'awaiting_payment') {
+        awaiting += 1
+      } else if (r.status === 'approved') {
+        approved += 1
+        approvedRevenueRp += Number(r.amount_rp || 0)
+      }
+    }
+    return { verifying, awaiting, approved, approvedRevenueRp }
+  }, [upgradeRequests])
+
+  return (
+    <div className="admin-kpi-grid">
+      <div className={`clean-sheet admin-kpi-card ${stats.verifying > 0 ? 'is-highlight-warn' : ''}`}>
+        <span className="admin-kpi-label">Perlu Verifikasi</span>
+        <strong className={`admin-kpi-value num-tabular ${stats.verifying > 0 ? 'brand-amber-text' : ''}`}>
+          {stats.verifying}
+        </strong>
+        <span className="admin-kpi-sub">
+          {stats.verifying > 0 ? 'Bukti bayar siap diperiksa' : 'Semua bukti sudah ditinjau'}
+        </span>
+      </div>
+
+      <div className="clean-sheet admin-kpi-card">
+        <span className="admin-kpi-label">Menunggu Bayar</span>
+        <strong className="admin-kpi-value num-tabular brand-blue-text">{stats.awaiting}</strong>
+        <span className="admin-kpi-sub">Tagihan aktif belum dibayar</span>
+      </div>
+
+      <div className="clean-sheet admin-kpi-card">
+        <span className="admin-kpi-label">Omzet Terkonfirmasi</span>
+        <strong className="admin-kpi-value num-tabular brand-emerald-text">
+          {formatRp(stats.approvedRevenueRp)}
+        </strong>
+        <span className="admin-kpi-sub">{stats.approved} transaksi lunas</span>
+      </div>
+
+      <div className="clean-sheet admin-kpi-card">
+        <span className="admin-kpi-label">Metode Pembayaran</span>
+        <strong className="admin-kpi-value num-tabular">
+          {methodsCount ? `${methodsCount.active}/${methodsCount.total}` : '—'}
+        </strong>
+        <span className="admin-kpi-sub">Saluran aktif tampil ke pembeli</span>
+      </div>
+    </div>
+  )
+}
+
 export function AdminUpgradeRequestsCard({
   upgradeRequests = [],
   token,
@@ -159,14 +226,38 @@ export function AdminUpgradeRequestsCard({
   onResolved,
   onNotice,
 }) {
-  const [filterMode, setFilterMode] = useState('active')
+  const [filterMode, setFilterMode] = useState('needs_action')
+  const [searchQuery, setSearchQuery] = useState('')
   const [resolvingId, setResolvingId] = useState(null)
   const [previewReq, setPreviewReq] = useState(null)
   const [rejectDraftId, setRejectDraftId] = useState(null)
   const [rejectNote, setRejectNote] = useState('')
 
-  const activeItems = upgradeRequests.filter((r) => ACTIVE_UPGRADE_STATUSES.includes(r.status))
-  const visibleItems = (filterMode === 'active' ? activeItems : upgradeRequests).slice(0, 20)
+  const counts = useMemo(() => {
+    const needsAction = upgradeRequests.filter((r) => ACTIVE_UPGRADE_STATUSES.includes(r.status)).length
+    const verifying = upgradeRequests.filter((r) => r.status === 'verifying' || r.status === 'pending').length
+    const awaiting = upgradeRequests.filter((r) => r.status === 'awaiting_payment').length
+    const approved = upgradeRequests.filter((r) => r.status === 'approved').length
+    return { needsAction, verifying, awaiting, approved, all: upgradeRequests.length }
+  }, [upgradeRequests])
+
+  const visibleItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return upgradeRequests
+      .filter((r) => {
+        if (filterMode === 'needs_action' && !ACTIVE_UPGRADE_STATUSES.includes(r.status)) return false
+        if (filterMode === 'awaiting' && r.status !== 'awaiting_payment') return false
+        if (filterMode === 'approved' && r.status !== 'approved') return false
+        if (!q) return true
+        return (
+          (r.order_code || '').toLowerCase().includes(q) ||
+          (r.user_name || '').toLowerCase().includes(q) ||
+          (r.user_email || '').toLowerCase().includes(q) ||
+          (r.payment_method_label || '').toLowerCase().includes(q)
+        )
+      })
+      .slice(0, 30)
+  }, [upgradeRequests, filterMode, searchQuery])
 
   const handleResolve = async (reqId, action, durationDays = null, adminNote = null) => {
     setResolvingId(reqId)
@@ -205,38 +296,80 @@ export function AdminUpgradeRequestsCard({
   return (
     <>
       <section className="clean-sheet admin-card-block">
-        <div className="admin-card-head" style={{ flexWrap: 'wrap', gap: 8 }}>
-          <h3>
-            Konfirmasi Pembayaran &amp; Upgrade Pro{' '}
-            {activeItems.length > 0 && (
-              <span className="admin-pill warn" style={{ marginLeft: 8 }}>
-                {activeItems.length} Aktif
-              </span>
-            )}
-          </h3>
-          <div className="admin-pm-actions">
+        <div className="admin-card-head is-split">
+          <div>
+            <h3>
+              Konfirmasi Pembayaran &amp; Upgrade Pro
+              {counts.verifying > 0 && (
+                <span className="admin-pill warn" style={{ marginLeft: 8 }}>
+                  {counts.verifying} Perlu Dicek
+                </span>
+              )}
+            </h3>
+            <p className="admin-row-sub">
+              Periksa bukti transfer masuk lalu aktifkan paket Pro pelanggan secara instan.
+            </p>
+          </div>
+          <div className="admin-pm-filter-tabs">
             <button
               type="button"
-              className={`btn btn-compact ${filterMode === 'active' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setFilterMode('active')}
+              className={`admin-filter-pill ${filterMode === 'needs_action' ? 'active' : ''}`}
+              onClick={() => setFilterMode('needs_action')}
             >
-              Perlu Dicek ({activeItems.length})
+              Perlu Tindakan ({counts.needsAction})
             </button>
             <button
               type="button"
-              className={`btn btn-compact ${filterMode === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+              className={`admin-filter-pill ${filterMode === 'awaiting' ? 'active' : ''}`}
+              onClick={() => setFilterMode('awaiting')}
+            >
+              Menunggu Bayar ({counts.awaiting})
+            </button>
+            <button
+              type="button"
+              className={`admin-filter-pill ${filterMode === 'approved' ? 'active' : ''}`}
+              onClick={() => setFilterMode('approved')}
+            >
+              Lunas ({counts.approved})
+            </button>
+            <button
+              type="button"
+              className={`admin-filter-pill ${filterMode === 'all' ? 'active' : ''}`}
               onClick={() => setFilterMode('all')}
             >
-              Semua ({upgradeRequests.length})
+              Semua ({counts.all})
             </button>
           </div>
         </div>
 
+        {upgradeRequests.length > 0 && (
+          <div className="admin-search-wrap" style={{ marginBottom: 12 }}>
+            <Search size={15} className="admin-search-icon" />
+            <input
+              type="text"
+              className="modern-input admin-search-input"
+              placeholder="Cari kode order (VK-...), nama, email, atau metode bayar..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        )}
+
         {visibleItems.length === 0 ? (
-          <div className="pay-methods-empty">
-            {filterMode === 'active'
-              ? 'Belum ada tagihan atau bukti pembayaran baru yang menunggu konfirmasi.'
-              : 'Belum ada riwayat transaksi upgrade.'}
+          <div className="pay-empty-state">
+            <Clock size={22} />
+            <div>
+              <strong>
+                {filterMode === 'needs_action'
+                  ? 'Belum ada bukti bayar atau tagihan aktif yang perlu diproses'
+                  : 'Tidak ada transaksi yang cocok'}
+              </strong>
+              <span>
+                {filterMode === 'needs_action' && counts.all > 0
+                  ? `Ada ${counts.all} riwayat transaksi sebelumnya — klik tab "Semua" untuk meninjau.`
+                  : 'Saat pelanggan membuat tagihan upgrade VoltKu Pro, datanya akan muncul di sini.'}
+              </span>
+            </div>
           </div>
         ) : (
           <div className="admin-upgrade-list">
@@ -244,61 +377,76 @@ export function AdminUpgradeRequestsCard({
               const badge = STATUS_BADGE[req.status] || STATUS_BADGE.pending
               const isActive = ACTIVE_UPGRADE_STATUSES.includes(req.status)
               const defaultDays = req.billing_cycle === 'yearly' ? 365 : 30
+              const initialLetter = (req.user_name || req.user_email || 'U').charAt(0).toUpperCase()
               return (
-                <div key={req.id} className="admin-upgrade-row">
-                  <div className="admin-upgrade-info">
-                    <div className="admin-dev-name" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      {req.order_code && (
-                        <span className="pay-order-code num-tabular">{req.order_code}</span>
+                <div
+                  key={req.id}
+                  className={`admin-tx-card ${req.status === 'verifying' ? 'is-verifying' : ''}`}
+                >
+                  <div className="admin-tx-main">
+                    <div className="admin-tx-avatar">{initialLetter}</div>
+                    <div className="admin-upgrade-info">
+                      <div className="admin-tx-top-line">
+                        {req.order_code && (
+                          <span className="pay-order-code num-tabular">{req.order_code}</span>
+                        )}
+                        <strong className="admin-dev-name">
+                          {req.user_name || `User #${req.user_id}`}
+                        </strong>
+                        <span className="admin-dev-id">({req.user_email || '—'})</span>
+                        <span className={`pay-status-badge ${badge.cls}`}>{badge.label}</span>
+                      </div>
+
+                      <div className="admin-tx-meta-line num-tabular">
+                        <span className="admin-tx-amount">{formatRp(req.amount_rp)}</span>
+                        <span>·</span>
+                        <span>{req.billing_cycle === 'yearly' ? 'Paket Tahunan' : 'Paket Bulanan'}</span>
+                        <span>·</span>
+                        <span>{req.payment_method_label || 'Manual'}</span>
+                        <span>·</span>
+                        <span>{formatDateTimeWIB(req.submitted_at || req.created_at)}</span>
+                      </div>
+
+                      {req.user_note && (
+                        <div className="admin-tx-note">Catatan pembeli: &ldquo;{req.user_note}&rdquo;</div>
                       )}
-                      <span>{req.user_name || `User #${req.user_id}`}</span>
-                      <span className="admin-dev-id">({req.user_email || '—'})</span>
-                      <span className={`pay-status-badge ${badge.cls}`}>{badge.label}</span>
+                      {req.admin_note && (
+                        <div className="admin-tx-note is-admin">Admin: {req.admin_note}</div>
+                      )}
+
+                      {rejectDraftId === req.id && (
+                        <div className="admin-tx-reject-box">
+                          <input
+                            type="text"
+                            className="modern-input"
+                            style={{ flex: 1, minWidth: 180 }}
+                            placeholder="Alasan penolakan untuk pembeli..."
+                            value={rejectNote}
+                            onChange={(e) => setRejectNote(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-danger-ghost btn-compact"
+                            disabled={resolvingId === req.id}
+                            onClick={() =>
+                              handleResolve(req.id, 'reject', null, rejectNote.trim() || null)
+                            }
+                          >
+                            Kirim Tolak
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-compact"
+                            onClick={() => {
+                              setRejectDraftId(null)
+                              setRejectNote('')
+                            }}
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div className="admin-dev-id num-tabular" style={{ marginTop: 4 }}>
-                      {req.billing_cycle === 'yearly' ? 'Tahunan' : 'Bulanan'} ·{' '}
-                      <strong>{formatRp(req.amount_rp)}</strong> ·{' '}
-                      {req.payment_method_label || 'Manual'} ·{' '}
-                      {formatDateTimeWIB(req.submitted_at || req.created_at)}
-                      {req.user_note ? ` · "${req.user_note}"` : ''}
-                    </div>
-                    {req.admin_note && (
-                      <div className="admin-dev-id" style={{ marginTop: 2 }}>
-                        Catatan admin: {req.admin_note}
-                      </div>
-                    )}
-                    {rejectDraftId === req.id && (
-                      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                        <input
-                          type="text"
-                          className="modern-input"
-                          style={{ flex: 1, minWidth: 180 }}
-                          placeholder="Alasan penolakan untuk pembeli..."
-                          value={rejectNote}
-                          onChange={(e) => setRejectNote(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-danger-ghost btn-compact"
-                          disabled={resolvingId === req.id}
-                          onClick={() =>
-                            handleResolve(req.id, 'reject', null, rejectNote.trim() || null)
-                          }
-                        >
-                          Kirim Tolak
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-compact"
-                          onClick={() => {
-                            setRejectDraftId(null)
-                            setRejectNote('')
-                          }}
-                        >
-                          Batal
-                        </button>
-                      </div>
-                    )}
                   </div>
 
                   <div className="admin-upgrade-actions">
@@ -322,7 +470,9 @@ export function AdminUpgradeRequestsCard({
                           onClick={() => handleResolve(req.id, 'approve', defaultDays)}
                         >
                           <CheckCircle2 size={14} />
-                          <span>Konfirmasi ({req.billing_cycle === 'yearly' ? '1 Thn' : '30 Hr'})</span>
+                          <span>
+                            Konfirmasi ({req.billing_cycle === 'yearly' ? '1 Thn' : '30 Hr'})
+                          </span>
                         </button>
                         <button
                           type="button"
@@ -366,7 +516,13 @@ export function AdminUpgradeRequestsCard({
   )
 }
 
-export function AdminPaymentMethodsCard({ token, onLogout, onNotice, refreshSignal = 0 }) {
+export function AdminPaymentMethodsCard({
+  token,
+  onLogout,
+  onNotice,
+  refreshSignal = 0,
+  onMethodsLoaded = null,
+}) {
   const [methods, setMethods] = useState([])
   const [loading, setLoading] = useState(true)
   const [editorOpen, setEditorOpen] = useState(false)
@@ -381,19 +537,28 @@ export function AdminPaymentMethodsCard({ token, onLogout, onNotice, refreshSign
   const [qrisBase64, setQrisBase64] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [copiedId, setCopiedId] = useState(null)
+  const [zoomQrisSrc, setZoomQrisSrc] = useState('')
 
   const loadMethods = useCallback(async () => {
     if (!token) return
     setLoading(true)
     try {
       const list = await apiRequest('/api/admin/payment-methods', {}, token, onLogout)
-      setMethods(Array.isArray(list) ? list : [])
+      const items = Array.isArray(list) ? list : []
+      setMethods(items)
+      if (onMethodsLoaded) {
+        onMethodsLoaded({
+          total: items.length,
+          active: items.filter((m) => m.is_active).length,
+        })
+      }
     } catch {
       setMethods([])
     } finally {
       setLoading(false)
     }
-  }, [token, onLogout])
+  }, [token, onLogout, onMethodsLoaded])
 
   useEffect(() => {
     loadMethods()
@@ -441,6 +606,17 @@ export function AdminPaymentMethodsCard({ token, onLogout, onNotice, refreshSign
       if (onNotice) {
         onNotice({ type: 'error', text: err.message || 'Gagal memuat gambar QRIS.' })
       }
+    }
+  }
+
+  const handleCopyAccount = async (pm) => {
+    if (!pm.account_number) return
+    try {
+      await navigator.clipboard.writeText(pm.account_number)
+      setCopiedId(pm.id)
+      window.setTimeout(() => setCopiedId(null), 1600)
+    } catch {
+      // Abaikan jika clipboard ditolak
     }
   }
 
@@ -524,11 +700,11 @@ export function AdminPaymentMethodsCard({ token, onLogout, onNotice, refreshSign
 
   return (
     <section className="clean-sheet admin-card-block">
-      <div className="admin-card-head">
+      <div className="admin-card-head is-split">
         <div>
           <h3>Metode Pembayaran Manual (QRIS / Rekening / E-Wallet)</h3>
-          <p className="admin-row-sub" style={{ marginTop: 2 }}>
-            Ditampilkan kepada pelanggan saat membuat tagihan upgrade VoltKu Pro.
+          <p className="admin-row-sub">
+            Saluran aktif otomatis tampil di halaman checkout pelanggan saat upgrade VoltKu Pro.
           </p>
         </div>
         <button type="button" className="btn btn-primary btn-compact" onClick={openCreate}>
@@ -540,76 +716,119 @@ export function AdminPaymentMethodsCard({ token, onLogout, onNotice, refreshSign
       {loading ? (
         <div className="pay-methods-loading">Memuat daftar metode pembayaran...</div>
       ) : methods.length === 0 ? (
-        <div className="pay-methods-empty">
-          Belum ada metode pembayaran manual. Klik <strong>Tambah Metode</strong> untuk menambahkan
-          QRIS atau rekening bank tujuan transfer.
+        <div className="pay-empty-state">
+          <Wallet size={22} />
+          <div>
+            <strong>Belum ada metode pembayaran manual</strong>
+            <span>
+              Klik <strong>Tambah Metode</strong> untuk mengunggah QRIS atau menambahkan rekening bank /
+              e-wallet.
+            </span>
+          </div>
         </div>
       ) : (
-        <div className="admin-pm-list">
+        <div className="admin-pm-grid">
           {methods.map((pm) => {
-            const Icon = pm.type === 'qris' ? QrCode : pm.type === 'ewallet' ? Wallet : Landmark
+            const meta = TYPE_META[pm.type] || TYPE_META.bank
+            const Icon = meta.icon
+            const qrisUrl = pm.has_qris_image && pm.qris_image_url ? buildApiUrl(pm.qris_image_url) : ''
             return (
-              <div key={pm.id} className="admin-pm-row">
-                <div className="admin-pm-info">
-                  {pm.has_qris_image && pm.qris_image_url ? (
-                    <img
-                      src={buildApiUrl(pm.qris_image_url)}
-                      alt={pm.label}
-                      className="admin-pm-qris-mini"
-                    />
+              <div key={pm.id} className={`admin-pm-card ${pm.is_active ? '' : 'is-inactive'}`}>
+                <div className="admin-pm-card-head">
+                  <span className="pay-method-type-badge">
+                    <Icon size={13} />
+                    <span>{meta.label}</span>
+                  </span>
+                  <div className="admin-pm-head-right">
+                    <span className={`admin-pill ${pm.is_active ? 'ok' : 'muted'}`}>
+                      {pm.is_active ? 'Aktif' : 'Nonaktif'}
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={Boolean(pm.is_active)}
+                      aria-label={`Aktifkan ${pm.label}`}
+                      className={`admin-switch is-sm ${pm.is_active ? 'on' : ''}`}
+                      onClick={() => handleToggleActive(pm)}
+                    >
+                      <span className="admin-switch-thumb" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="admin-pm-card-body">
+                  {qrisUrl ? (
+                    <button
+                      type="button"
+                      className="admin-pm-qris-btn"
+                      onClick={() => setZoomQrisSrc(qrisUrl)}
+                      title="Perbesar QRIS"
+                    >
+                      <img src={qrisUrl} alt={pm.label} className="admin-pm-qris-thumb" />
+                      <span className="admin-pm-qris-zoom">
+                        <ZoomIn size={11} />
+                      </span>
+                    </button>
                   ) : (
-                    <span className="pay-method-icon-box" style={{ width: 40, height: 40 }}>
-                      <Icon size={18} />
+                    <span className="admin-pm-icon-tile">
+                      <Icon size={22} />
                     </span>
                   )}
-                  <div>
-                    <div className="admin-dev-name" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <span>{pm.label}</span>
-                      <span className={`admin-pill ${pm.is_active ? 'ok' : 'muted'}`}>
-                        {pm.is_active ? 'Aktif' : 'Nonaktif'}
-                      </span>
-                    </div>
-                    <div className="admin-dev-id num-tabular">
-                      {pm.account_number ? `${pm.account_number} · ` : ''}
+
+                  <div className="admin-pm-details">
+                    <div className="admin-pm-title">{pm.label}</div>
+                    {pm.account_number && (
+                      <div className="admin-pm-acct-row">
+                        <span className="admin-pm-acct num-tabular">{pm.account_number}</span>
+                        <button
+                          type="button"
+                          className="admin-pm-copy-btn"
+                          onClick={() => handleCopyAccount(pm)}
+                          title="Salin nomor rekening"
+                        >
+                          <Copy size={12} />
+                          <span>{copiedId === pm.id ? 'Disalin' : 'Salin'}</span>
+                        </button>
+                      </div>
+                    )}
+                    <div className="admin-pm-holder">
                       {pm.account_holder ? `a.n. ${pm.account_holder}` : 'Tanpa keterangan penerima'}
                     </div>
                   </div>
                 </div>
 
-                <div className="admin-pm-actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-compact"
-                    onClick={() => handleToggleActive(pm)}
-                  >
-                    {pm.is_active ? 'Nonaktifkan' : 'Aktifkan'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-compact"
-                    onClick={() => openEdit(pm)}
-                  >
-                    <Pencil size={13} />
-                    <span>Edit</span>
-                  </button>
-                  {confirmDeleteId === pm.id ? (
+                {pm.instructions && <div className="admin-pm-inst">{pm.instructions}</div>}
+
+                <div className="admin-pm-card-footer">
+                  <span className="admin-pm-sort num-tabular">Urutan #{pm.sort_order ?? 0}</span>
+                  <div className="admin-pm-actions">
                     <button
                       type="button"
-                      className="btn btn-danger-ghost btn-compact"
-                      onClick={() => handleDeleteMethod(pm.id)}
+                      className="btn btn-secondary btn-compact"
+                      onClick={() => openEdit(pm)}
                     >
-                      Yakin Hapus?
+                      <Pencil size={13} />
+                      <span>Edit</span>
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-danger-ghost btn-compact"
-                      onClick={() => setConfirmDeleteId(pm.id)}
-                      aria-label={`Hapus ${pm.label}`}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+                    {confirmDeleteId === pm.id ? (
+                      <button
+                        type="button"
+                        className="btn btn-danger-ghost btn-compact"
+                        onClick={() => handleDeleteMethod(pm.id)}
+                      >
+                        Yakin Hapus?
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-danger-ghost btn-compact"
+                        onClick={() => setConfirmDeleteId(pm.id)}
+                        aria-label={`Hapus ${pm.label}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -619,8 +838,12 @@ export function AdminPaymentMethodsCard({ token, onLogout, onNotice, refreshSign
 
       {editorOpen && (
         <div className="admin-pm-form-card">
-          <div className="admin-card-head" style={{ marginBottom: 10 }}>
-            <strong>{editingId ? 'Edit Metode Pembayaran' : 'Tambah Metode Pembayaran Baru'}</strong>
+          <div className="admin-card-head is-split" style={{ marginBottom: 12 }}>
+            <div>
+              <strong style={{ fontSize: 14 }}>
+                {editingId ? 'Edit Metode Pembayaran' : 'Tambah Metode Pembayaran Baru'}
+              </strong>
+            </div>
             <button
               type="button"
               className="btn-icon-close"
@@ -647,7 +870,7 @@ export function AdminPaymentMethodsCard({ token, onLogout, onNotice, refreshSign
                 id="pm-label-inp"
                 type="text"
                 className="modern-input"
-                placeholder="Contoh: QRIS VoltKu / Transfer BCA"
+                placeholder="Contoh: QRIS VoltKu / Transfer BCA / DANA"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
               />
@@ -697,16 +920,25 @@ export function AdminPaymentMethodsCard({ token, onLogout, onNotice, refreshSign
             {pmType === 'qris' && (
               <div className="form-field-group">
                 <label className="field-label">Gambar Kode QRIS (JPG / PNG / WEBP)</label>
-                <label className="btn btn-secondary btn-compact" style={{ cursor: 'pointer' }}>
-                  <Upload size={14} />
-                  <span>{qrisBase64 ? 'Gambar QRIS Siap (Ganti)' : 'Pilih File QRIS'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleSelectQrisFile}
-                    className="pay-file-input-hidden"
-                  />
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <label className="btn btn-secondary btn-compact" style={{ cursor: 'pointer' }}>
+                    <Upload size={14} />
+                    <span>{qrisBase64 ? 'Ganti Gambar QRIS' : 'Pilih File QRIS'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSelectQrisFile}
+                      className="pay-file-input-hidden"
+                    />
+                  </label>
+                  {qrisBase64 && (
+                    <img
+                      src={qrisBase64}
+                      alt="Pratinjau QRIS baru"
+                      className="admin-pm-qris-mini"
+                    />
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -754,7 +986,25 @@ export function AdminPaymentMethodsCard({ token, onLogout, onNotice, refreshSign
           </div>
         </div>
       )}
+
+      {zoomQrisSrc && (
+        <div
+          className="pay-lightbox-overlay"
+          onClick={() => setZoomQrisSrc('')}
+        >
+          <div className="pay-lightbox-box" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="btn-icon-close pay-lightbox-close"
+              onClick={() => setZoomQrisSrc('')}
+              aria-label="Tutup perbesaran QRIS"
+            >
+              <X size={18} />
+            </button>
+            <img src={zoomQrisSrc} alt="Kode QRIS" className="pay-lightbox-img" />
+          </div>
+        </div>
+      )}
     </section>
   )
 }
-

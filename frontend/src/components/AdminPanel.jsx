@@ -27,7 +27,11 @@ import { formatNum, formatTimeWIB } from '../utils/formatters'
 import { BrandLogo } from './BrandLogo'
 import { InAppSelect } from './InAppSelect'
 import { AdminAppSettingsTab } from './AdminAppSettingsTab'
-import { AdminUpgradeRequestsCard, AdminPaymentMethodsCard } from './AdminPaymentSection'
+import {
+  AdminPaymentSummaryStrip,
+  AdminUpgradeRequestsCard,
+  AdminPaymentMethodsCard,
+} from './AdminPaymentSection'
 
 export function AdminPanel({
   token,
@@ -79,6 +83,7 @@ export function AdminPanel({
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState(null)
 
   const [togglingAccess, setTogglingAccess] = useState(false)
+  const [pmSummaryCounts, setPmSummaryCounts] = useState(null)
 
   const loadAdminData = useCallback(async () => {
     if (!token) return
@@ -1018,11 +1023,17 @@ export function AdminPanel({
 
             {adminTab === 'payments' && (
               <div className="admin-section-stack tab-pane-fade">
+                <AdminPaymentSummaryStrip
+                  upgradeRequests={upgradeRequests}
+                  methodsCount={pmSummaryCounts}
+                />
+
                 <AdminPaymentMethodsCard
                   token={token}
                   onLogout={onLogout}
                   onNotice={setNotice}
                   refreshSignal={refreshSignal}
+                  onMethodsLoaded={setPmSummaryCounts}
                 />
 
                 <AdminUpgradeRequestsCard
