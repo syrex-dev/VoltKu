@@ -65,6 +65,7 @@ export function HomeDevicesView({
   onSelectRoom,
   onSelectDevice,
   onOpenAddDevice,
+  onOpenUsageGuide,
   isDeviceOnlineFn,
   isAuthenticated = false,
   onOpenLogin,
@@ -175,6 +176,7 @@ export function HomeDevicesView({
         isAuthenticated={isAuthenticated}
         appConfig={appConfig}
         onOpenAddDevice={onOpenAddDevice}
+        onOpenUsageGuide={onOpenUsageGuide}
         onOpenPlanModal={onOpenPlanModal}
         onOpenSettings={onOpenSettings}
         onOpenAlerts={onOpenAlerts}

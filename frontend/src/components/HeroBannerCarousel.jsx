@@ -8,6 +8,7 @@ import {
   Megaphone,
   ChevronRight,
   BellRing,
+  BookOpen,
 } from 'lucide-react'
 import { formatRp } from '../utils/formatters'
 
@@ -18,6 +19,7 @@ export function HeroBannerCarousel({
   isAuthenticated = false,
   appConfig = {},
   onOpenAddDevice,
+  onOpenUsageGuide,
   onOpenPlanModal,
   onOpenSettings,
   onOpenAlerts,
@@ -58,6 +60,17 @@ export function HeroBannerCarousel({
         },
       })
     }
+
+    list.push({
+      id: 'usage-guide',
+      tone: 'is-teal-guide',
+      badge: 'CARA PEMAKAIAN',
+      title: 'Panduan Pasang & Pakai VoltKu',
+      subtitle: 'Langkah mudah konek Wi-Fi 2.4 GHz, scan QR & pantau tagihan PLN',
+      cta: 'Lihat Panduan',
+      Icon: BookOpen,
+      onClick: () => onOpenUsageGuide?.(),
+    })
 
     list.push({
       id: 'ai-assistant',
@@ -134,6 +147,7 @@ export function HeroBannerCarousel({
     currentUser?.plan?.is_pro,
     isAuthenticated,
     onOpenAddDevice,
+    onOpenUsageGuide,
     onOpenPlanModal,
     onOpenSettings,
     onOpenAlerts,

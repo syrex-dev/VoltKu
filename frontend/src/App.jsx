@@ -33,6 +33,7 @@ import { PwaInstallPrompt } from './components/PwaInstallPrompt'
 import { AdminPanel } from './components/AdminPanel'
 import { TermsAgreementModal } from './components/TermsAgreementModal'
 import { OnboardingTour } from './components/OnboardingTour'
+import { UsageGuideModal } from './components/UsageGuideModal'
 import { PlanUpgradeModal } from './components/PlanUpgradeModal'
 import { ProfileModal } from './components/ProfileModal'
 import { ResetPasswordScreen } from './components/ResetPasswordScreen'
@@ -279,6 +280,7 @@ function CustomerPortalRoot() {
   const [exportingCsv, setExportingCsv] = useState(false)
 
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false)
+  const [showUsageGuide, setShowUsageGuide] = useState(false)
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false)
   const [planModalReason, setPlanModalReason] = useState('')
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
@@ -1270,6 +1272,7 @@ function CustomerPortalRoot() {
   const hasForegroundOverlay =
     (showLoginModal && !userToken) ||
     (isAuthenticated && isAddDeviceOpen) ||
+    showUsageGuide ||
     isPlanModalOpen ||
     (isAuthenticated && isProfileModalOpen) ||
     Boolean(termsReaderDoc) ||
@@ -1315,6 +1318,7 @@ function CustomerPortalRoot() {
             onSelectRoom={setActiveRoom}
             onSelectDevice={handleOpenDeviceDetail}
             onOpenAddDevice={handleRequestAddDevice}
+            onOpenUsageGuide={() => setShowUsageGuide(true)}
             isDeviceOnlineFn={(d) => isDeviceOnlineHelper(d)}
             isAuthenticated={isAuthenticated}
             currentUser={currentUser}
@@ -1564,6 +1568,12 @@ function CustomerPortalRoot() {
         steps={publicAppConfig.onboarding_steps}
         onComplete={finishTour}
         onSkip={finishTour}
+      />
+
+      <UsageGuideModal
+        isOpen={showUsageGuide}
+        onClose={() => setShowUsageGuide(false)}
+        onStartAddDevice={handleRequestAddDevice}
       />
 
       {isAuthenticated && (
