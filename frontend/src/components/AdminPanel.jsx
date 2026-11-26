@@ -20,11 +20,10 @@ import {
   RefreshCw,
   UserPlus,
   Crown,
-  CheckCircle2,
-  XCircle,
+  CreditCard,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
-import { formatNum, formatRp, formatTimeWIB } from '../utils/formatters'
+import { formatNum, formatTimeWIB } from '../utils/formatters'
 import { BrandLogo } from './BrandLogo'
 import { InAppSelect } from './InAppSelect'
 import { AdminAppSettingsTab } from './AdminAppSettingsTab'
@@ -349,7 +348,8 @@ export function AdminPanel({
 
   const tabs = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
-    { id: 'users', label: 'Pengguna', icon: Users, badge: pendingUpgradesCount },
+    { id: 'users', label: 'Pengguna', icon: Users },
+    { id: 'payments', label: 'Pembayaran', icon: CreditCard, badge: pendingUpgradesCount },
     { id: 'devices', label: 'Perangkat', icon: Cpu },
     { id: 'anomalies', label: 'Anomali', icon: ShieldAlert },
     { id: 'settings', label: 'Pengaturan', icon: Sliders },
@@ -567,21 +567,6 @@ export function AdminPanel({
                     <span>Buat Akun</span>
                   </button>
                 </div>
-
-                <AdminUpgradeRequestsCard
-                  upgradeRequests={upgradeRequests}
-                  token={token}
-                  onLogout={onLogout}
-                  onResolved={loadAdminData}
-                  onNotice={setNotice}
-                />
-
-                <AdminPaymentMethodsCard
-                  token={token}
-                  onLogout={onLogout}
-                  onNotice={setNotice}
-                  refreshSignal={refreshSignal}
-                />
 
                 {filteredUsers.length === 0 ? (
                   <div className="clean-sheet admin-empty-box">
@@ -1028,6 +1013,25 @@ export function AdminPanel({
                     })}
                   </div>
                 )}
+              </div>
+            )}
+
+            {adminTab === 'payments' && (
+              <div className="admin-section-stack tab-pane-fade">
+                <AdminPaymentMethodsCard
+                  token={token}
+                  onLogout={onLogout}
+                  onNotice={setNotice}
+                  refreshSignal={refreshSignal}
+                />
+
+                <AdminUpgradeRequestsCard
+                  upgradeRequests={upgradeRequests}
+                  token={token}
+                  onLogout={onLogout}
+                  onResolved={loadAdminData}
+                  onNotice={setNotice}
+                />
               </div>
             )}
 
