@@ -23,8 +23,13 @@ import {
   Zap,
   History,
   Sparkles,
+  Cpu,
+  Clock,
+  Activity,
+  Lock,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
+import { BrandLogo } from './BrandLogo'
 import { formatRp, formatTimeWIB } from '../utils/formatters'
 
 function normalizeWaHref(raw = '') {
@@ -624,8 +629,83 @@ export function ProfileModal({
                 />
               </button>
               {showAboutDetail && (
-                <div className="profile-ref-about-detail">
-                  <strong>{appName}</strong> — {appTagline}
+                <div className="profile-about-card">
+                  <div className="profile-about-hero">
+                    <div className="profile-about-brand">
+                      <BrandLogo
+                        theme={theme}
+                        displayMode="logo_only"
+                        appName={appName}
+                        variant="compact"
+                      />
+                    </div>
+                    <p className="profile-about-tagline">{appTagline}</p>
+                  </div>
+
+                  <div className="profile-about-features">
+                    <div className="profile-about-feat-row">
+                      <span className="profile-about-feat-ico is-blue">
+                        <Activity size={14} />
+                      </span>
+                      <div>
+                        <strong>Pantau Daya Real-Time</strong>
+                        <span>Tegangan, arus, watt, PF, frekuensi &amp; beban MCB secara langsung.</span>
+                      </div>
+                    </div>
+                    <div className="profile-about-feat-row">
+                      <span className="profile-about-feat-ico is-amber">
+                        <Zap size={14} />
+                      </span>
+                      <div>
+                        <strong>Hitung Tarif &amp; Proyeksi PLN</strong>
+                        <span>Estimasi biaya harian, grafik historis &amp; proyeksi akhir bulan.</span>
+                      </div>
+                    </div>
+                    <div className="profile-about-feat-row">
+                      <span className="profile-about-feat-ico is-emerald">
+                        <Sparkles size={14} />
+                      </span>
+                      <div>
+                        <strong>Asisten AI &amp; Deteksi Anomali</strong>
+                        <span>Peringatan dini lonjakan daya, tegangan tak stabil &amp; analisa AI.</span>
+                      </div>
+                    </div>
+                    <div className="profile-about-feat-row">
+                      <span className="profile-about-feat-ico is-indigo">
+                        <Lock size={14} />
+                      </span>
+                      <div>
+                        <strong>Koneksi Terenkripsi</strong>
+                        <span>Komunikasi HTTPS, JWT &amp; MQTT TLS dengan akses terisolasi per akun.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="profile-about-specs">
+                    <div className="profile-about-spec-item">
+                      <Cpu size={13} />
+                      <span>Hardware: Smart Panel / PZEM-004T</span>
+                    </div>
+                    <div className="profile-about-spec-item">
+                      <Clock size={13} />
+                      <span>Waktu Sistem: Asia/Jakarta (WIB)</span>
+                    </div>
+                  </div>
+
+                  <div className="profile-about-footer">
+                    <span className="profile-about-pkg num-tabular">com.voltku.energy</span>
+                    {onOpenTerms && (
+                      <div className="profile-about-legal-links">
+                        <button type="button" onClick={() => onOpenTerms('terms')}>
+                          Syarat
+                        </button>
+                        <span>·</span>
+                        <button type="button" onClick={() => onOpenTerms('privacy')}>
+                          Privasi
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </section>
