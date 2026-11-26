@@ -42,6 +42,8 @@ Payload telemetry:
 | `GET /api/devices/{id}/export?days=30` | Mengunduh laporan konsumsi harian perangkat berformat CSV (`text/csv`). Memerlukan fitur ekspor aktif (`pro` atau `free_export_enabled = true` atau `role="admin"`). |
 | `GET /api/anomalies?device_id=&from=` | Daftar anomali (token `user` hanya melihat anomali dari perangkat miliknya). |
 | `POST /api/chat`, `GET /api/chat/history` | Asisten AI Chat (`{"question": "..."}`) dengan tool deterministik, rate limit 20 pesan/jam/user, audit `chat_log`, dan riwayat pertanyaan. Wajib Bearer JWT. |
+| `POST /api/users/push-token`, `DELETE /api/users/push-token` | Registrasi atau penonaktifan token push notifikasi (`android`, `ios`, `web`) untuk pengguna login (FCM HTTP v1). |
+| `GET /api/users/notifications`, `POST /api/users/notifications/read` | Mengambil inbox notifikasi tenant (mendukung sinkronisasi inkremental `since_id` oleh worker APK) dan menandai notifikasi sudah dibaca. |
 | `GET /api/settings` | Pengambilan pengaturan aktif (untuk `user`, memadukan preferensi `user_settings` dengan default global). |
 | `PATCH /api/settings` | Pembaruan pengaturan (`tariff_rp`, `power_limit_w`, `alert_cooldown_min`, `extra_percent`, `report_hour`). Untuk `user`, disimpan per tenant di `user_settings`. |
 | `GET /api/public/access` | Status publik `{"public_read_enabled": bool}` untuk mode Tanpa Login. |
@@ -81,6 +83,8 @@ settings(key PK, value)   -- tariff_sen_per_kwh, extra_percent, power_limit_w, a
 app_config(key PK, value TEXT, updated_at)   -- branding, panduan, legal/terms, auth toggles, paket freemium, kontak dukungan
 telegram_users(chat_id PK, name)
 chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
+push_tokens(id PK, user_id FK->users.id, token UNIQUE, platform, device_label NULL, is_active DEFAULT 1, created_at, updated_at)
+user_notifications(id PK, user_id FK->users.id, device_id NULL, title, body, category, severity, data_json NULL, event_key UNIQUE NULL, is_read DEFAULT 0, pushed_fcm DEFAULT 0, created_at)
 ```
 - `cost_rp`: `INTEGER` (Rupiah bulat, dihitung menggunakan Python `Decimal` dengan pembulatan `ROUND_HALF_UP`).
 - `tariff_sen`: `INTEGER` (tarif per kWh dalam satuan sen, misal Rp1.444,70/kWh disimpan sebagai 144470).

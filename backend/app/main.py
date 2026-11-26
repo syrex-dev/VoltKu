@@ -13,7 +13,7 @@ from app.auth import api_burst_limiter, get_trusted_client_ip
 from app.config import get_settings, validate_startup_credentials
 from app.db import init_db
 from app.mqtt_ingest import ingest_service
-from app.routers import admin, anomalies, auth, chat, devices, public, users
+from app.routers import admin, anomalies, auth, chat, devices, notifications, public, users
 from app.routers import settings as settings_router
 from app.services.bot import init_and_start_bot, stop_bot
 from app.services.scheduler import start_scheduler, stop_scheduler
@@ -159,6 +159,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 # Registrasi Endpoint API
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(notifications.router)
 app.include_router(public.router)
 app.include_router(public.payment_router)
 app.include_router(admin.auth_router)

@@ -261,3 +261,47 @@ class ChatLog(Base):
     tools_used: Mapped[str] = mapped_column(Text, nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class PushToken(Base):
+    __tablename__ = "push_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token: Mapped[str] = mapped_column(String(512), unique=True, nullable=False)
+    platform: Mapped[str] = mapped_column(String(16), default="android", nullable=False)
+    device_label: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
+
+
+class UserNotification(Base):
+    __tablename__ = "user_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    device_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(32), default="alert", nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), default="warning", nullable=False)
+    data_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    event_key: Mapped[Optional[str]] = mapped_column(String(128), unique=True, nullable=True)
+    is_read: Mapped[int] = mapped_column(Integer, default=0, nullable=False, index=True)
+    pushed_fcm: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[int] = mapped_column(
+        Integer,
+        default=lambda: int(datetime.now(timezone.utc).timestamp()),
+        nullable=False,
+        index=True,
+    )
+

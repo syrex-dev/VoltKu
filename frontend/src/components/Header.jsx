@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { formatNum } from '../utils/formatters'
 import { BrandLogo } from './BrandLogo'
+import { NotificationBell } from './NotificationBell'
 
 function PanelSwitcherDropdown({
   variant = 'mobile',
@@ -211,6 +212,10 @@ export function Header({
   onOpenLogin,
   onOpenProfile,
   appConfig = {},
+  notifications = [],
+  unreadNotificationCount = 0,
+  onMarkNotificationRead,
+  onSelectNotification,
 }) {
   const appName = appConfig.app_name || 'VoltKu'
   const brandDisplay = appConfig.navbar_brand_display || 'logo_only'
@@ -339,8 +344,17 @@ export function Header({
               })}
             </nav>
 
-            {/* Kanan Navbar: Tema dulu, lalu Ikon Orang/Akun di PALING KANAN */}
+            {/* Kanan Navbar: Notifikasi, Tema, lalu Ikon Akun di PALING KANAN */}
             <div className="header-actions">
+              {isAuthenticated && (
+                <NotificationBell
+                  notifications={notifications}
+                  unreadCount={unreadNotificationCount}
+                  onMarkRead={onMarkNotificationRead}
+                  onSelectNotification={onSelectNotification}
+                />
+              )}
+
               <button
                 type="button"
                 className="header-icon-btn"

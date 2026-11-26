@@ -14,6 +14,7 @@ from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import SessionLocal
 from app.models import AlertState, Anomaly, Device, Reading, Setting, UserSetting
 from app.services.notifier import is_channel_configured, send_alert_notification
+from app.services.push_notifier import notify_device_owner
 
 logger = logging.getLogger(__name__)
 TZ_WIB = ZoneInfo("Asia/Jakarta")
@@ -187,6 +188,20 @@ def evaluate_device_alerts(
                     offline_state.details_json = json.dumps(details)
 
                 session.commit()
+                try:
+                    notify_device_owner(
+                        session,
+                        device=device,
+                        title=f"Perangkat Offline: {device.name}",
+                        body=msg,
+                        category="alert",
+                        severity="warning",
+                        data={"alert_type": "offline", "anomaly_id": anom.id},
+                        event_key=evt_key,
+                        now_ts=now_ts,
+                    )
+                except Exception as exc:
+                    logger.debug("Push notif offline gagal: %s", exc)
         elif has_channel and (
             offline_state.last_notified_at == 0
             or (now_ts - offline_state.last_notified_at) >= cooldown_seconds
@@ -238,6 +253,20 @@ def evaluate_device_alerts(
                 if send_alert_notification(msg, event_key=evt_key):
                     sent_messages.append(msg)
             offline_state.state = "cleared"
+            try:
+                notify_device_owner(
+                    session,
+                    device=device,
+                    title=f"Perangkat Online Kembali: {device.name}",
+                    body=msg,
+                    category="recovery",
+                    severity="success",
+                    data={"alert_type": "offline"},
+                    event_key=evt_key,
+                    now_ts=now_ts,
+                )
+            except Exception as exc:
+                logger.debug("Push notif recovery offline gagal: %s", exc)
             if has_channel:
                 offline_state.last_notified_at = now_ts
 
@@ -352,6 +381,24 @@ def evaluate_device_alerts(
                         power_state.details_json = json.dumps(details)
 
                     session.commit()
+                    try:
+                        notify_device_owner(
+                            session,
+                            device=device,
+                            title=f"Daya Melebihi Batas: {device.name}",
+                            body=msg,
+                            category="alert",
+                            severity="critical",
+                            data={
+                                "alert_type": "power_limit",
+                                "anomaly_id": anom.id,
+                                "avg_p": avg_p,
+                            },
+                            event_key=evt_key,
+                            now_ts=now_ts,
+                        )
+                    except Exception as exc:
+                        logger.debug("Push notif power_limit gagal: %s", exc)
             elif has_channel and (
                 power_state.last_notified_at == 0
                 or (now_ts - power_state.last_notified_at) >= cooldown_seconds
@@ -400,6 +447,20 @@ def evaluate_device_alerts(
                 if send_alert_notification(msg, event_key=evt_key):
                     sent_messages.append(msg)
             power_state.state = "cleared"
+            try:
+                notify_device_owner(
+                    session,
+                    device=device,
+                    title=f"Daya Normal Kembali: {device.name}",
+                    body=msg,
+                    category="recovery",
+                    severity="success",
+                    data={"alert_type": "power_limit"},
+                    event_key=evt_key,
+                    now_ts=now_ts,
+                )
+            except Exception as exc:
+                logger.debug("Push notif recovery power_limit gagal: %s", exc)
             if has_channel:
                 power_state.last_notified_at = now_ts
 
@@ -516,6 +577,24 @@ def evaluate_device_alerts(
                         v_low_state.details_json = json.dumps(details)
 
                     session.commit()
+                    try:
+                        notify_device_owner(
+                            session,
+                            device=device,
+                            title=f"Tegangan Rendah: {device.name}",
+                            body=msg,
+                            category="alert",
+                            severity="warning",
+                            data={
+                                "alert_type": "voltage_low",
+                                "anomaly_id": anom.id,
+                                "avg_v": avg_v,
+                            },
+                            event_key=evt_key,
+                            now_ts=now_ts,
+                        )
+                    except Exception as exc:
+                        logger.debug("Push notif voltage_low gagal: %s", exc)
             elif has_channel and (
                 v_low_state.last_notified_at == 0
                 or (now_ts - v_low_state.last_notified_at) >= cooldown_seconds
@@ -561,6 +640,20 @@ def evaluate_device_alerts(
                 if send_alert_notification(msg, event_key=evt_key):
                     sent_messages.append(msg)
             v_low_state.state = "cleared"
+            try:
+                notify_device_owner(
+                    session,
+                    device=device,
+                    title=f"Tegangan Normal Kembali: {device.name}",
+                    body=msg,
+                    category="recovery",
+                    severity="success",
+                    data={"alert_type": "voltage_low"},
+                    event_key=evt_key,
+                    now_ts=now_ts,
+                )
+            except Exception as exc:
+                logger.debug("Push notif recovery voltage_low gagal: %s", exc)
             if has_channel:
                 v_low_state.last_notified_at = now_ts
 
@@ -646,6 +739,24 @@ def evaluate_device_alerts(
                         v_high_state.details_json = json.dumps(details)
 
                     session.commit()
+                    try:
+                        notify_device_owner(
+                            session,
+                            device=device,
+                            title=f"Tegangan Tinggi: {device.name}",
+                            body=msg,
+                            category="alert",
+                            severity="critical",
+                            data={
+                                "alert_type": "voltage_high",
+                                "anomaly_id": anom.id,
+                                "avg_v": avg_v,
+                            },
+                            event_key=evt_key,
+                            now_ts=now_ts,
+                        )
+                    except Exception as exc:
+                        logger.debug("Push notif voltage_high gagal: %s", exc)
             elif has_channel and (
                 v_high_state.last_notified_at == 0
                 or (now_ts - v_high_state.last_notified_at) >= cooldown_seconds
@@ -691,6 +802,20 @@ def evaluate_device_alerts(
                 if send_alert_notification(msg, event_key=evt_key):
                     sent_messages.append(msg)
             v_high_state.state = "cleared"
+            try:
+                notify_device_owner(
+                    session,
+                    device=device,
+                    title=f"Tegangan Normal Kembali: {device.name}",
+                    body=msg,
+                    category="recovery",
+                    severity="success",
+                    data={"alert_type": "voltage_high"},
+                    event_key=evt_key,
+                    now_ts=now_ts,
+                )
+            except Exception as exc:
+                logger.debug("Push notif recovery voltage_high gagal: %s", exc)
             if has_channel:
                 v_high_state.last_notified_at = now_ts
 

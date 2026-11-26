@@ -716,6 +716,52 @@ def resolve_admin_upgrade_request(
     entry.resolved_at = now_utc
     session.commit()
     session.refresh(entry)
+
+    try:
+        from app.services.push_notifier import create_and_dispatch_user_notification
+
+        tier_label = (entry.requested_tier or "pro").upper()
+        if action == "approve":
+            order_label = entry.order_code or ""
+            create_and_dispatch_user_notification(
+                session,
+                user_id=entry.user_id,
+                title=f"Paket {tier_label} Aktif!",
+                body=(
+                    f"Pembayaran {order_label} telah disetujui. "
+                    f"Nikmati fitur penuh VoltKu {tier_label}."
+                ),
+                category="billing",
+                severity="success",
+                data={
+                    "upgrade_request_id": entry.id,
+                    "order_code": order_label,
+                    "action": "approved",
+                },
+                event_key=f"upgrade:{entry.id}:approved",
+                now_ts=now_utc,
+            )
+        else:
+            order_label = entry.order_code or ""
+            reason_suffix = f" Catatan: {clean_note}" if clean_note else ""
+            create_and_dispatch_user_notification(
+                session,
+                user_id=entry.user_id,
+                title="Pembayaran Upgrade Ditolak",
+                body=f"Pengajuan {order_label} tidak dapat diproses.{reason_suffix}",
+                category="billing",
+                severity="warning",
+                data={
+                    "upgrade_request_id": entry.id,
+                    "order_code": order_label,
+                    "action": "rejected",
+                },
+                event_key=f"upgrade:{entry.id}:rejected",
+                now_ts=now_utc,
+            )
+    except Exception:
+        pass
+
     return serialize_upgrade_request(entry, user=user)
 
 

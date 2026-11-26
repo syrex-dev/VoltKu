@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
 
+    # Firebase Cloud Messaging (FCM HTTP v1 Opsional untuk Android Push Instan)
+    firebase_credentials_path: Optional[str] = None
+    firebase_project_id: Optional[str] = None
+
     # M3 Flags & Konfigurasi
     scheduler_enabled: bool = True
     bot_enabled: bool = True

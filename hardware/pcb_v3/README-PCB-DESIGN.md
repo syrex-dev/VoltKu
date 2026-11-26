@@ -54,3 +54,4 @@ Jalankan skrip verifikasi otomatis:
 ```powershell
 python hardware\pcb_v3\verify_pcb_design.py
 ```
+

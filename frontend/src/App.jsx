@@ -37,6 +37,11 @@ import { PlanUpgradeModal } from './components/PlanUpgradeModal'
 import { ProfileModal } from './components/ProfileModal'
 import { ResetPasswordScreen } from './components/ResetPasswordScreen'
 import { AiChatWidget } from './components/AiChatWidget'
+import {
+  fetchAndNotifyNewInboxItems,
+  registerDeviceNotifications,
+  unregisterDeviceNotifications,
+} from './utils/notifications'
 
 const DEFAULT_LOGIN_SUBTITLE = 'Pantau listrik rumah lebih tenang dan akurat'
 const DEFAULT_TERMS_VERSION = '2026-11-v1'
@@ -277,6 +282,8 @@ function CustomerPortalRoot() {
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false)
   const [planModalReason, setPlanModalReason] = useState('')
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+  const [userNotifications, setUserNotifications] = useState([])
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
 
   const homePollRef = useRef(null)
   const pollTimerRef = useRef(null)
@@ -355,9 +362,12 @@ function CustomerPortalRoot() {
   )
 
   const handleLogout = useCallback(() => {
+    unregisterDeviceNotifications(userToken).catch(() => {})
     setUserToken('')
     setCurrentUser(null)
     setStoredUserToken('')
+    setUserNotifications([])
+    setUnreadNotificationCount(0)
     signOutGoogleIfInitialized()
     setShowLoginModal(false)
     setActiveDeviceId('')
@@ -365,7 +375,7 @@ function CustomerPortalRoot() {
     setTodaySummary(null)
     setActiveTab('home')
     checkPublicAccess()
-  }, [checkPublicAccess])
+  }, [checkPublicAccess, userToken])
 
   const handleUnauthorized = useCallback(() => {
     if (userToken) {
@@ -536,6 +546,99 @@ function CustomerPortalRoot() {
       })
     }
   }, [handleGoogleLogin])
+
+  useEffect(() => {
+    if (!userToken) {
+      setUserNotifications([])
+      setUnreadNotificationCount(0)
+      return undefined
+    }
+    let cancelled = false
+
+    const loadInbox = async (notifyNew) => {
+      try {
+        const res = await fetchAndNotifyNewInboxItems(userToken, { notifyNew })
+        if (!cancelled && res) {
+          setUserNotifications(Array.isArray(res.items) ? res.items : [])
+          setUnreadNotificationCount(Number(res.unread_count || 0))
+        }
+      } catch {
+        // Abaikan error sementara saat polling
+      }
+    }
+
+    registerDeviceNotifications(userToken, {
+      onPushReceived: () => loadInbox(false),
+      onNotificationTap: (devId) => {
+        loadInbox(false)
+        if (devId) {
+          setActiveDeviceId(devId)
+          setActiveTab('anomalies')
+        }
+      },
+    })
+
+    loadInbox(false)
+    const timer = setInterval(() => loadInbox(true), 30000)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadInbox(true)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [userToken])
+
+  const handleMarkNotificationRead = useCallback(
+    async (notificationId = null) => {
+      if (!userToken) return
+      try {
+        await apiRequest(
+          '/api/users/notifications/read',
+          {
+            method: 'POST',
+            body: notificationId ? { notification_id: notificationId } : {},
+          },
+          userToken,
+          handleUnauthorized
+        )
+        setUserNotifications((prev) =>
+          prev.map((it) =>
+            !notificationId || it.id === notificationId ? { ...it, is_read: true } : it
+          )
+        )
+        setUnreadNotificationCount((prev) =>
+          notificationId ? Math.max(0, prev - 1) : 0
+        )
+      } catch {
+        // ignore
+      }
+    },
+    [userToken, handleUnauthorized]
+  )
+
+  const handleSelectNotification = useCallback(
+    (item) => {
+      if (!item) return
+      if (item.category === 'billing') {
+        setIsPlanModalOpen(true)
+        return
+      }
+      if (item.device_id) {
+        setActiveDeviceId(item.device_id)
+        setActiveTab('anomalies')
+      } else {
+        setActiveDeviceId('')
+        setActiveTab('alerts')
+      }
+    },
+    []
+  )
 
   const handleAgreeTerms = async () => {
     setSubmittingConsent(true)
@@ -1197,6 +1300,10 @@ function CustomerPortalRoot() {
         }}
         onOpenProfile={() => setIsProfileModalOpen(true)}
         appConfig={publicAppConfig}
+        notifications={userNotifications}
+        unreadNotificationCount={unreadNotificationCount}
+        onMarkNotificationRead={handleMarkNotificationRead}
+        onSelectNotification={handleSelectNotification}
       />
 
       <main className="container main-content-wrap has-bottom-nav">
