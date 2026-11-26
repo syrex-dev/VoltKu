@@ -333,7 +333,7 @@ export function PlanUpgradeModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="plan-sticky-head">
-          <div className="pwa-guide-head" style={{ marginBottom: !isPro ? 10 : 0 }}>
+          <div className="pwa-guide-head" style={{ marginBottom: !isPro && checkoutStepNum >= 2 ? 10 : 0 }}>
             <div className="plan-modal-head-left">
               <span className={`plan-crown-badge ${isPro ? 'is-pro' : ''}`}>
                 <Crown size={18} />
@@ -357,7 +357,7 @@ export function PlanUpgradeModal({
                         ? 'Pilih siklus langganan bulanan atau tahunan'
                         : checkoutStepNum === 3
                           ? 'Pilih metode transfer atau QRIS yang diinginkan'
-                          : `Bandingkan fitur paket ${freeName} dan ${proName}`}
+                          : `Mulai gratis selamanya atau buka kendali energi penuh`}
                 </p>
               </div>
             </div>
@@ -366,8 +366,8 @@ export function PlanUpgradeModal({
             </button>
           </div>
 
-          {/* Stepper 4-Tahap alur upgrade: Paket -> Durasi -> Pembayaran -> Verifikasi */}
-          {!isPro && (
+          {/* Stepper baru muncul setelah user memilih paket (tahap 2 ke atas) */}
+          {!isPro && checkoutStepNum >= 2 && (
             <div className="plan-steps-bar" aria-label="Tahapan Upgrade Paket">
               {[
                 { num: 1, label: 'Paket', stage: 'tier' },
@@ -516,6 +516,11 @@ export function PlanUpgradeModal({
                     <span>{pendingTypeMeta.label}</span>
                   </span>
                   <strong>{pending.payment_method_label}</strong>
+                  {pending.payment_method_type === 'qris' && pending.payment_account_holder && (
+                    <span className="pay-target-holder-inline">
+                      a.n. {pending.payment_account_holder}
+                    </span>
+                  )}
                 </div>
 
                 {pending.payment_method_type === 'qris' && pendingQrisUrl && (
@@ -569,11 +574,13 @@ export function PlanUpgradeModal({
                   </div>
                 )}
 
-                {!pending.payment_account_number && pending.payment_account_holder && (
-                  <div className="pay-account-holder">
-                    Penerima: <strong>{pending.payment_account_holder}</strong>
-                  </div>
-                )}
+                {!pending.payment_account_number &&
+                  pending.payment_method_type !== 'qris' &&
+                  pending.payment_account_holder && (
+                    <div className="pay-account-holder">
+                      Penerima: <strong>{pending.payment_account_holder}</strong>
+                    </div>
+                  )}
 
                 {(pending.payment_instructions || instructions) && (
                   <div className="pay-instructions-note">
