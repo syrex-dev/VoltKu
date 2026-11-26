@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { ArrowRight, X, UserCheck } from 'lucide-react'
+import { ArrowRight, ArrowLeft, X, UserCheck, Mail, KeyRound } from 'lucide-react'
 import { BrandLogo } from './BrandLogo'
 import { loadGoogleGsiScript } from '../utils/googleAuth'
 
@@ -31,6 +31,10 @@ export function LoginModal({
   onLogin,
   onRegister,
   onGoogleLogin,
+  onForgotPassword,
+  onResetPassword,
+  initialResetToken = '',
+  onClearResetToken,
   googleEnabled = false,
   googleClientId = '',
   registrationEnabled = true,
@@ -46,11 +50,15 @@ export function LoginModal({
   subtitle = 'Pantau listrik rumah lebih tenang dan akurat',
 }) {
   const [authTab, setAuthTab] = useState('login')
+  const [viewMode, setViewMode] = useState(() => (initialResetToken ? 'reset' : 'auth'))
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [localAgreed, setLocalAgreed] = useState(termsAccepted)
   const [localError, setLocalError] = useState(null)
+  const [localSuccess, setLocalSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [gsiReady, setGsiReady] = useState(false)
@@ -76,6 +84,14 @@ export function LoginModal({
       setAuthTab('login')
     }
   }, [registrationEnabled, authTab])
+
+  useEffect(() => {
+    if (initialResetToken) {
+      setViewMode('reset')
+      setLocalError(null)
+      setLocalSuccess('')
+    }
+  }, [initialResetToken])
 
   useEffect(() => {
     const cleanCid = String(googleClientId || '').trim()
@@ -141,6 +157,7 @@ export function LoginModal({
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLocalError(null)
+    setLocalSuccess('')
     if (!localAgreed) {
       setLocalError('Centang persetujuan Syarat Penggunaan & Kebijakan Privasi terlebih dahulu.')
       return
@@ -163,6 +180,59 @@ export function LoginModal({
       } else if (onRegister) {
         await onRegister(name.trim(), email.trim(), password, localAgreed)
       }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault()
+    setLocalError(null)
+    setLocalSuccess('')
+    if (!email.trim()) {
+      setLocalError('Masukkan alamat email Anda terlebih dahulu.')
+      return
+    }
+    if (!onForgotPassword) return
+    setSubmitting(true)
+    try {
+      const msg = await onForgotPassword(email.trim())
+      setLocalSuccess(
+        msg ||
+          'Jika email terdaftar di VoltKu, tautan reset kata sandi telah dikirim dan berlaku 30 menit.'
+      )
+    } catch (err) {
+      setLocalError(err?.message || 'Gagal mengirim permintaan reset kata sandi.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault()
+    setLocalError(null)
+    setLocalSuccess('')
+    if (newPassword.length < 6) {
+      setLocalError('Kata sandi baru minimal 6 karakter.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setLocalError('Konfirmasi kata sandi tidak cocok.')
+      return
+    }
+    if (!onResetPassword || !initialResetToken) return
+    setSubmitting(true)
+    try {
+      const msg = await onResetPassword(initialResetToken, newPassword)
+      if (onClearResetToken) onClearResetToken()
+      setNewPassword('')
+      setConfirmPassword('')
+      setPassword('')
+      setAuthTab('login')
+      setViewMode('auth')
+      setLocalSuccess(msg || 'Kata sandi berhasil diperbarui. Silakan masuk dengan sandi baru Anda.')
+    } catch (err) {
+      setLocalError(err?.message || 'Gagal mengatur ulang kata sandi.')
     } finally {
       setSubmitting(false)
     }
@@ -226,7 +296,146 @@ export function LoginModal({
           <p className="auth-subtitle">{subtitle}</p>
         </div>
 
-        {registrationEnabled && (
+        {viewMode === 'forgot' && (
+          <div className="auth-sub-view">
+            <button
+              type="button"
+              className="auth-back-link"
+              onClick={() => {
+                setViewMode('auth')
+                setLocalError(null)
+                setLocalSuccess('')
+              }}
+            >
+              <ArrowLeft size={14} />
+              <span>Kembali ke Masuk</span>
+            </button>
+
+            <div className="auth-sub-panel-head">
+              <span className="auth-sub-icon-box">
+                <Mail size={18} />
+              </span>
+              <div>
+                <h3 className="auth-sub-title">Lupa Kata Sandi?</h3>
+                <p className="auth-sub-desc">
+                  Masukkan email akun Anda. Kami akan mengirimkan tautan reset ke kotak masuk Anda.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleForgotSubmit}>
+              <div className="form-field-group">
+                <label className="field-label" htmlFor="forgot-email-input">
+                  Email Terdaftar
+                </label>
+                <input
+                  type="email"
+                  id="forgot-email-input"
+                  className="modern-input"
+                  placeholder="nama@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  autoFocus
+                />
+              </div>
+
+              {displayError && <div className="feedback-msg error">{displayError}</div>}
+              {localSuccess && <div className="feedback-msg success">{localSuccess}</div>}
+
+              <button
+                type="submit"
+                className="btn btn-primary auth-submit-pill"
+                style={{ width: '100%', padding: '12px 18px', fontSize: '15px' }}
+                disabled={submitting}
+              >
+                <span>{submitting ? 'Mengirim Tautan...' : 'Kirim Tautan Reset'}</span>
+                {!submitting && <ArrowRight size={17} />}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {viewMode === 'reset' && (
+          <div className="auth-sub-view">
+            <button
+              type="button"
+              className="auth-back-link"
+              onClick={() => {
+                if (onClearResetToken) onClearResetToken()
+                setViewMode('auth')
+                setLocalError(null)
+              }}
+            >
+              <ArrowLeft size={14} />
+              <span>Batal &amp; Kembali ke Masuk</span>
+            </button>
+
+            <div className="auth-sub-panel-head">
+              <span className="auth-sub-icon-box">
+                <KeyRound size={18} />
+              </span>
+              <div>
+                <h3 className="auth-sub-title">Atur Ulang Kata Sandi</h3>
+                <p className="auth-sub-desc">
+                  Buat kata sandi baru minimal 6 karakter untuk akun VoltKu Anda.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleResetSubmit}>
+              <div className="form-field-group">
+                <label className="field-label" htmlFor="reset-pass-input">
+                  Kata Sandi Baru
+                </label>
+                <input
+                  type="password"
+                  id="reset-pass-input"
+                  className="modern-input"
+                  placeholder="Minimal 6 karakter"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  minLength={6}
+                  required
+                  autoComplete="new-password"
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-field-group">
+                <label className="field-label" htmlFor="reset-confirm-input">
+                  Ulangi Kata Sandi Baru
+                </label>
+                <input
+                  type="password"
+                  id="reset-confirm-input"
+                  className="modern-input"
+                  placeholder="Ketik ulang kata sandi baru"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={6}
+                  required
+                  autoComplete="new-password"
+                />
+              </div>
+
+              {displayError && <div className="feedback-msg error">{displayError}</div>}
+
+              <button
+                type="submit"
+                className="btn btn-primary auth-submit-pill"
+                style={{ width: '100%', padding: '12px 18px', fontSize: '15px' }}
+                disabled={submitting}
+              >
+                <span>{submitting ? 'Menyimpan...' : 'Simpan Kata Sandi Baru'}</span>
+                {!submitting && <ArrowRight size={17} />}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {viewMode === 'auth' && registrationEnabled && (
           <div className="user-auth-tabs" role="tablist">
             <button
               type="button"
@@ -255,6 +464,8 @@ export function LoginModal({
           </div>
         )}
 
+        {viewMode === 'auth' && (
+          <>
         <form onSubmit={handleSubmit}>
           {authTab === 'register' && registrationEnabled && (
             <div className="form-field-group">
@@ -292,9 +503,24 @@ export function LoginModal({
           </div>
 
           <div className="form-field-group">
-            <label className="field-label" htmlFor="password-input">
-              Kata Sandi
-            </label>
+            <div className="auth-label-row">
+              <label className="field-label" htmlFor="password-input" style={{ marginBottom: 0 }}>
+                Kata Sandi
+              </label>
+              {authTab === 'login' && onForgotPassword && (
+                <button
+                  type="button"
+                  className="auth-forgot-link"
+                  onClick={() => {
+                    setViewMode('forgot')
+                    setLocalError(null)
+                    setLocalSuccess('')
+                  }}
+                >
+                  Lupa kata sandi?
+                </button>
+              )}
+            </div>
             <input
               type="password"
               id="password-input"
@@ -337,6 +563,7 @@ export function LoginModal({
           </label>
 
           {displayError && <div className="feedback-msg error">{displayError}</div>}
+          {localSuccess && <div className="feedback-msg success">{localSuccess}</div>}
 
           <button
             type="submit"
@@ -357,7 +584,7 @@ export function LoginModal({
           </button>
         </form>
 
-        {googleEnabled && onGoogleLogin && (
+        {viewMode === 'auth' && googleEnabled && onGoogleLogin && (
           <>
             <div className="auth-divider-or">
               <span>atau</span>
@@ -397,7 +624,7 @@ export function LoginModal({
           </>
         )}
 
-        {onTryGuest && (
+        {viewMode === 'auth' && onTryGuest && (
           <div className="native-try-guest-wrap">
             <button type="button" className="native-try-guest-btn" onClick={onTryGuest}>
               <span className="native-try-guest-circle">
@@ -406,6 +633,8 @@ export function LoginModal({
               <span className="native-try-guest-label">Lanjut sebagai Tamu</span>
             </button>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

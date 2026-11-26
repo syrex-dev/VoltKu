@@ -14,9 +14,11 @@ os.environ["DASHBOARD_PASSWORD"] = "test_password_12chars"
 def isolate_db(monkeypatch, tmp_path):
     from app.auth import (
         api_burst_limiter,
+        forgot_password_limiter,
         login_limiter,
         public_consent_limiter,
         register_limiter,
+        reset_password_limiter,
         user_login_limiter,
     )
     from app.config import get_settings
@@ -26,6 +28,8 @@ def isolate_db(monkeypatch, tmp_path):
     login_limiter.reset()
     user_login_limiter.reset()
     register_limiter.reset()
+    forgot_password_limiter.reset()
+    reset_password_limiter.reset()
     public_consent_limiter.reset()
     api_burst_limiter.reset()
     get_settings.cache_clear()

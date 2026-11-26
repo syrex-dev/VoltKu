@@ -222,6 +222,14 @@ function CustomerPortalRoot() {
     }
     return getStoredUserToken()
   })
+  const [resetToken, setResetToken] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const rt = (urlParams.get('reset_token') || '').trim()
+    if (rt) {
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
+    return rt
+  })
   const [currentUser, setCurrentUser] = useState(null)
   const [loginError, setLoginError] = useState(null)
   const [publicReadEnabled, setPublicReadEnabled] = useState(true)
@@ -443,6 +451,22 @@ function CustomerPortalRoot() {
     } catch (err) {
       setLoginError(err.message || 'Pendaftaran akun gagal.')
     }
+  }
+
+  const handleForgotPassword = async (email) => {
+    const data = await apiRequest('/api/users/forgot-password', {
+      method: 'POST',
+      body: { email },
+    })
+    return data?.message || ''
+  }
+
+  const handleResetPassword = async (tokenVal, newPassword) => {
+    const data = await apiRequest('/api/users/reset-password', {
+      method: 'POST',
+      body: { token: tokenVal, new_password: newPassword },
+    })
+    return data?.message || ''
   }
 
   const handleGoogleLogin = useCallback(
@@ -1044,6 +1068,10 @@ function CustomerPortalRoot() {
           onLogin={handleUserLogin}
           onRegister={handleUserRegister}
           onGoogleLogin={handleGoogleLogin}
+          onForgotPassword={handleForgotPassword}
+          onResetPassword={handleResetPassword}
+          initialResetToken={resetToken}
+          onClearResetToken={() => setResetToken('')}
           googleEnabled={publicAppConfig.google_enabled}
           googleClientId={publicAppConfig.google_client_id || publicAppConfig.google_android_client_id}
           registrationEnabled={publicAppConfig.registration_enabled !== false}
@@ -1316,11 +1344,15 @@ function CustomerPortalRoot() {
         />
       )}
 
-      {showLoginModal && !userToken && (
+      {(Boolean(resetToken) || (showLoginModal && !userToken)) && (
         <LoginModal
           onLogin={handleUserLogin}
           onRegister={handleUserRegister}
           onGoogleLogin={handleGoogleLogin}
+          onForgotPassword={handleForgotPassword}
+          onResetPassword={handleResetPassword}
+          initialResetToken={resetToken}
+          onClearResetToken={() => setResetToken('')}
           googleEnabled={publicAppConfig.google_enabled}
           googleClientId={publicAppConfig.google_client_id || publicAppConfig.google_android_client_id}
           registrationEnabled={publicAppConfig.registration_enabled !== false}
@@ -1334,6 +1366,7 @@ function CustomerPortalRoot() {
           brandDisplay={publicAppConfig.navbar_brand_display}
           onClose={() => {
             setShowLoginModal(false)
+            setResetToken('')
             setPendingAddDevice(false)
             setLoginModalSubtitle('')
           }}

@@ -22,6 +22,7 @@ Payload telemetry:
 | `POST /api/login` | Login legacy/admin `{"password": "..."}`, mengembalikan token JWT `{"token": "..."}` (`role="admin"`). Gagal berulang mengembalikan HTTP 429 (`Retry-After: N`). |
 | `POST /api/users/register` | Registrasi akun pembeli multi-tenant (`name`, `email`, `password` min 6 karakter, opsional `accept_terms` / `client_id`). Mengembalikan HTTP `201` dengan JWT (`role="user"`) dan profil user serta mencatat persetujuan legal ke database. |
 | `POST /api/users/login` | Login akun pembeli (`email`, `password`, opsional `accept_terms` / `client_id`). Mengembalikan JWT (`role="user"`) dan profil user. Gagal berulang mengembalikan HTTP 429. |
+| `POST /api/users/forgot-password`, `POST /api/users/reset-password` | Meminta tautan reset kata sandi ke email (respons netral `200`, rate-limit ketat) dan menyetel ulang kata sandi memakai token SHA-256 hash sekali pakai (kedaluwarsa 30 menit). |
 | `POST /api/users/google` | Login atau registrasi otomatis akun pembeli menggunakan Google ID Token (`{"id_token": "...", "accept_terms": bool, "client_id": "..."}`, berlaku untuk Web GIS & Android APK). Mengembalikan JWT (`role="user"`) dan profil user. |
 | `GET /api/users/oauth-config` | Konfigurasi publik otentikasi klien (`google_enabled`, `google_client_id`, `google_android_client_id`, `terms_version`). |
 | `GET /api/users/me` | Profil akun pembeli yang sedang login (`id`, `name`, `email`, `role`, `auth_provider`, `avatar_url`, `terms_version_accepted`, `terms_accepted_at`, `needs_terms_reconsent`, `plan`). |
@@ -62,6 +63,7 @@ Format error: objek `error` berisi `code` dan `message`. Seluruh endpoint `/api/
 ## 3. Model data
 ```
 users(id PK, email UNIQUE, name, password_hash, auth_provider, google_sub UNIQUE NULL, avatar_url NULL, terms_version_accepted NULL, terms_accepted_at NULL, plan_tier DEFAULT 'free', plan_expires_at NULL, plan_updated_at NULL, is_active, created_at, last_login_at)
+password_reset_tokens(id PK, user_id FK->users.id, token_hash UNIQUE, expires_at, used_at NULL, created_at)
 terms_consents(id PK, user_id FK->users.id NULL, email_snapshot NULL, client_id NULL, terms_version, privacy_version, accepted_via, ip_address NULL, user_agent NULL, accepted_at)
 upgrade_requests(id PK, user_id FK->users.id, order_code UNIQUE NULL, requested_tier DEFAULT 'pro', billing_cycle DEFAULT 'monthly', amount_rp, payment_method_id NULL, payment_method_type NULL, payment_method_label NULL, payment_account_number NULL, payment_account_holder NULL, payment_instructions NULL, payment_proof_path NULL, status DEFAULT 'pending', user_note NULL, admin_note NULL, expires_at NULL, submitted_at NULL, created_at, resolved_at NULL)
 payment_methods(id PK, type, label, account_number NULL, account_holder NULL, qris_image_path NULL, instructions NULL, is_active DEFAULT 1, sort_order DEFAULT 0, created_at)

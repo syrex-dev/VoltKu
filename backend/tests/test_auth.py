@@ -194,6 +194,8 @@ def test_route_audit_security_lockdown():
         "/api/users/register",
         "/api/users/login",
         "/api/users/google",
+        "/api/users/forgot-password",
+        "/api/users/reset-password",
         "/api/admin/login",
         "/api/public/terms-consent",
     }

@@ -147,6 +147,8 @@ class SlidingWindowRateLimiter:
 login_limiter = LoginRateLimiter(max_delay=30)
 user_login_limiter = LoginRateLimiter(max_delay=30)
 register_limiter = SlidingWindowRateLimiter(max_requests=10, window_seconds=600)
+forgot_password_limiter = SlidingWindowRateLimiter(max_requests=5, window_seconds=900)
+reset_password_limiter = SlidingWindowRateLimiter(max_requests=10, window_seconds=900)
 public_consent_limiter = SlidingWindowRateLimiter(max_requests=30, window_seconds=600)
 api_burst_limiter = SlidingWindowRateLimiter(max_requests=180, window_seconds=10)
 

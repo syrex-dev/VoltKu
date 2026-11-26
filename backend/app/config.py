@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     google_android_client_id: Optional[str] = None
     terms_version: str = "2026-11-v1"
 
+    # Email / SMTP Reset Kata Sandi (Opsional)
+    app_public_url: str = "https://voltku.synemax.web.id"
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_pass: Optional[str] = None
+    smtp_from_email: Optional[str] = None
+    smtp_from_name: str = "VoltKu"
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+
     # M3 Flags & Konfigurasi
     scheduler_enabled: bool = True
     bot_enabled: bool = True

@@ -1,24 +1,28 @@
+import hashlib
 import re
+import secrets
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.auth import (
     create_access_token,
+    forgot_password_limiter,
     get_current_user,
     get_trusted_client_ip,
     hash_password,
     register_limiter,
+    reset_password_limiter,
     user_login_limiter,
     verify_user_password,
 )
 from app.db import get_db
-from app.models import PaymentMethod, UpgradeRequest, User
+from app.models import PasswordResetToken, PaymentMethod, UpgradeRequest, User
 from app.services.app_config import (
     get_active_terms_version,
     get_app_config_map,
@@ -26,6 +30,7 @@ from app.services.app_config import (
     is_registration_enabled,
     record_terms_consent,
 )
+from app.services.email_service import send_password_reset_email
 from app.services.google_oauth import GoogleTokenError, verify_google_id_token
 from app.services.payments import (
     DEFAULT_PAYMENT_TTL_SECONDS,
@@ -88,6 +93,31 @@ class UpgradeSubmitRequest(BaseModel):
 class UpgradeConfirmPaymentRequest(BaseModel):
     proof_base64: str
     user_note: Optional[str] = None
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+PASSWORD_RESET_TTL_SECONDS = 30 * 60
+
+
+def _validate_password_policy(password: str) -> None:
+    if len(password) < 6 or len(password) > 128:
+        raise _api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Kata sandi minimal 6 karakter",
+        )
+    if password.strip().lower() in WEAK_PASSWORDS:
+        raise _api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Kata sandi terlalu lemah. Gunakan kombinasi huruf dan angka yang lebih kuat.",
+        )
 
 
 def _serialize_user(
@@ -178,16 +208,7 @@ def register_user(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Format email tidak valid",
         )
-    if len(req.password) < 6 or len(req.password) > 128:
-        raise _api_error(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "Kata sandi minimal 6 karakter",
-        )
-    if req.password.strip().lower() in WEAK_PASSWORDS:
-        raise _api_error(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "Kata sandi terlalu lemah. Gunakan kombinasi huruf dan angka yang lebih kuat.",
-        )
+    _validate_password_policy(req.password)
 
     existing = session.scalar(select(User).where(User.email == clean_email))
     if existing:
@@ -723,4 +744,145 @@ def submit_user_terms_consent(
         session=session,
         cfg_map=cfg_map,
     )
+
+
+@router.post("/forgot-password", response_model=dict[str, Any])
+def request_password_reset(
+    req: ForgotPasswordRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_db),
+):
+    """Mengirim tautan reset kata sandi ke email user secara aman (anti-enumerasi + rate limit)."""
+    client_ip = get_trusted_client_ip(request)
+    is_limited, retry_after = forgot_password_limiter.check_and_record(f"ip:{client_ip}")
+    if is_limited:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry_after)},
+            content={
+                "error": {
+                    "code": 429,
+                    "message": "Terlalu banyak permintaan reset kata sandi. Coba lagi nanti.",
+                }
+            },
+        )
+
+    clean_email = (req.email or "").strip().lower()
+    if not EMAIL_RE.match(clean_email) or len(clean_email) > 128:
+        raise _api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Format email tidak valid.",
+        )
+
+    neutral_response = {
+        "sent": True,
+        "message": (
+            "Jika email terdaftar di VoltKu, tautan reset kata sandi telah dikirim "
+            "dan berlaku selama 30 menit."
+        ),
+    }
+
+    user = session.scalar(select(User).where(User.email == clean_email))
+    if not user or not user.is_active:
+        return neutral_response
+
+    email_limited, _ = forgot_password_limiter.check_and_record(f"email:{clean_email}")
+    if email_limited:
+        return neutral_response
+
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+    session.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now_utc)
+    )
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    reset_entry = PasswordResetToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=now_utc + PASSWORD_RESET_TTL_SECONDS,
+        created_at=now_utc,
+    )
+    session.add(reset_entry)
+    session.commit()
+
+    background_tasks.add_task(
+        send_password_reset_email,
+        to_email=user.email,
+        user_name=user.name,
+        raw_token=raw_token,
+        expires_minutes=30,
+    )
+    return neutral_response
+
+
+@router.post("/reset-password", response_model=dict[str, Any])
+def reset_password_with_token(
+    req: ResetPasswordRequest,
+    request: Request,
+    session: Session = Depends(get_db),
+):
+    """Menyetel ulang kata sandi menggunakan token sekali pakai dari email."""
+    client_ip = get_trusted_client_ip(request)
+    is_limited, retry_after = reset_password_limiter.check_and_record(f"ip:{client_ip}")
+    if is_limited:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry_after)},
+            content={
+                "error": {
+                    "code": 429,
+                    "message": "Terlalu banyak percobaan reset. Coba lagi nanti.",
+                }
+            },
+        )
+
+    raw_token = (req.token or "").strip()
+    if len(raw_token) < 16 or len(raw_token) > 256:
+        raise _api_error(
+            status.HTTP_400_BAD_REQUEST,
+            "Tautan reset kata sandi tidak valid atau sudah kedaluwarsa.",
+        )
+
+    _validate_password_policy(req.new_password)
+
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    reset_row = session.scalar(
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+    )
+    if not reset_row or reset_row.used_at is not None or reset_row.expires_at <= now_utc:
+        raise _api_error(
+            status.HTTP_400_BAD_REQUEST,
+            "Tautan reset kata sandi tidak valid atau sudah kedaluwarsa.",
+        )
+
+    user = session.get(User, reset_row.user_id)
+    if not user or not user.is_active:
+        raise _api_error(
+            status.HTTP_403_FORBIDDEN,
+            "Akun tidak ditemukan atau sedang dinonaktifkan.",
+        )
+
+    user.password_hash = hash_password(req.new_password)
+    session.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now_utc)
+    )
+    session.commit()
+    return {
+        "reset": True,
+        "message": "Kata sandi berhasil diperbarui. Silakan masuk dengan kata sandi baru Anda.",
+    }
+
 

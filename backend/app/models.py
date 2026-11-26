@@ -114,6 +114,21 @@ class UserSetting(Base):
     value: Mapped[str] = mapped_column(String(256), nullable=False)
 
 
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    used_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
+
+
 class Device(Base):
     __tablename__ = "devices"
 
