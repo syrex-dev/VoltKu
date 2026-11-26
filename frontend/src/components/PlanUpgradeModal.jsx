@@ -1,14 +1,40 @@
-import React, { useState } from 'react'
-import { Crown, Check, Lock, X, MessageCircle, Clock, Send } from 'lucide-react'
-import { apiRequest } from '../api/client'
-import { formatRp, formatTimeWIB } from '../utils/formatters'
+import React, { useState, useEffect, useMemo } from 'react'
+import {
+  X,
+  Check,
+  Lock,
+  Crown,
+  MessageCircle,
+  Clock,
+  QrCode,
+  Landmark,
+  Wallet,
+  Copy,
+  Upload,
+  CheckCircle2,
+  XCircle,
+  ZoomIn,
+  Download,
+  RotateCcw,
+} from 'lucide-react'
+import { apiRequest, buildApiUrl } from '../api/client'
+import { formatDateTimeWIB, formatRp } from '../utils/formatters'
+import { compressImageToDataUrl } from '../utils/imageCompress'
+import { useAuthImage } from '../utils/authImage'
 
-function normalizeWaHref(raw = '', prefill = '') {
-  const digits = String(raw || '').replace(/[^0-9]/g, '')
-  if (!digits) return ''
-  const intl = digits.startsWith('0') ? `62${digits.slice(1)}` : digits
-  const q = prefill ? `?text=${encodeURIComponent(prefill)}` : ''
-  return `https://wa.me/${intl}${q}`
+const TYPE_META = {
+  qris: { label: 'QRIS', icon: QrCode },
+  bank: { label: 'Transfer Bank', icon: Landmark },
+  ewallet: { label: 'E-Wallet', icon: Wallet },
+}
+
+function formatCountdown(expiresAtEpoch, nowEpoch) {
+  if (!expiresAtEpoch) return ''
+  const diff = Math.max(0, expiresAtEpoch - nowEpoch)
+  const hrs = String(Math.floor(diff / 3600)).padStart(2, '0')
+  const mins = String(Math.floor((diff % 3600) / 60)).padStart(2, '0')
+  const secs = String(diff % 60).padStart(2, '0')
+  return `${hrs}:${mins}:${secs}`
 }
 
 export function PlanUpgradeModal({
@@ -22,96 +48,278 @@ export function PlanUpgradeModal({
   lockedReason = '',
 }) {
   const [billingCycle, setBillingCycle] = useState('monthly')
+  const [paymentMethods, setPaymentMethods] = useState([])
+  const [methodsLoading, setMethodsLoading] = useState(false)
+  const [selectedMethodId, setSelectedMethodId] = useState(null)
   const [userNote, setUserNote] = useState('')
+  const [proofBase64, setProofBase64] = useState('')
+  const [proofName, setProofName] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [feedback, setFeedback] = useState(null)
+  const [copiedField, setCopiedField] = useState('')
+  const [zoomImageSrc, setZoomImageSrc] = useState('')
+  const [localPending, setLocalPending] = useState(undefined)
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
 
-  if (!isOpen) return null
+  const plans = appConfig?.plans || {}
+  const freeCfg = plans.free || {}
+  const proCfg = plans.pro || {}
 
-  const plansCfg = appConfig.plans || {}
-  const freeCfg = plansCfg.free || {
-    name: 'VoltKu Gratis',
-    price_monthly_rp: 0,
-    max_devices: 1,
-    history_days: 3,
-    forecast_enabled: false,
-    export_enabled: false,
-  }
-  const proCfg = plansCfg.pro || {
-    name: 'VoltKu Pro',
-    price_monthly_rp: 30000,
-    price_yearly_rp: 300000,
-    max_devices: 10,
-    history_days: 90,
-    forecast_enabled: true,
-    export_enabled: true,
-  }
+  const proName = proCfg.name || 'VoltKu Pro'
+  const freeName = freeCfg.name || 'VoltKu Gratis'
+  const monthlyPrice = Number(proCfg.price_monthly_rp ?? 30000)
+  const yearlyPrice = Number(proCfg.price_yearly_rp ?? 300000)
+  const freeMaxDevices = Number(freeCfg.max_devices ?? 1)
+  const freeHistoryDays = Number(freeCfg.history_days ?? 3)
+  const proMaxDevices = Number(proCfg.max_devices ?? 10)
+  const proHistoryDays = Number(proCfg.history_days ?? 90)
+  const instructions = proCfg.upgrade_instructions || ''
+  const waRaw = (appConfig?.support_whatsapp || '').replace(/[^0-9]/g, '')
 
   const userPlan = currentUser?.plan || {}
   const isPro = Boolean(userPlan.is_pro)
-  const pending = userPlan.pending_upgrade || null
-  const proMaxLabel =
-    proCfg.max_devices < 0 ? 'Tanpa batas panel' : `Hingga ${proCfg.max_devices} panel aktif`
-  const selectedPrice =
-    billingCycle === 'yearly' ? proCfg.price_yearly_rp : proCfg.price_monthly_rp
+  const pending = localPending !== undefined ? localPending : userPlan.pending_upgrade || null
+  const latestUpgrade = userPlan.latest_upgrade || null
+  const activeStepStatus = pending?.status || ''
 
-  const waPrefill = `Halo Admin ${appConfig.app_name || 'VoltKu'}, saya ${currentUser?.name || ''} (${currentUser?.email || ''}) ingin konfirmasi upgrade ke ${proCfg.name} (${billingCycle === 'yearly' ? 'Tahunan' : 'Bulanan'} - ${formatRp(selectedPrice)}).`
-  const waHref = normalizeWaHref(appConfig.support_whatsapp || '', waPrefill)
+  // Reset saat modal dibuka/ditutup dan muat daftar metode pembayaran aktif
+  useEffect(() => {
+    if (!isOpen) {
+      setFeedback(null)
+      setProofBase64('')
+      setProofName('')
+      setZoomImageSrc('')
+      setLocalPending(undefined)
+      return
+    }
+    setLocalPending(undefined)
+    let cancelled = false
+    setMethodsLoading(true)
+    apiRequest('/api/public/payment-methods')
+      .then((list) => {
+        if (cancelled) return
+        const items = Array.isArray(list) ? list : []
+        setPaymentMethods(items)
+        setSelectedMethodId((prev) => {
+          if (prev && items.some((m) => m.id === prev)) return prev
+          return items[0]?.id ?? null
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentMethods([])
+      })
+      .finally(() => {
+        if (!cancelled) setMethodsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen])
 
-  const handleSubmitRequest = async (e) => {
-    e.preventDefault()
+  // Sinkronkan timer hitung mundur saat tagihan menunggu pembayaran
+  useEffect(() => {
+    if (!isOpen || activeStepStatus !== 'awaiting_payment') return undefined
+    setNowSec(Math.floor(Date.now() / 1000))
+    const id = window.setInterval(() => {
+      setNowSec(Math.floor(Date.now() / 1000))
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [isOpen, activeStepStatus])
+
+  // Clear local override begitu prop currentUser sudah sinkron
+  useEffect(() => {
+    if (localPending !== undefined && userPlan.pending_upgrade !== undefined) {
+      setLocalPending(undefined)
+    }
+  }, [userPlan.pending_upgrade]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { imageUrl: uploadedProofUrl, loading: proofImgLoading } = useAuthImage(
+    pending?.id ? `/api/users/upgrade-requests/${pending.id}/proof` : '',
+    token,
+    Boolean(isOpen && pending?.id && pending?.has_payment_proof)
+  )
+
+  const pendingQrisUrl = useMemo(() => {
+    if (!pending || pending.payment_method_type !== 'qris') return ''
+    const matched = paymentMethods.find((m) => m.id === pending.payment_method_id)
+    if (matched?.qris_image_url) return buildApiUrl(matched.qris_image_url)
+    if (matched?.has_qris_image === false) return ''
+    return pending.payment_method_id
+      ? buildApiUrl(`/api/payment-methods/${pending.payment_method_id}/qris`)
+      : ''
+  }, [pending, paymentMethods])
+
+  if (!isOpen) return null
+
+  const selectedPrice = billingCycle === 'yearly' ? yearlyPrice : monthlyPrice
+  const selectedMethod = paymentMethods.find((m) => m.id === selectedMethodId) || null
+  const isExpiredInvoice = Boolean(
+    pending?.expires_at && activeStepStatus === 'awaiting_payment' && pending.expires_at <= nowSec
+  )
+
+  const waHref = (() => {
+    if (!waRaw) return ''
+    const waNumber = waRaw.startsWith('0') ? `62${waRaw.slice(1)}` : waRaw
+    const orderInfo = pending?.order_code ? ` (Kode: ${pending.order_code})` : ''
+    const cycleText =
+      (pending?.billing_cycle || billingCycle) === 'yearly' ? 'Tahunan' : 'Bulanan'
+    const text = encodeURIComponent(
+      `Halo Admin VoltKu, saya ${currentUser?.name || 'Pengguna'} (${currentUser?.email || '-'}) ingin konfirmasi upgrade ${proName} paket ${cycleText}${orderInfo}.`
+    )
+    return `https://wa.me/${waNumber}?text=${text}`
+  })()
+
+  const handleCopy = async (key, textVal) => {
+    if (!textVal) return
+    try {
+      await navigator.clipboard.writeText(String(textVal))
+      setCopiedField(key)
+      window.setTimeout(() => setCopiedField(''), 1800)
+    } catch {
+      setFeedback({ type: 'error', text: 'Gagal menyalin ke clipboard.' })
+    }
+  }
+
+  const handleSelectProofFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setFeedback(null)
+    try {
+      const compressed = await compressImageToDataUrl(file, {
+        maxDimension: 1280,
+        quality: 0.84,
+      })
+      setProofBase64(compressed)
+      setProofName(file.name || 'bukti-pembayaran.jpg')
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message || 'Gagal memproses gambar bukti bayar.' })
+    }
+  }
+
+  const handleCreateOrder = async () => {
     if (!token) return
     setSubmitting(true)
     setFeedback(null)
     try {
-      await apiRequest(
+      const created = await apiRequest(
         '/api/users/upgrade-request',
         {
           method: 'POST',
           body: {
             billing_cycle: billingCycle,
-            user_note: userNote.trim() || undefined,
+            payment_method_id: selectedMethod ? selectedMethod.id : null,
+            user_note: userNote.trim() || null,
           },
         },
         token,
         onLogout
       )
-      setUserNote('')
+      setLocalPending(created)
+      setProofBase64('')
+      setProofName('')
       setFeedback({
         type: 'success',
-        text: 'Permintaan upgrade berhasil dikirim! Konfirmasikan pembayaran ke pengelola untuk aktivasi instan.',
+        text:
+          created.status === 'awaiting_payment'
+            ? `Tagihan ${created.order_code} dibuat. Silakan selesaikan pembayaran & unggah bukti transfer.`
+            : 'Permintaan upgrade dikirim ke admin.',
       })
       if (onUpgradeSubmitted) await onUpgradeSubmitted()
     } catch (err) {
-      setFeedback({
-        type: 'error',
-        text: err.message || 'Gagal mengajukan permintaan upgrade.',
-      })
+      setFeedback({ type: 'error', text: err.message || 'Gagal membuat tagihan upgrade.' })
     } finally {
       setSubmitting(false)
     }
   }
 
+  const handleConfirmPayment = async () => {
+    if (!token || !pending?.id) return
+    if (!proofBase64) {
+      setFeedback({ type: 'error', text: 'Pilih foto bukti transfer atau QRIS terlebih dahulu.' })
+      return
+    }
+    setSubmitting(true)
+    setFeedback(null)
+    try {
+      const updated = await apiRequest(
+        `/api/users/upgrade-requests/${pending.id}/confirm-payment`,
+        {
+          method: 'POST',
+          body: {
+            proof_base64: proofBase64,
+            user_note: userNote.trim() || null,
+          },
+        },
+        token,
+        onLogout
+      )
+      setLocalPending(updated)
+      setProofBase64('')
+      setProofName('')
+      setFeedback({
+        type: 'success',
+        text: 'Bukti pembayaran dikirim! Menunggu pengecekan & konfirmasi Admin.',
+      })
+      if (onUpgradeSubmitted) await onUpgradeSubmitted()
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message || 'Gagal mengirim bukti pembayaran.' })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleCancelOrder = async () => {
+    if (!token || !pending?.id) return
+    setCancelling(true)
+    setFeedback(null)
+    try {
+      await apiRequest(
+        `/api/users/upgrade-requests/${pending.id}/cancel`,
+        { method: 'POST', body: {} },
+        token,
+        onLogout
+      )
+      setLocalPending(null)
+      setProofBase64('')
+      setProofName('')
+      setFeedback({
+        type: 'success',
+        text: 'Tagihan sebelumnya dibatalkan. Silakan pilih paket atau metode lain.',
+      })
+      if (onUpgradeSubmitted) await onUpgradeSubmitted()
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message || 'Gagal membatalkan tagihan.' })
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  const pendingTypeMeta = TYPE_META[pending?.payment_method_type] || TYPE_META.bank
+  const PendingMethodIcon = pendingTypeMeta.icon
+
   return (
     <div className="modal-overlay pwa-guide-overlay" onClick={onClose}>
       <div
-        className="modal-dialog-modern plan-modal-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Paket Langganan VoltKu"
+        className="modal-dialog-modern pwa-guide-sheet plan-modal-dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="pwa-guide-head" style={{ marginBottom: 12 }}>
-          <div className="pwa-guide-brand">
-            <span className="plan-modal-crown">
-              <Crown size={20} />
+        <div className="pwa-guide-head">
+          <div className="plan-modal-head-left">
+            <span className="plan-crown-badge">
+              <Crown size={18} />
             </span>
             <div>
-              <h3 className="pwa-guide-title">Paket &amp; Fitur {appConfig.app_name || 'VoltKu'}</h3>
+              <h3 className="pwa-guide-title">
+                {pending ? `Pembayaran ${proName}` : `Paket & Fitur ${appConfig?.app_name || 'VoltKu'}`}
+              </h3>
               <p className="pwa-guide-sub">
                 {isPro
-                  ? `Paket ${proCfg.name} aktif di akun Anda`
-                  : `Tingkatkan ke ${proCfg.name} untuk buka semua fitur`}
+                  ? `Akun Anda aktif di paket ${proName}`
+                  : pending
+                    ? `Tagihan ${pending.order_code || `#${pending.id}`}`
+                    : `Tingkatkan ke ${proName} untuk buka semua fitur`}
               </p>
             </div>
           </div>
@@ -121,7 +329,7 @@ export function PlanUpgradeModal({
         </div>
 
         {lockedReason && (
-          <div className="plan-lock-notice">
+          <div className="plan-locked-banner">
             <Lock size={15} />
             <span>{lockedReason}</span>
           </div>
@@ -133,164 +341,498 @@ export function PlanUpgradeModal({
           </div>
         )}
 
-        <div className="plan-compare-grid">
-          <div className={`plan-tier-card ${!isPro ? 'is-current' : ''}`}>
-            <div className="plan-tier-head">
-              <strong>{freeCfg.name}</strong>
-              {!isPro && <span className="plan-current-tag">Aktif</span>}
+        {/* 1. User sudah Pro */}
+        {isPro && (
+          <div className="plan-pro-active-card">
+            <div className="plan-pro-active-head">
+              <CheckCircle2 size={20} className="plan-check-icon" />
+              <div>
+                <strong>{proName} Aktif</strong>
+                <div className="plan-sub-note">
+                  {userPlan.expires_at
+                    ? `Berlaku hingga ${formatDateTimeWIB(userPlan.expires_at)}`
+                    : 'Aktif Permanen'}
+                </div>
+              </div>
             </div>
-            <div className="plan-tier-price num-tabular">Rp 0</div>
-            <ul className="plan-feature-list">
+            <ul className="plan-feature-list" style={{ marginTop: 12 }}>
               <li>
-                <Check size={14} /> Maks. {freeCfg.max_devices} panel aktif
+                <Check size={14} className="plan-check-icon" />
+                <span>
+                  Terpakai {userPlan.usage?.device_count || 0} /{' '}
+                  {proMaxDevices < 0 ? 'Tanpa Batas' : `${proMaxDevices} panel`}
+                </span>
               </li>
               <li>
-                <Check size={14} /> Pantau Live real-time 10 detik
-              </li>
-              <li>
-                <Check size={14} /> Grafik hingga {freeCfg.history_days} hari
-              </li>
-              <li className={!freeCfg.forecast_enabled ? 'is-locked' : ''}>
-                {freeCfg.forecast_enabled ? <Check size={14} /> : <Lock size={14} />}
-                Proyeksi tagihan akhir bulan
-              </li>
-              <li className={!freeCfg.export_enabled ? 'is-locked' : ''}>
-                {freeCfg.export_enabled ? <Check size={14} /> : <Lock size={14} />}
-                Ekspor laporan CSV
+                <Check size={14} className="plan-check-icon" />
+                <span>Riwayat grafik hingga {proHistoryDays} hari + Proyeksi & Ekspor CSV</span>
               </li>
             </ul>
           </div>
+        )}
 
-          <div className={`plan-tier-card is-pro ${isPro ? 'is-current' : ''}`}>
-            <div className="plan-tier-head">
-              <strong>
-                <Crown size={14} /> {proCfg.name}
-              </strong>
-              {isPro && <span className="plan-current-tag is-pro">Aktif</span>}
+        {/* 2. Menunggu Pembayaran / Upload Bukti */}
+        {!isPro && (activeStepStatus === 'awaiting_payment' || activeStepStatus === 'pending') && (
+          <div className="pay-invoice-stack">
+            <div className="pay-invoice-summary">
+              <div className="pay-invoice-top">
+                <div>
+                  <span className="pay-order-code num-tabular">
+                    {pending.order_code || `INV-${pending.id}`}
+                  </span>
+                  <div className="pay-order-cycle">
+                    {pending.billing_cycle === 'yearly' ? `${proName} · Tahunan` : `${proName} · Bulanan`}
+                  </div>
+                </div>
+                <span className={`pay-status-badge ${isExpiredInvoice ? 'expired' : 'awaiting'}`}>
+                  <Clock size={12} />
+                  <span>
+                    {isExpiredInvoice
+                      ? 'Kedaluwarsa'
+                      : pending.expires_at
+                        ? `Batas ${formatCountdown(pending.expires_at, nowSec)}`
+                        : 'Menunggu Bayar'}
+                  </span>
+                </span>
+              </div>
+
+              <div className="pay-amount-row">
+                <div>
+                  <div className="pay-amount-label">Total yang harus dibayar</div>
+                  <div className="pay-amount-value num-tabular">{formatRp(pending.amount_rp)}</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-copy-pill"
+                  onClick={() => handleCopy('amount', pending.amount_rp)}
+                >
+                  <Copy size={13} />
+                  <span>{copiedField === 'amount' ? 'Disalin' : 'Salin Nominal'}</span>
+                </button>
+              </div>
             </div>
-            <div className="plan-tier-price num-tabular">
-              {formatRp(proCfg.price_monthly_rp)}
-              <span>/bulan</span>
-            </div>
-            <div className="plan-tier-subprice num-tabular">
-              atau {formatRp(proCfg.price_yearly_rp)}/tahun
-            </div>
-            <ul className="plan-feature-list">
-              <li>
-                <Check size={14} /> {proMaxLabel}
-              </li>
-              <li>
-                <Check size={14} /> Grafik historis hingga {proCfg.history_days} hari
-              </li>
-              <li>
-                <Check size={14} /> Proyeksi tagihan akhir bulan otomatis
-              </li>
-              <li>
-                <Check size={14} /> Ekspor laporan konsumsi CSV
-              </li>
-              <li>
-                <Check size={14} /> Deteksi anomali lengkap L2/L3
-              </li>
-            </ul>
+
+            {pending.payment_method_label && (
+              <div className="pay-target-card">
+                <div className="pay-target-head">
+                  <span className="pay-method-type-badge">
+                    <PendingMethodIcon size={14} />
+                    <span>{pendingTypeMeta.label}</span>
+                  </span>
+                  <strong>{pending.payment_method_label}</strong>
+                </div>
+
+                {pending.payment_method_type === 'qris' && pendingQrisUrl && (
+                  <div className="pay-qris-preview-wrap">
+                    <button
+                      type="button"
+                      className="pay-qris-thumb-btn"
+                      onClick={() => setZoomImageSrc(pendingQrisUrl)}
+                      title="Perbesar gambar QRIS"
+                    >
+                      <img src={pendingQrisUrl} alt="Kode QRIS VoltKu" className="pay-qris-img" />
+                      <span className="pay-zoom-hint">
+                        <ZoomIn size={13} />
+                        <span>Ketuk untuk perbesar</span>
+                      </span>
+                    </button>
+                    <a
+                      href={pendingQrisUrl}
+                      download={`QRIS-${pending.order_code || 'VoltKu'}.png`}
+                      className="btn-copy-pill"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Download size={13} />
+                      <span>Simpan Gambar QRIS</span>
+                    </a>
+                  </div>
+                )}
+
+                {pending.payment_account_number && (
+                  <div className="pay-account-row">
+                    <div>
+                      <div className="pay-account-label">Nomor Rekening / Tujuan</div>
+                      <div className="pay-account-num num-tabular">{pending.payment_account_number}</div>
+                      {pending.payment_account_holder && (
+                        <div className="pay-account-holder">a.n. {pending.payment_account_holder}</div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-copy-pill"
+                      onClick={() => handleCopy('acct', pending.payment_account_number)}
+                    >
+                      <Copy size={13} />
+                      <span>{copiedField === 'acct' ? 'Disalin' : 'Salin Nomor'}</span>
+                    </button>
+                  </div>
+                )}
+
+                {!pending.payment_account_number && pending.payment_account_holder && (
+                  <div className="pay-account-holder">
+                    Penerima: <strong>{pending.payment_account_holder}</strong>
+                  </div>
+                )}
+
+                {(pending.payment_instructions || instructions) && (
+                  <div className="pay-instructions-note">
+                    {pending.payment_instructions || instructions}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isExpiredInvoice ? (
+              <div className="pay-upload-card">
+                <label className="field-label" style={{ marginBottom: 6, display: 'block' }}>
+                  Unggah Bukti Pembayaran (Screenshot / Struk Transfer)
+                </label>
+
+                <label className="pay-upload-dropzone">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleSelectProofFile}
+                    className="pay-file-input-hidden"
+                  />
+                  {proofBase64 ? (
+                    <div className="pay-proof-selected">
+                      <img src={proofBase64} alt="Preview bukti bayar" className="pay-proof-thumb" />
+                      <div className="pay-proof-meta">
+                        <strong>{proofName || 'Bukti siap dikirim'}</strong>
+                        <span>Ketuk untuk ganti gambar lain</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="pay-upload-placeholder">
+                      <Upload size={20} />
+                      <span>Pilih Foto / Screenshot Bukti Bayar</span>
+                      <small>JPG, PNG, atau WEBP — dikompresi otomatis</small>
+                    </div>
+                  )}
+                </label>
+
+                <div className="form-field-group" style={{ marginTop: 10, marginBottom: 10 }}>
+                  <input
+                    type="text"
+                    className="modern-input"
+                    maxLength={140}
+                    placeholder="Catatan pengirim (opsional, mis. a.n. Budi via BCA)"
+                    value={userNote}
+                    onChange={(e) => setUserNote(e.target.value)}
+                  />
+                </div>
+
+                <div className="plan-cta-row">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={submitting || !proofBase64}
+                    onClick={handleConfirmPayment}
+                  >
+                    <CheckCircle2 size={15} />
+                    <span>{submitting ? 'Mengirim Bukti...' : 'Saya Sudah Bayar & Kirim Bukti'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={cancelling || submitting}
+                    onClick={handleCancelOrder}
+                  >
+                    <RotateCcw size={14} />
+                    <span>{cancelling ? 'Membatalkan...' : 'Ganti Metode'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="plan-cta-row">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={cancelling}
+                  onClick={handleCancelOrder}
+                >
+                  <RotateCcw size={15} />
+                  <span>Buat Tagihan Baru</span>
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
-        {isPro ? (
-          <div className="plan-active-summary">
-            <div>
-              <strong>Status: {proCfg.name} Aktif</strong>
-              <p>
-                {userPlan.expires_at
-                  ? `Masa aktif hingga ${formatTimeWIB(userPlan.expires_at)}`
-                  : 'Akses penuh aktif permanen di akun ini.'}
+        {/* 3. Bukti Sudah Dikirim, Menunggu Verifikasi Admin */}
+        {!isPro && activeStepStatus === 'verifying' && (
+          <div className="pay-verifying-box">
+            <div className="pay-verifying-head">
+              <span className="pay-status-badge verifying">
+                <Clock size={13} />
+                <span>Menunggu Verifikasi Admin</span>
+              </span>
+              <span className="pay-order-code num-tabular">{pending.order_code}</span>
+            </div>
+
+            <div className="pay-verifying-summary">
+              <div>
+                Paket{' '}
+                <strong>
+                  {pending.billing_cycle === 'yearly' ? `${proName} Tahunan` : `${proName} Bulanan`}
+                </strong>{' '}
+                · <strong className="num-tabular">{formatRp(pending.amount_rp)}</strong>
+              </div>
+              <div className="pay-verifying-sub">
+                Metode: {pending.payment_method_label || 'Manual'}
+                {pending.submitted_at ? ` · Dikirim ${formatDateTimeWIB(pending.submitted_at)}` : ''}
+              </div>
+              <p className="pay-verifying-desc">
+                Terima kasih! Bukti pembayaran Anda sudah kami terima dan sedang diperiksa oleh
+                pengelola. Paket {proName} akan aktif otomatis setelah dikonfirmasi.
               </p>
             </div>
-          </div>
-        ) : pending ? (
-          <div className="plan-pending-box">
-            <div className="plan-pending-head">
-              <Clock size={16} />
-              <strong>Menunggu Aktivasi Pengelola</strong>
-            </div>
-            <p className="num-tabular">
-              Paket {pending.billing_cycle === 'yearly' ? 'Tahunan' : 'Bulanan'} ·{' '}
-              {formatRp(pending.amount_rp)} (diajukan {formatTimeWIB(pending.created_at)}).
-            </p>
-            {plansCfg.upgrade_instructions && (
-              <p className="plan-inst-copy">{plansCfg.upgrade_instructions}</p>
+
+            {pending.has_payment_proof && (
+              <div className="pay-uploaded-proof-box">
+                <div className="pay-uploaded-label">Bukti pembayaran yang Anda unggah:</div>
+                {proofImgLoading ? (
+                  <div className="pay-img-loading">Memuat pratinjau bukti...</div>
+                ) : uploadedProofUrl ? (
+                  <button
+                    type="button"
+                    className="pay-proof-btn"
+                    onClick={() => setZoomImageSrc(uploadedProofUrl)}
+                  >
+                    <img
+                      src={uploadedProofUrl}
+                      alt="Bukti pembayaran terkirim"
+                      className="pay-proof-preview-img"
+                    />
+                  </button>
+                ) : null}
+              </div>
             )}
+
             {waHref && (
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-primary btn-compact"
-                style={{ marginTop: 8 }}
-              >
-                <MessageCircle size={15} />
-                <span>Konfirmasi via WhatsApp Admin</span>
-              </a>
+              <div className="plan-cta-row" style={{ marginTop: 12 }}>
+                <a
+                  href={waHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-ghost"
+                  style={{ width: '100%' }}
+                >
+                  <MessageCircle size={15} />
+                  <span>Hubungi Admin via WhatsApp</span>
+                </a>
+              </div>
             )}
           </div>
-        ) : (
-          <form onSubmit={handleSubmitRequest} className="plan-upgrade-form">
-            <div className="plan-cycle-toggle" role="tablist" aria-label="Pilih Siklus Paket">
+        )}
+
+        {/* 4. Pilih Paket & Metode Pembayaran Baru */}
+        {!isPro && !pending && (
+          <>
+            {latestUpgrade?.status === 'rejected' && (
+              <div className="pay-rejected-alert">
+                <XCircle size={16} />
+                <div>
+                  <strong>
+                    Tagihan {latestUpgrade.order_code || `#${latestUpgrade.id}`} Ditolak Admin
+                  </strong>
+                  <div>
+                    {latestUpgrade.admin_note ||
+                      'Bukti pembayaran belum sesuai atau dana belum masuk. Silakan ajukan ulang.'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="plan-compare-grid">
+              <div className="plan-tier-card is-current">
+                <div className="plan-tier-head">
+                  <span className="plan-tier-name">{freeName}</span>
+                  <span className="plan-tier-badge current">Aktif</span>
+                </div>
+                <div className="plan-tier-price num-tabular">Rp 0</div>
+                <ul className="plan-feature-list">
+                  <li>
+                    <Check size={14} className="plan-check-icon" />
+                    <span>Maks. {freeMaxDevices} panel aktif</span>
+                  </li>
+                  <li>
+                    <Check size={14} className="plan-check-icon" />
+                    <span>Grafik hingga {freeHistoryDays} hari</span>
+                  </li>
+                  <li>
+                    {freeCfg.forecast_enabled ? (
+                      <Check size={14} className="plan-check-icon" />
+                    ) : (
+                      <Lock size={14} className="plan-lock-icon" />
+                    )}
+                    <span className={!freeCfg.forecast_enabled ? 'plan-feat-locked' : ''}>
+                      Proyeksi tagihan akhir bulan
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="plan-tier-card is-pro">
+                <div className="plan-tier-head">
+                  <span className="plan-tier-name">
+                    <Crown size={14} /> {proName}
+                  </span>
+                </div>
+                <div className="plan-tier-price num-tabular">
+                  {formatRp(selectedPrice)}
+                  <span className="plan-tier-unit">
+                    /{billingCycle === 'yearly' ? 'tahun' : 'bulan'}
+                  </span>
+                </div>
+                <div className="plan-alt-price num-tabular">
+                  {billingCycle === 'yearly'
+                    ? `atau ${formatRp(monthlyPrice)}/bulan`
+                    : `atau ${formatRp(yearlyPrice)}/tahun`}
+                </div>
+                <ul className="plan-feature-list">
+                  <li>
+                    <Check size={14} className="plan-check-icon" />
+                    <span>
+                      {proMaxDevices < 0 ? 'Panel aktif tanpa batas' : `Hingga ${proMaxDevices} panel`}
+                    </span>
+                  </li>
+                  <li>
+                    <Check size={14} className="plan-check-icon" />
+                    <span>Grafik historis hingga {proHistoryDays} hari</span>
+                  </li>
+                  <li>
+                    <Check size={14} className="plan-check-icon" />
+                    <span>Proyeksi tagihan & Ekspor CSV</span>
+                  </li>
+                  <li>
+                    <Check size={14} className="plan-check-icon" />
+                    <span>Deteksi anomali lengkap L2/L3</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="plan-cycle-toggle">
               <button
                 type="button"
                 className={`plan-cycle-btn ${billingCycle === 'monthly' ? 'active' : ''}`}
                 onClick={() => setBillingCycle('monthly')}
               >
-                Bulanan · {formatRp(proCfg.price_monthly_rp)}
+                Bulanan · {formatRp(monthlyPrice)}
               </button>
               <button
                 type="button"
                 className={`plan-cycle-btn ${billingCycle === 'yearly' ? 'active' : ''}`}
                 onClick={() => setBillingCycle('yearly')}
               >
-                Tahunan · {formatRp(proCfg.price_yearly_rp)}
+                Tahunan · {formatRp(yearlyPrice)}
               </button>
             </div>
 
-            {plansCfg.upgrade_instructions && (
-              <div className="plan-inst-box">{plansCfg.upgrade_instructions}</div>
-            )}
+            {/* Pilihan Metode Pembayaran Manual */}
+            <div className="pay-methods-section">
+              <div className="pay-methods-title">Pilih Metode Pembayaran Manual</div>
+              {methodsLoading ? (
+                <div className="pay-methods-loading">Memuat metode pembayaran...</div>
+              ) : paymentMethods.length === 0 ? (
+                <div className="pay-methods-empty">
+                  Admin belum menambahkan rekening/QRIS otomatis. Klik tombol di bawah untuk
+                  mengajukan upgrade manual atau hubungi Admin.
+                </div>
+              ) : (
+                <div className="pay-method-grid">
+                  {paymentMethods.map((pm) => {
+                    const meta = TYPE_META[pm.type] || TYPE_META.bank
+                    const Icon = meta.icon
+                    const isSelected = selectedMethodId === pm.id
+                    return (
+                      <button
+                        key={pm.id}
+                        type="button"
+                        className={`pay-method-card ${isSelected ? 'selected' : ''}`}
+                        onClick={() => setSelectedMethodId(pm.id)}
+                      >
+                        <div className="pay-method-card-top">
+                          <span className="pay-method-icon-box">
+                            <Icon size={16} />
+                          </span>
+                          <span className="pay-method-type-text">{meta.label}</span>
+                        </div>
+                        <div className="pay-method-label">{pm.label}</div>
+                        {pm.account_holder && (
+                          <div className="pay-method-sub">a.n. {pm.account_holder}</div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
 
-            <div className="form-field-group" style={{ marginBottom: 10 }}>
+            <div className="form-field-group" style={{ marginTop: 10 }}>
               <input
+                id="upgrade-user-note"
                 type="text"
                 className="modern-input"
-                placeholder="Catatan konfirmasi (opsional, mis. nama pengirim transfer/QRIS)"
+                maxLength={140}
+                placeholder="Catatan untuk admin (opsional)"
                 value={userNote}
                 onChange={(e) => setUserNote(e.target.value)}
-                maxLength={255}
               />
             </div>
 
-            <div className="plan-modal-actions">
-              <button type="submit" className="btn btn-primary" disabled={submitting}>
-                <Send size={15} />
+            <div className="plan-cta-row">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={submitting}
+                onClick={handleCreateOrder}
+              >
+                <Crown size={15} />
                 <span>
                   {submitting
-                    ? 'Mengirim...'
-                    : `Ajukan Upgrade (${formatRp(selectedPrice)})`}
+                    ? 'Membuat Tagihan...'
+                    : selectedMethod
+                      ? `Bayar via ${selectedMethod.label}`
+                      : `Ajukan Upgrade ${proName}`}
                 </span>
               </button>
               {waHref && (
-                <a
-                  href={waHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-secondary"
-                >
+                <a href={waHref} target="_blank" rel="noreferrer" className="btn btn-ghost">
                   <MessageCircle size={15} />
-                  <span>Chat Admin</span>
+                  <span>WhatsApp</span>
                 </a>
               )}
             </div>
-          </form>
+          </>
         )}
       </div>
+
+      {/* Lightbox Zoom Gambar QRIS / Bukti Transfer */}
+      {zoomImageSrc && (
+        <div
+          className="pay-lightbox-overlay"
+          onClick={(e) => {
+            e.stopPropagation()
+            setZoomImageSrc('')
+          }}
+        >
+          <div className="pay-lightbox-box" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="btn-icon-close pay-lightbox-close"
+              onClick={() => setZoomImageSrc('')}
+              aria-label="Tutup perbesaran"
+            >
+              <X size={18} />
+            </button>
+            <img src={zoomImageSrc} alt="Pratinjau gambar penuh" className="pay-lightbox-img" />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
-

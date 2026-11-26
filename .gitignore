@@ -46,6 +46,7 @@ deploy/*.passwd
 # Database & Data
 data/*
 !data/.gitkeep
+storage/
 *.db
 *.sqlite
 *.sqlite3

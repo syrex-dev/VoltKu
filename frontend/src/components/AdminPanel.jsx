@@ -20,14 +20,13 @@ import {
   RefreshCw,
   UserPlus,
   Crown,
-  CheckCircle2,
-  XCircle,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
-import { formatNum, formatRp, formatTimeWIB } from '../utils/formatters'
+import { formatNum, formatTimeWIB } from '../utils/formatters'
 import { BrandLogo } from './BrandLogo'
 import { InAppSelect } from './InAppSelect'
 import { AdminAppSettingsTab } from './AdminAppSettingsTab'
+import { AdminUpgradeRequestsCard, AdminPaymentMethodsCard } from './AdminPaymentSection'
 
 export function AdminPanel({
   token,
@@ -75,7 +74,6 @@ export function AdminPanel({
   const [uPlanTier, setUPlanTier] = useState('free')
   const [uPlanDuration, setUPlanDuration] = useState('keep')
   const [savingUser, setSavingUser] = useState(false)
-  const [resolvingUpgradeId, setResolvingUpgradeId] = useState(null)
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState(null)
 
   const [togglingAccess, setTogglingAccess] = useState(false)
@@ -261,33 +259,6 @@ export function AdminPanel({
     }
   }
 
-  const handleResolveUpgrade = async (reqId, action, durationDays = null) => {
-    setResolvingUpgradeId(reqId)
-    setNotice(null)
-    try {
-      const body = { action }
-      if (durationDays !== null) body.duration_days = durationDays
-      await apiRequest(
-        `/api/admin/upgrade-requests/${reqId}`,
-        { method: 'PATCH', body },
-        token,
-        onLogout
-      )
-      setNotice({
-        type: 'success',
-        text:
-          action === 'approve'
-            ? 'Permintaan upgrade disetujui dan paket VoltKu Pro langsung aktif.'
-            : 'Permintaan upgrade ditolak.',
-      })
-      await loadAdminData()
-    } catch (err) {
-      setNotice({ type: 'error', text: err.message || 'Gagal memproses permintaan upgrade.' })
-    } finally {
-      setResolvingUpgradeId(null)
-    }
-  }
-
   const handleDeleteUser = async (uid) => {
     setNotice(null)
     try {
@@ -342,7 +313,9 @@ export function AdminPanel({
     return map
   }, [devices])
 
-  const pendingUpgradesCount = upgradeRequests.filter((r) => r.status === 'pending').length
+  const pendingUpgradesCount = upgradeRequests.filter((r) =>
+    ['pending', 'awaiting_payment', 'verifying'].includes(r.status)
+  ).length
 
   const tabs = [
     { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
@@ -565,83 +538,20 @@ export function AdminPanel({
                   </button>
                 </div>
 
-                {upgradeRequests.length > 0 && (
-                  <section className="clean-sheet admin-card-block">
-                    <div className="admin-card-head">
-                      <h3>
-                        Permintaan Upgrade Paket{' '}
-                        {pendingUpgradesCount > 0 && (
-                          <span className="admin-pill warn" style={{ marginLeft: 8 }}>
-                            {pendingUpgradesCount} Menunggu
-                          </span>
-                        )}
-                      </h3>
-                    </div>
-                    <div className="admin-upgrade-list">
-                      {upgradeRequests.slice(0, 12).map((req) => (
-                        <div key={req.id} className="admin-upgrade-row">
-                          <div className="admin-upgrade-info">
-                            <div className="admin-dev-name">
-                              {req.user_name || `User #${req.user_id}`}{' '}
-                              <span className="admin-dev-id">({req.user_email || '—'})</span>
-                            </div>
-                            <div className="admin-dev-id num-tabular">
-                              {req.billing_cycle === 'yearly' ? 'Tahunan' : 'Bulanan'} ·{' '}
-                              {formatRp(req.amount_rp)} · {formatTimeWIB(req.created_at)}
-                              {req.user_note ? ` · "${req.user_note}"` : ''}
-                            </div>
-                          </div>
-                          <div className="admin-upgrade-actions">
-                            {req.status === 'pending' ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="btn btn-primary btn-compact"
-                                  disabled={resolvingUpgradeId === req.id}
-                                  onClick={() =>
-                                    handleResolveUpgrade(
-                                      req.id,
-                                      'approve',
-                                      req.billing_cycle === 'yearly' ? 365 : 30
-                                    )
-                                  }
-                                >
-                                  <CheckCircle2 size={14} />
-                                  <span>
-                                    Setujui ({req.billing_cycle === 'yearly' ? '1 Thn' : '30 Hr'})
-                                  </span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-compact"
-                                  disabled={resolvingUpgradeId === req.id}
-                                  onClick={() => handleResolveUpgrade(req.id, 'approve', 0)}
-                                >
-                                  <span>Permanen</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-danger-ghost btn-compact"
-                                  disabled={resolvingUpgradeId === req.id}
-                                  onClick={() => handleResolveUpgrade(req.id, 'reject')}
-                                >
-                                  <XCircle size={14} />
-                                  <span>Tolak</span>
-                                </button>
-                              </>
-                            ) : (
-                              <span
-                                className={`admin-pill ${req.status === 'approved' ? 'ok' : 'muted'}`}
-                              >
-                                {req.status === 'approved' ? 'Disetujui' : 'Ditolak'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
+                <AdminUpgradeRequestsCard
+                  upgradeRequests={upgradeRequests}
+                  token={token}
+                  onLogout={onLogout}
+                  onResolved={loadAdminData}
+                  onNotice={setNotice}
+                />
+
+                <AdminPaymentMethodsCard
+                  token={token}
+                  onLogout={onLogout}
+                  onNotice={setNotice}
+                  refreshSignal={refreshSignal}
+                />
 
                 {filteredUsers.length === 0 ? (
                   <div className="clean-sheet admin-empty-box">

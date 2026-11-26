@@ -104,6 +104,31 @@ def ensure_multi_tenant_columns(target_engine: Engine) -> None:
                 text("CREATE INDEX idx_readings_device_ts_pv ON readings (device_id, ts, p, v)")
             )
 
+        upg_cols = {c["name"] for c in inspect(conn).get_columns("upgrade_requests")}
+        upg_additions = [
+            ("order_code", "VARCHAR(32) NULL"),
+            ("payment_method_id", "INTEGER NULL"),
+            ("payment_method_type", "VARCHAR(16) NULL"),
+            ("payment_method_label", "VARCHAR(64) NULL"),
+            ("payment_account_number", "VARCHAR(64) NULL"),
+            ("payment_account_holder", "VARCHAR(128) NULL"),
+            ("payment_instructions", "TEXT NULL"),
+            ("payment_proof_path", "VARCHAR(255) NULL"),
+            ("expires_at", "INTEGER NULL"),
+            ("submitted_at", "INTEGER NULL"),
+        ]
+        for col_name, col_def in upg_additions:
+            if col_name not in upg_cols:
+                conn.execute(text(f"ALTER TABLE upgrade_requests ADD COLUMN {col_name} {col_def}"))
+        upg_indexes = {idx["name"] for idx in inspect(conn).get_indexes("upgrade_requests")}
+        if "uq_upgrade_requests_order_code" not in upg_indexes:
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX uq_upgrade_requests_order_code "
+                    "ON upgrade_requests (order_code)"
+                )
+            )
+
 
 def init_db(target_engine: Engine = engine) -> None:
     Base.metadata.create_all(bind=target_engine)

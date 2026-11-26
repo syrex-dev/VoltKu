@@ -158,6 +158,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(public.router)
+app.include_router(public.payment_router)
 app.include_router(admin.auth_router)
 app.include_router(admin.router)
 app.include_router(devices.router)

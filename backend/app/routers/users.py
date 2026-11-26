@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,7 +18,7 @@ from app.auth import (
     verify_user_password,
 )
 from app.db import get_db
-from app.models import UpgradeRequest, User
+from app.models import PaymentMethod, UpgradeRequest, User
 from app.services.app_config import (
     get_active_terms_version,
     get_app_config_map,
@@ -27,7 +27,16 @@ from app.services.app_config import (
     record_terms_consent,
 )
 from app.services.google_oauth import GoogleTokenError, verify_google_id_token
+from app.services.payments import (
+    DEFAULT_PAYMENT_TTL_SECONDS,
+    delete_private_image,
+    expire_stale_awaiting_requests,
+    generate_order_code,
+    resolve_private_image_path,
+    save_private_image,
+)
 from app.services.plans import (
+    ACTIVE_UPGRADE_STATUSES,
     get_freemium_config,
     resolve_user_plan,
     serialize_upgrade_request,
@@ -72,6 +81,12 @@ class UserTermsConsentRequest(BaseModel):
 
 class UpgradeSubmitRequest(BaseModel):
     billing_cycle: str = "monthly"
+    payment_method_id: Optional[int] = None
+    user_note: Optional[str] = None
+
+
+class UpgradeConfirmPaymentRequest(BaseModel):
+    proof_base64: str
     user_note: Optional[str] = None
 
 
@@ -467,10 +482,12 @@ def list_my_upgrade_requests(
     current: dict[str, Any] = Depends(get_current_user),
     session: Session = Depends(get_db),
 ):
-    """Riwayat pengajuan upgrade paket akun pengguna saat ini."""
+    """Riwayat pengajuan upgrade paket & tagihan akun pengguna saat ini."""
     uid = current.get("user_id")
     if current.get("role") != "user" or uid is None:
         return []
+    expire_stale_awaiting_requests(session, user_id=int(uid))
+    session.commit()
     rows = session.scalars(
         select(UpgradeRequest)
         .where(UpgradeRequest.user_id == int(uid))
@@ -486,7 +503,7 @@ def submit_upgrade_request(
     current: dict[str, Any] = Depends(get_current_user),
     session: Session = Depends(get_db),
 ):
-    """Mengajukan permohonan upgrade ke paket VoltKu Pro."""
+    """Membuat tagihan/pengajuan upgrade manual ke paket VoltKu Pro."""
     uid = current.get("user_id")
     if current.get("role") != "user" or uid is None:
         raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
@@ -494,6 +511,8 @@ def submit_upgrade_request(
     user = session.get(User, int(uid))
     if not user:
         raise _api_error(status.HTTP_404_NOT_FOUND, "User not found")
+
+    expire_stale_awaiting_requests(session, user_id=user.id)
 
     cycle = (req.billing_cycle or "monthly").strip().lower()
     if cycle not in ("monthly", "yearly"):
@@ -504,14 +523,24 @@ def submit_upgrade_request(
 
     existing_pending = session.scalar(
         select(UpgradeRequest).where(
-            UpgradeRequest.user_id == user.id, UpgradeRequest.status == "pending"
+            UpgradeRequest.user_id == user.id,
+            UpgradeRequest.status.in_(ACTIVE_UPGRADE_STATUSES),
         )
     )
     if existing_pending:
         raise _api_error(
             status.HTTP_409_CONFLICT,
-            "Permintaan upgrade Anda masih menunggu konfirmasi pengelola.",
+            "Anda masih memiliki tagihan upgrade yang sedang berjalan.",
         )
+
+    pm: Optional[PaymentMethod] = None
+    if req.payment_method_id is not None:
+        pm = session.get(PaymentMethod, int(req.payment_method_id))
+        if not pm or not pm.is_active:
+            raise _api_error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Metode pembayaran tidak ditemukan atau sedang nonaktif.",
+            )
 
     cfg_map = get_app_config_map(session)
     fcfg = get_freemium_config(cfg_map)
@@ -519,20 +548,135 @@ def submit_upgrade_request(
         fcfg["pro_yearly_price_rp"] if cycle == "yearly" else fcfg["pro_monthly_price_rp"]
     )
     clean_note = req.user_note.strip()[:255] if req.user_note and req.user_note.strip() else None
+    now_utc = int(datetime.now(timezone.utc).timestamp())
 
     entry = UpgradeRequest(
         user_id=user.id,
+        order_code=generate_order_code(now_utc),
         requested_tier="pro",
         billing_cycle=cycle,
         amount_rp=amount_rp,
-        status="pending",
+        payment_method_id=pm.id if pm else None,
+        payment_method_type=pm.type if pm else None,
+        payment_method_label=pm.label if pm else None,
+        payment_account_number=pm.account_number if pm else None,
+        payment_account_holder=pm.account_holder if pm else None,
+        payment_instructions=pm.instructions if pm else None,
+        status="awaiting_payment" if pm else "pending",
         user_note=clean_note,
-        created_at=int(datetime.now(timezone.utc).timestamp()),
+        expires_at=(now_utc + DEFAULT_PAYMENT_TTL_SECONDS) if pm else None,
+        created_at=now_utc,
     )
     session.add(entry)
     session.commit()
     session.refresh(entry)
     return serialize_upgrade_request(entry, user=user)
+
+
+@router.post("/upgrade-requests/{request_id}/confirm-payment", response_model=dict[str, Any])
+def confirm_upgrade_payment(
+    request_id: int,
+    req: UpgradeConfirmPaymentRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Pelanggan mengunggah bukti transfer untuk tagihan upgrade (status -> verifying)."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+
+    entry = session.get(UpgradeRequest, request_id)
+    if not entry or entry.user_id != int(uid):
+        raise _api_error(status.HTTP_404_NOT_FOUND, "Tagihan upgrade tidak ditemukan.")
+
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+    if entry.status == "awaiting_payment" and entry.expires_at and entry.expires_at <= now_utc:
+        entry.status = "expired"
+        entry.resolved_at = now_utc
+        session.commit()
+        raise _api_error(
+            status.HTTP_409_CONFLICT,
+            "Batas waktu pembayaran telah kedaluwarsa. Silakan buat tagihan baru.",
+        )
+
+    if entry.status not in ("pending", "awaiting_payment"):
+        raise _api_error(
+            status.HTTP_409_CONFLICT,
+            f"Tagihan berstatus '{entry.status}' tidak dapat dikirim bukti bayar.",
+        )
+
+    try:
+        proof_rel = save_private_image("payment_proofs", req.proof_base64)
+    except ValueError as err:
+        raise _api_error(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+    old_proof = entry.payment_proof_path
+    entry.payment_proof_path = proof_rel
+    entry.status = "verifying"
+    entry.submitted_at = now_utc
+    if req.user_note and req.user_note.strip():
+        entry.user_note = req.user_note.strip()[:255]
+
+    session.commit()
+    session.refresh(entry)
+    if old_proof and old_proof != proof_rel:
+        delete_private_image(old_proof)
+
+    user = session.get(User, int(uid))
+    return serialize_upgrade_request(entry, user=user)
+
+
+@router.post("/upgrade-requests/{request_id}/cancel", response_model=dict[str, Any])
+def cancel_upgrade_request(
+    request_id: int,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Membatalkan tagihan upgrade yang belum dibayar / belum diverifikasi."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+
+    entry = session.get(UpgradeRequest, request_id)
+    if not entry or entry.user_id != int(uid):
+        raise _api_error(status.HTTP_404_NOT_FOUND, "Tagihan upgrade tidak ditemukan.")
+
+    if entry.status not in ("pending", "awaiting_payment"):
+        raise _api_error(
+            status.HTTP_409_CONFLICT,
+            f"Tagihan berstatus '{entry.status}' tidak dapat dibatalkan.",
+        )
+
+    entry.status = "cancelled"
+    entry.resolved_at = int(datetime.now(timezone.utc).timestamp())
+    session.commit()
+    session.refresh(entry)
+    user = session.get(User, int(uid))
+    return serialize_upgrade_request(entry, user=user)
+
+
+@router.get("/upgrade-requests/{request_id}/proof")
+def get_my_upgrade_proof_image(
+    request_id: int,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mengambil foto bukti bayar untuk pemilik tagihan atau Admin."""
+    entry = session.get(UpgradeRequest, request_id)
+    if not entry:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "Tagihan upgrade tidak ditemukan.")
+    if current.get("role") != "admin" and entry.user_id != current.get("user_id"):
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Akses ditolak.")
+
+    resolved = resolve_private_image_path(entry.payment_proof_path)
+    if not resolved:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "Bukti pembayaran belum tersedia.")
+    file_path, media_type = resolved
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @router.post("/terms-consent", response_model=dict[str, Any])

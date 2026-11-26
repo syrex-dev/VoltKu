@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -21,6 +21,7 @@ from app.db import get_db
 from app.models import (
     Anomaly,
     Device,
+    PaymentMethod,
     Reading,
     Setting,
     TermsConsent,
@@ -45,7 +46,19 @@ from app.services.app_config import (
     get_app_config_map,
     update_admin_app_settings,
 )
-from app.services.plans import apply_user_plan_update, serialize_upgrade_request
+from app.services.payments import (
+    ALLOWED_PAYMENT_TYPES,
+    delete_private_image,
+    expire_stale_awaiting_requests,
+    resolve_private_image_path,
+    save_private_image,
+    serialize_payment_method,
+)
+from app.services.plans import (
+    ACTIVE_UPGRADE_STATUSES,
+    apply_user_plan_update,
+    serialize_upgrade_request,
+)
 
 auth_router = APIRouter(prefix="/api/admin", tags=["Admin Auth"])
 router = APIRouter(
@@ -82,6 +95,32 @@ class AdminUpgradeResolveRequest(BaseModel):
     action: str  # "approve" | "reject"
     duration_days: Optional[int] = None
     admin_note: Optional[str] = None
+
+
+class AdminPaymentMethodCreateRequest(BaseModel):
+    type: str = "bank"  # qris | bank | ewallet
+    label: str
+    account_number: Optional[str] = None
+    account_holder: Optional[str] = None
+    instructions: Optional[str] = None
+    is_active: bool = True
+    sort_order: int = 0
+    qris_image_base64: Optional[str] = None
+
+
+class AdminPaymentMethodUpdateRequest(BaseModel):
+    type: Optional[str] = None
+    label: Optional[str] = None
+    account_number: Optional[str] = None
+    account_holder: Optional[str] = None
+    instructions: Optional[str] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+    qris_image_base64: Optional[str] = None
+
+
+class AdminQrisUploadRequest(BaseModel):
+    image_base64: str
 
 
 class AdminDeviceUpdateRequest(BaseModel):
@@ -198,7 +237,9 @@ def get_admin_overview(session: Session = Depends(get_db)):
     )
     pending_upgrades = (
         session.scalar(
-            select(func.count(UpgradeRequest.id)).where(UpgradeRequest.status == "pending")
+            select(func.count(UpgradeRequest.id)).where(
+                UpgradeRequest.status.in_(ACTIVE_UPGRADE_STATUSES)
+            )
         )
         or 0
     )
@@ -551,10 +592,24 @@ def list_admin_upgrade_requests(
     limit: int = Query(100, ge=1, le=500),
     session: Session = Depends(get_db),
 ):
-    """Daftar pengajuan upgrade paket dari pengguna untuk ditinjau Admin."""
+    """Daftar pengajuan upgrade paket & bukti bayar untuk ditinjau Admin."""
+    expire_stale_awaiting_requests(session)
+    session.commit()
     stmt = select(UpgradeRequest)
-    if status_filter and status_filter.strip().lower() in ("pending", "approved", "rejected"):
-        stmt = stmt.where(UpgradeRequest.status == status_filter.strip().lower())
+    if status_filter:
+        clean_filter = status_filter.strip().lower()
+        if clean_filter == "active":
+            stmt = stmt.where(UpgradeRequest.status.in_(ACTIVE_UPGRADE_STATUSES))
+        elif clean_filter in (
+            "pending",
+            "awaiting_payment",
+            "verifying",
+            "approved",
+            "rejected",
+            "cancelled",
+            "expired",
+        ):
+            stmt = stmt.where(UpgradeRequest.status == clean_filter)
     rows = session.scalars(
         stmt.order_by(UpgradeRequest.created_at.desc(), UpgradeRequest.id.desc()).limit(limit)
     ).all()
@@ -572,7 +627,7 @@ def resolve_admin_upgrade_request(
     entry = session.get(UpgradeRequest, request_id)
     if not entry:
         raise _admin_err(status.HTTP_404_NOT_FOUND, "Permintaan upgrade tidak ditemukan")
-    if entry.status != "pending":
+    if entry.status not in ACTIVE_UPGRADE_STATUSES:
         raise _admin_err(
             status.HTTP_409_CONFLICT,
             f"Permintaan ini sudah berstatus '{entry.status}'",
@@ -609,3 +664,169 @@ def resolve_admin_upgrade_request(
     session.commit()
     session.refresh(entry)
     return serialize_upgrade_request(entry, user=user)
+
+
+@router.get("/upgrade-requests/{request_id}/proof")
+def get_admin_upgrade_proof_image(
+    request_id: int,
+    session: Session = Depends(get_db),
+):
+    """Mengunduh foto bukti pembayaran milik tagihan tertentu untuk diperiksa Admin."""
+    entry = session.get(UpgradeRequest, request_id)
+    if not entry:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Tagihan upgrade tidak ditemukan")
+    resolved = resolve_private_image_path(entry.payment_proof_path)
+    if not resolved:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Bukti pembayaran belum diunggah")
+    file_path, media_type = resolved
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@router.get("/payment-methods", response_model=list[dict[str, Any]])
+def list_admin_payment_methods(session: Session = Depends(get_db)):
+    """Daftar seluruh metode pembayaran manual (aktif & nonaktif) di Panel Admin."""
+    rows = session.scalars(
+        select(PaymentMethod).order_by(PaymentMethod.sort_order.asc(), PaymentMethod.id.asc())
+    ).all()
+    return [serialize_payment_method(r) for r in rows]
+
+
+@router.post("/payment-methods", status_code=status.HTTP_201_CREATED, response_model=dict[str, Any])
+def create_admin_payment_method(
+    req: AdminPaymentMethodCreateRequest,
+    session: Session = Depends(get_db),
+):
+    """Menambah metode pembayaran manual baru (QRIS, Bank, atau E-Wallet)."""
+    pm_type = (req.type or "bank").strip().lower()
+    if pm_type not in ALLOWED_PAYMENT_TYPES:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Tipe metode pembayaran harus 'qris', 'bank', atau 'ewallet'.",
+        )
+    clean_label = req.label.strip()
+    if len(clean_label) < 2 or len(clean_label) > 64:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Nama metode pembayaran harus antara 2 hingga 64 karakter.",
+        )
+
+    qris_rel: Optional[str] = None
+    if req.qris_image_base64 and req.qris_image_base64.strip():
+        try:
+            qris_rel = save_private_image("qris", req.qris_image_base64)
+        except ValueError as err:
+            raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+    pm = PaymentMethod(
+        type=pm_type,
+        label=clean_label,
+        account_number=(req.account_number or "").strip()[:64] or None,
+        account_holder=(req.account_holder or "").strip()[:128] or None,
+        instructions=(req.instructions or "").strip() or None,
+        qris_image_path=qris_rel,
+        is_active=1 if req.is_active else 0,
+        sort_order=int(req.sort_order or 0),
+        created_at=int(time.time()),
+    )
+    session.add(pm)
+    session.commit()
+    session.refresh(pm)
+    return serialize_payment_method(pm)
+
+
+@router.patch("/payment-methods/{method_id}", response_model=dict[str, Any])
+def update_admin_payment_method(
+    method_id: int,
+    req: AdminPaymentMethodUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    """Memperbarui detail, status aktif, atau gambar QRIS metode pembayaran manual."""
+    pm = session.get(PaymentMethod, method_id)
+    if not pm:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Metode pembayaran tidak ditemukan")
+
+    if req.type is not None:
+        pm_type = req.type.strip().lower()
+        if pm_type not in ALLOWED_PAYMENT_TYPES:
+            raise _admin_err(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Tipe metode pembayaran harus 'qris', 'bank', atau 'ewallet'.",
+            )
+        pm.type = pm_type
+    if req.label is not None:
+        clean_label = req.label.strip()
+        if len(clean_label) < 2 or len(clean_label) > 64:
+            raise _admin_err(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Nama metode pembayaran harus antara 2 hingga 64 karakter.",
+            )
+        pm.label = clean_label
+    if req.account_number is not None:
+        pm.account_number = req.account_number.strip()[:64] or None
+    if req.account_holder is not None:
+        pm.account_holder = req.account_holder.strip()[:128] or None
+    if req.instructions is not None:
+        pm.instructions = req.instructions.strip() or None
+    if req.is_active is not None:
+        pm.is_active = 1 if req.is_active else 0
+    if req.sort_order is not None:
+        pm.sort_order = int(req.sort_order)
+    if req.qris_image_base64 is not None and req.qris_image_base64.strip():
+        try:
+            new_qris = save_private_image("qris", req.qris_image_base64)
+        except ValueError as err:
+            raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+        old_qris = pm.qris_image_path
+        pm.qris_image_path = new_qris
+        pm.created_at = int(time.time())
+        if old_qris and old_qris != new_qris:
+            delete_private_image(old_qris)
+
+    session.commit()
+    session.refresh(pm)
+    return serialize_payment_method(pm)
+
+
+@router.post("/payment-methods/{method_id}/qris", response_model=dict[str, Any])
+def upload_admin_payment_method_qris(
+    method_id: int,
+    req: AdminQrisUploadRequest,
+    session: Session = Depends(get_db),
+):
+    """Mengunggah atau mengganti gambar QRIS untuk metode pembayaran manual."""
+    pm = session.get(PaymentMethod, method_id)
+    if not pm:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Metode pembayaran tidak ditemukan")
+    try:
+        new_qris = save_private_image("qris", req.image_base64)
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+    old_qris = pm.qris_image_path
+    pm.qris_image_path = new_qris
+    pm.created_at = int(time.time())
+    session.commit()
+    session.refresh(pm)
+    if old_qris and old_qris != new_qris:
+        delete_private_image(old_qris)
+    return serialize_payment_method(pm)
+
+
+@router.delete("/payment-methods/{method_id}", response_model=dict[str, Any])
+def delete_admin_payment_method(
+    method_id: int,
+    session: Session = Depends(get_db),
+):
+    """Menghapus metode pembayaran manual."""
+    pm = session.get(PaymentMethod, method_id)
+    if not pm:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Metode pembayaran tidak ditemukan")
+    old_qris = pm.qris_image_path
+    session.delete(pm)
+    session.commit()
+    if old_qris:
+        delete_private_image(old_qris)
+    return {"deleted": True, "id": method_id}

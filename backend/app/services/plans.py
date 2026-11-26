@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Device, UpgradeRequest, User
 
+ACTIVE_UPGRADE_STATUSES = ("pending", "awaiting_payment", "verifying")
+
 
 def _parse_bool(raw: Any, default: bool = False) -> bool:
     if raw is None:
@@ -93,18 +95,28 @@ def get_user_device_count(session: Session, user_id: int) -> int:
 def serialize_upgrade_request(
     req: UpgradeRequest, user: Optional[User] = None
 ) -> dict[str, Any]:
-    """Serialisasi baris permintaan upgrade paket."""
+    """Serialisasi baris permintaan upgrade & detail pembayaran manual."""
     return {
         "id": req.id,
+        "order_code": getattr(req, "order_code", None),
         "user_id": req.user_id,
         "user_name": user.name if user else None,
         "user_email": user.email if user else None,
         "requested_tier": req.requested_tier,
         "billing_cycle": req.billing_cycle,
         "amount_rp": int(req.amount_rp),
+        "payment_method_id": getattr(req, "payment_method_id", None),
+        "payment_method_type": getattr(req, "payment_method_type", None),
+        "payment_method_label": getattr(req, "payment_method_label", None),
+        "payment_account_number": getattr(req, "payment_account_number", None),
+        "payment_account_holder": getattr(req, "payment_account_holder", None),
+        "payment_instructions": getattr(req, "payment_instructions", None),
+        "has_payment_proof": bool(getattr(req, "payment_proof_path", None)),
         "status": req.status,
         "user_note": req.user_note,
         "admin_note": req.admin_note,
+        "expires_at": getattr(req, "expires_at", None),
+        "submitted_at": getattr(req, "submitted_at", None),
         "created_at": req.created_at,
         "resolved_at": req.resolved_at,
     }
@@ -161,8 +173,22 @@ def resolve_user_plan(
 
     pending = session.scalar(
         select(UpgradeRequest)
-        .where(UpgradeRequest.user_id == user.id, UpgradeRequest.status == "pending")
+        .where(
+            UpgradeRequest.user_id == user.id,
+            UpgradeRequest.status.in_(ACTIVE_UPGRADE_STATUSES),
+            (
+                (UpgradeRequest.status != "awaiting_payment")
+                | (UpgradeRequest.expires_at.is_(None))
+                | (UpgradeRequest.expires_at > now_utc)
+            ),
+        )
         .order_by(UpgradeRequest.created_at.desc())
+        .limit(1)
+    )
+    latest = session.scalar(
+        select(UpgradeRequest)
+        .where(UpgradeRequest.user_id == user.id)
+        .order_by(UpgradeRequest.created_at.desc(), UpgradeRequest.id.desc())
         .limit(1)
     )
 
@@ -187,6 +213,7 @@ def resolve_user_plan(
             "remaining_devices": remaining,
         },
         "pending_upgrade": serialize_upgrade_request(pending) if pending else None,
+        "latest_upgrade": serialize_upgrade_request(latest) if latest else None,
     }
 
 

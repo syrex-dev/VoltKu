@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_trusted_client_ip, public_consent_limiter
 from app.config import get_settings
 from app.db import get_db
-from app.models import Device, Setting
+from app.models import Device, PaymentMethod, Setting
 from app.routers.anomalies import query_anomalies_list
 from app.routers.devices import (
     get_device_series_data,
@@ -18,11 +18,13 @@ from app.routers.devices import (
 )
 from app.routers.settings import format_settings_response, get_all_settings
 from app.services.app_config import get_public_app_config, record_terms_consent
+from app.services.payments import resolve_private_image_path, serialize_payment_method
 from app.services.reports import calculate_device_forecast, calculate_device_summary
 
 PUBLIC_ACCESS_KEY = "public_dashboard_enabled"
 
 router = APIRouter(prefix="/api/public", tags=["Public"])
+payment_router = APIRouter(prefix="/api/payment-methods", tags=["Payments"])
 
 
 class PublicTermsConsentRequest(BaseModel):
@@ -72,6 +74,40 @@ def get_public_access_status(session: Session = Depends(get_db)):
 def get_public_app_configuration(session: Session = Depends(get_db)):
     """Konfigurasi aplikasi publik (brand, panduan, auth/Google, teks legal, kontak dukungan)."""
     return get_public_app_config(session)
+
+
+@router.get("/payment-methods", response_model=list[dict[str, Any]])
+def list_public_payment_methods(session: Session = Depends(get_db)):
+    """Daftar metode pembayaran manual aktif (QRIS, Bank, E-Wallet) untuk checkout Pro."""
+    rows = session.scalars(
+        select(PaymentMethod)
+        .where(PaymentMethod.is_active == 1)
+        .order_by(PaymentMethod.sort_order.asc(), PaymentMethod.id.asc())
+    ).all()
+    return [serialize_payment_method(r) for r in rows]
+
+
+@payment_router.get("/{method_id}/qris")
+def get_payment_method_qris_image(method_id: int, session: Session = Depends(get_db)):
+    """Menyajikan gambar QRIS dari direktori privat untuk metode pembayaran terkait."""
+    pm = session.get(PaymentMethod, method_id)
+    if not pm or not pm.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": 404, "message": "Metode pembayaran tidak ditemukan"}},
+        )
+    resolved = resolve_private_image_path(pm.qris_image_path)
+    if not resolved:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": 404, "message": "Gambar QRIS belum tersedia"}},
+        )
+    file_path, media_type = resolved
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 @router.post("/terms-consent", status_code=status.HTTP_201_CREATED, response_model=dict[str, Any])

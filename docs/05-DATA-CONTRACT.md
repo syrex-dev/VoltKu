@@ -26,7 +26,9 @@ Payload telemetry:
 | `GET /api/users/oauth-config` | Konfigurasi publik otentikasi klien (`google_enabled`, `google_client_id`, `google_android_client_id`, `terms_version`). |
 | `GET /api/users/me` | Profil akun pembeli yang sedang login (`id`, `name`, `email`, `role`, `auth_provider`, `avatar_url`, `terms_version_accepted`, `terms_accepted_at`, `needs_terms_reconsent`, `plan`). |
 | `POST /api/users/terms-consent` | Menyimpan/memperbarui persetujuan Syarat & Ketentuan + Privasi pengguna login ke `users` & `terms_consents`. |
-| `GET /api/users/upgrade-request`, `POST /api/users/upgrade-request` | Melihat riwayat pengajuan upgrade user aktif dan mengajukan permintaan upgrade ke paket Pro (`billing_cycle`: `monthly` \| `yearly`, `user_note` opsional). |
+| `GET /api/users/upgrade-request`, `POST /api/users/upgrade-request` | Melihat riwayat pengajuan upgrade user aktif dan membuat tagihan upgrade ke paket Pro (`billing_cycle`: `monthly` \| `yearly`, `payment_method_id` & `user_note` opsional). |
+| `POST /api/users/upgrade-requests/{id}/confirm-payment`, `POST /api/users/upgrade-requests/{id}/cancel`, `GET /api/users/upgrade-requests/{id}/proof` | Mengirim konfirmasi bayar beserta unggahan bukti transfer (`proof_base64` gambar JPG/PNG/WebP, berstatus `verifying`), membatalkan tagihan yang belum diverifikasi (`cancelled`), dan mengunduh pratinjau bukti bayar milik sendiri. |
+| `GET /api/public/payment-methods`, `GET /api/payment-methods/{id}/qris` | Daftar metode pembayaran manual aktif (QRIS, Bank, E-Wallet) dan gambar QRIS terkait. |
 | `POST /api/admin/login` | Login portal Admin terpisah (`/admin`, `{"password": "..."}`). Mengembalikan JWT khusus Admin (`role="admin"`). |
 | `GET /api/devices` | Daftar perangkat dan status dinamis (`online`/`offline`). Token `user` hanya melihat perangkat dengan `owner_user_id = user.id`; token `admin` melihat semua. Parameter opsional `include_latest=true`. |
 | `POST /api/devices` | Daftarkan atau klaim perangkat (`id`, `name`, `location` opsional, `mcb_watt` 100..25000, `claim` opsional default `false`). Untuk token `user`, mengklaim unit tak bertuan (`owner_user_id = NULL`) ke akun user; menolak (`409`) bila sudah dimiliki akun lain, serta menolak (`403`) bila kuota panel paket user (`max_devices`) terpenuhi saat `freemium_enabled = true`. |
@@ -46,7 +48,8 @@ Payload telemetry:
 | `GET /api/public/*` | Endpoint pantau *read-only* tanpa login hanya untuk perangkat bertanda `is_public_demo = 1` (`/devices`, `/devices/{id}/latest`, `/series`, `/summary`, `/forecast`, `/anomalies`, `/settings`) saat `public_read_enabled = true`; mengembalikan `401` bila dinonaktifkan Admin atau `404` untuk perangkat privat. |
 | `GET /api/admin/overview` | Ringkasan sistem Panel Admin (total/online/offline unit, tenant/user aktif, anomali 7 hari, status MQTT/worker/scheduler/bot, flag akses publik). Wajib `role="admin"`. |
 | `GET/POST /api/admin/users`, `PATCH/DELETE /api/admin/users/{id}` | Manajemen akun tenant/pembeli dari Panel Admin (`role="admin"`), termasuk pengaturan paket (`plan_tier`, `plan_expires_at` / masa aktif hari). |
-| `GET /api/admin/upgrade-requests`, `PATCH /api/admin/upgrade-requests/{id}` | Daftar permintaan upgrade paket dari pengguna serta aksi persetujuan/penolakan oleh Admin (`approve` otomatis mengaktifkan `plan_tier='pro'` dan menghitung `plan_expires_at`). |
+| `GET /api/admin/upgrade-requests`, `PATCH /api/admin/upgrade-requests/{id}`, `GET /api/admin/upgrade-requests/{id}/proof` | Daftar tagihan & bukti pembayaran upgrade pengguna, pratinjau foto bukti transfer, serta konfirmasi persetujuan/penolakan oleh Admin (`approve` otomatis mengaktifkan `plan_tier='pro'` dan menghitung `plan_expires_at`). |
+| `GET/POST /api/admin/payment-methods`, `PATCH/DELETE /api/admin/payment-methods/{id}`, `POST /api/admin/payment-methods/{id}/qris` | Manajemen metode pembayaran manual (QRIS + unggah gambar QRIS, Transfer Bank, E-Wallet) dari Panel Admin (`role="admin"`). |
 | `GET /api/admin/devices`, `PATCH /api/admin/devices/{id}` | Inventaris semua perangkat beserta pemilik, toggle `is_public_demo`, dan pengalihan `owner_user_id`. Wajib `role="admin"`. |
 | `GET /api/admin/anomalies` | Log anomali lintas semua perangkat dengan filter `device_id`, `severity`, `from`, `limit`. Wajib `role="admin"`. |
 | `GET /api/admin/access`, `PATCH /api/admin/access` | Membaca dan mengubah kebijakan `public_read_enabled`. Wajib `role="admin"`. |
@@ -60,7 +63,8 @@ Format error: objek `error` berisi `code` dan `message`. Seluruh endpoint `/api/
 ```
 users(id PK, email UNIQUE, name, password_hash, auth_provider, google_sub UNIQUE NULL, avatar_url NULL, terms_version_accepted NULL, terms_accepted_at NULL, plan_tier DEFAULT 'free', plan_expires_at NULL, plan_updated_at NULL, is_active, created_at, last_login_at)
 terms_consents(id PK, user_id FK->users.id NULL, email_snapshot NULL, client_id NULL, terms_version, privacy_version, accepted_via, ip_address NULL, user_agent NULL, accepted_at)
-upgrade_requests(id PK, user_id FK->users.id, requested_tier DEFAULT 'pro', billing_cycle DEFAULT 'monthly', amount_rp, status DEFAULT 'pending', user_note NULL, admin_note NULL, created_at, resolved_at NULL)
+upgrade_requests(id PK, user_id FK->users.id, order_code UNIQUE NULL, requested_tier DEFAULT 'pro', billing_cycle DEFAULT 'monthly', amount_rp, payment_method_id NULL, payment_method_type NULL, payment_method_label NULL, payment_account_number NULL, payment_account_holder NULL, payment_instructions NULL, payment_proof_path NULL, status DEFAULT 'pending', user_note NULL, admin_note NULL, expires_at NULL, submitted_at NULL, created_at, resolved_at NULL)
+payment_methods(id PK, type, label, account_number NULL, account_holder NULL, qris_image_path NULL, instructions NULL, is_active DEFAULT 1, sort_order DEFAULT 0, created_at)
 user_settings(user_id PK, key PK, value)
 devices(id PK, name, location, mcb_watt, owner_user_id FK->users.id NULL, is_public_demo DEFAULT 0, created_at, last_seen_at, last_data_ts, status)
 readings(id PK, device_id, ts, v, i, p, e_kwh, delta_kwh, f, pf, rssi, is_gap)

@@ -40,6 +40,24 @@ class User(Base):
     last_login_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
+class PaymentMethod(Base):
+    __tablename__ = "payment_methods"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # qris | bank | ewallet
+    type: Mapped[str] = mapped_column(String(16), default="bank", nullable=False)
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    account_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    account_holder: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    qris_image_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[int] = mapped_column(
+        Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
+    )
+
+
 class UpgradeRequest(Base):
     __tablename__ = "upgrade_requests"
 
@@ -47,12 +65,22 @@ class UpgradeRequest(Base):
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    order_code: Mapped[Optional[str]] = mapped_column(String(32), unique=True, nullable=True)
     requested_tier: Mapped[str] = mapped_column(String(16), default="pro", nullable=False)
     billing_cycle: Mapped[str] = mapped_column(String(16), default="monthly", nullable=False)
     amount_rp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    payment_method_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    payment_method_type: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    payment_method_label: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    payment_account_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    payment_account_holder: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    payment_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    payment_proof_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
     user_note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     admin_note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    expires_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    submitted_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[int] = mapped_column(
         Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
     )
