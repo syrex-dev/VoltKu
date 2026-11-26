@@ -54,7 +54,7 @@ jobs:
         run: |
           if [ -n "$ANDROID_KEYSTORE_B64" ]; then
             mkdir -p ~/.android
-            echo "$ANDROID_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            printf '%s' "$ANDROID_KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > ~/.android/debug.keystore
           fi
 
       - name: Pasang google-services.json dari Secret (opsional untuk Push FCM)
