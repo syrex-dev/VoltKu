@@ -15,6 +15,7 @@ from app.auth import (
     get_current_user,
     get_trusted_client_ip,
     hash_password,
+    pin_verify_limiter,
     register_limiter,
     reset_password_limiter,
     user_login_limiter,
@@ -44,6 +45,12 @@ from app.services.payments import (
     generate_order_code,
     resolve_private_image_path,
     save_private_image,
+)
+from app.services.pin_lock import (
+    disable_user_pin,
+    get_app_lock_metadata,
+    set_user_pin,
+    verify_user_pin,
 )
 from app.services.plans import (
     ACTIVE_UPGRADE_STATUSES,
@@ -129,6 +136,20 @@ class UserChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class UserPinSetRequest(BaseModel):
+    new_pin: str
+    current_pin: Optional[str] = None
+
+
+class UserPinVerifyRequest(BaseModel):
+    pin: str
+
+
+class UserPinDisableRequest(BaseModel):
+    current_pin: Optional[str] = None
+    account_password: Optional[str] = None
+
+
 PASSWORD_RESET_TTL_SECONDS = 30 * 60
 
 
@@ -183,6 +204,7 @@ def _serialize_user(
         payload["plan"] = resolve_user_plan(
             session, u, resolved_cfg, device_count=device_count
         )
+        payload["app_lock"] = get_app_lock_metadata(session, u.id)
     return payload
 
 
@@ -1171,5 +1193,75 @@ def get_user_sync_state(
     if current.get("role") != "user" or uid is None:
         raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
     return compute_user_sync_state(session, user_id=int(uid))
+
+
+@router.post("/pin", response_model=dict[str, Any])
+def set_or_update_app_pin(
+    req: UserPinSetRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Menyetel atau memperbarui PIN 6 digit akun yang tersinkron lintas APK dan Web."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+    user = session.get(User, int(uid))
+    if not user or not user.is_active:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "User not found")
+    app_lock = set_user_pin(session, user.id, req.new_pin, current_pin=req.current_pin)
+    return {"saved": True, "app_lock": app_lock}
+
+
+@router.post("/pin/verify", response_model=dict[str, Any])
+def verify_app_pin(
+    req: UserPinVerifyRequest,
+    request: Request,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Memverifikasi PIN 6 digit akun di server dengan pembatasan percobaan & lockout progresif."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+    client_ip = get_trusted_client_ip(request)
+    is_limited, retry_after = pin_verify_limiter.check_and_record(f"pin:{uid}:{client_ip}")
+    if is_limited:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry_after)},
+            content={
+                "error": {
+                    "code": 429,
+                    "retry_after": retry_after,
+                    "message": f"Terlalu banyak percobaan PIN. Tunggu {retry_after} detik.",
+                }
+            },
+        )
+    user = session.get(User, int(uid))
+    if not user or not user.is_active:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "User not found")
+    return verify_user_pin(session, user.id, req.pin)
+
+
+@router.post("/pin/disable", response_model=dict[str, Any])
+def disable_app_pin(
+    req: UserPinDisableRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Menonaktifkan PIN aplikasi untuk seluruh sesi perangkat setelah otentikasi PIN atau sandi."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+    user = session.get(User, int(uid))
+    if not user or not user.is_active:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "User not found")
+    app_lock = disable_user_pin(
+        session,
+        user,
+        current_pin=req.current_pin,
+        account_password=req.account_password,
+    )
+    return {"disabled": True, "app_lock": app_lock}
 
 

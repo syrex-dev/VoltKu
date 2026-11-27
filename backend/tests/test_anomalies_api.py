@@ -149,12 +149,14 @@ def test_get_anomalies_device_filter():
 
 def test_l2_anomaly_runtime_wiring_and_tier_gate():
     """AnomalyEngine L2/L3 berjalan via evaluate_all_l2_l3_anomalies dan dibatasi per tier."""
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
 
     session = setup_test_db()
     tz_wib = ZoneInfo("Asia/Jakarta")
-    now_dt = datetime(2026, 11, 20, 14, 15, 0, tzinfo=tz_wib)
+    now_dt = datetime.now(tz_wib).replace(hour=14, minute=15, second=0, microsecond=0)
+    while now_dt.weekday() >= 5:
+        now_dt -= timedelta(days=1)
     now_ts = int(now_dt.timestamp())
 
     free_user = User(
@@ -232,10 +234,11 @@ def test_l2_anomaly_runtime_wiring_and_tier_gate():
     assert len(free_anoms) == 0
 
     # Uji endpoint GET /api/anomalies untuk user Free (disaring L2/L3) vs Pro (muncul)
+    recent_ts = int(time.time())
     session.add(
         Anomaly(
             device_id="dev-free",
-            ts=now_ts - 60,
+            ts=recent_ts - 60,
             type="l2_spike",
             severity="warning",
             details_json="{}",
@@ -246,7 +249,7 @@ def test_l2_anomaly_runtime_wiring_and_tier_gate():
     session.add(
         Anomaly(
             device_id="dev-free",
-            ts=now_ts - 50,
+            ts=recent_ts - 50,
             type="power_limit",
             severity="warning",
             details_json="{}",

@@ -76,4 +76,7 @@ frontend/android/local.properties
 *.apk
 *.aab
 
+# Dokumen akademik & laporan lokal (jangan ikut push / deploy)
+akademik/
+
 
