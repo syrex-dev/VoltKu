@@ -1,6 +1,19 @@
 import React, { useState } from 'react'
-import { ArrowLeft, Plus, Wifi, BookOpen, CheckCircle2, Zap, SlidersHorizontal, Check } from 'lucide-react'
+import {
+  ArrowLeft,
+  Plus,
+  Wifi,
+  BookOpen,
+  ShieldAlert,
+  Bell,
+  Zap,
+  SlidersHorizontal,
+  Check,
+  ShieldCheck,
+} from 'lucide-react'
 import { EnergyAssistantIcon } from './VoltKuIcons'
+import mascotWelcomeImg from '../assets/mascot/voltku-welcome.jpg'
+import mascotAnalyzeImg from '../assets/mascot/voltku-analyze.jpg'
 
 function StepPhoneMockup({ stepNum }) {
   if (stepNum === 1) {
@@ -211,62 +224,94 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
         <div className="ug-scroll-body">
           {guideTab === 'pairing' ? (
             <div className="ug-article">
-              <div className="ug-intro-note">
-                Sebelum mulai menautkan unit VoltKu baru, pastikan ponsel Anda terhubung ke
-                jaringan <strong>Wi-Fi 2.4 GHz</strong> rumah (bukan 5 GHz).
+              <div className="ug-hero-guide-card">
+                <span className="ug-hero-guide-avatar" aria-hidden="true">
+                  <img src={mascotWelcomeImg} alt="" />
+                </span>
+                <div className="ug-hero-guide-copy">
+                  <strong>Persiapan Sebelum Pasang</strong>
+                  <p>
+                    Pastikan ponsel terhubung ke <span className="ug-kbd-pill">Wi-Fi 2.4 GHz</span>{' '}
+                    (bukan 5 GHz) dan siapkan stiker <strong>QR Code</strong> pada unit VoltKu.
+                  </p>
+                </div>
               </div>
 
-              <div className="ug-section-heading">Panduan Pairing Cepat (Quick Pairing)</div>
+              <div className="ug-section-heading">5 Langkah Menghubungkan Panel</div>
 
               <div className="ug-step-block">
-                <p className="ug-step-text">
-                  <strong>1.</strong> Colokkan panel VoltKu ke listrik, lalu tekan dan tahan tombol{' '}
-                  <strong>Pairing</strong> selama <strong>5 detik</strong> sampai lampu indikator
-                  biru berkedip cepat.
-                </p>
+                <div className="ug-step-head">
+                  <span className="ug-step-num">1</span>
+                  <p className="ug-step-text">
+                    Colokkan panel VoltKu ke listrik, lalu tekan &amp; tahan tombol{' '}
+                    <span className="ug-kbd-pill">Pairing</span> selama <strong>5 detik</strong>{' '}
+                    hingga lampu biru berkedip cepat.
+                  </p>
+                </div>
                 <StepPhoneMockup stepNum={1} />
               </div>
 
               <div className="ug-step-block">
-                <p className="ug-step-text">
-                  <strong>2.</strong> Buka aplikasi VoltKu di tab <strong>Beranda</strong>, lalu
-                  ketuk ikon <strong>+</strong> atau tombol <strong>+ Tambah Sekarang</strong>.
-                </p>
+                <div className="ug-step-head">
+                  <span className="ug-step-num">2</span>
+                  <p className="ug-step-text">
+                    Buka tab <span className="ug-kbd-pill">Beranda</span>, lalu ketuk{' '}
+                    <span className="ug-kbd-pill">+ Tambah Panel</span> atau{' '}
+                    <span className="ug-kbd-pill">+ Tambah Sekarang</span>.
+                  </p>
+                </div>
                 <StepPhoneMockup stepNum={2} />
               </div>
 
               <div className="ug-step-block">
-                <p className="ug-step-text">
-                  <strong>3.</strong> Pilih <strong>Belum, Hubungkan ke Wi-Fi Dulu</strong> untuk
-                  alat baru (atau langsung pilih <strong>Sudah Terhubung Wi-Fi</strong> jika alat
-                  sudah online).
-                </p>
+                <div className="ug-step-head">
+                  <span className="ug-step-num">3</span>
+                  <p className="ug-step-text">
+                    Pilih <span className="ug-kbd-pill">Belum, Hubungkan ke Wi-Fi Dulu</span> untuk
+                    unit baru, atau langsung <span className="ug-kbd-pill">Sudah Terhubung</span>{' '}
+                    bila alat sudah online.
+                  </p>
+                </div>
                 <StepPhoneMockup stepNum={3} />
               </div>
 
               <div className="ug-step-block">
-                <p className="ug-step-text">
-                  <strong>4.</strong> Sambungkan Wi-Fi HP ke hotspot <code>VoltKu-XXXX</code>{' '}
-                  (atau buka <code>192.168.4.1</code>), pilih Wi-Fi 2.4 GHz rumah, isi kata sandi,
-                  lalu tekan <strong>Simpan &amp; Hubungkan</strong>.
-                </p>
+                <div className="ug-step-head">
+                  <span className="ug-step-num">4</span>
+                  <p className="ug-step-text">
+                    Hubungkan Wi-Fi HP ke hotspot <code>VoltKu-XXXX</code>, masukkan nama &amp; kata
+                    sandi Wi-Fi 2.4 GHz rumah, lalu tekan{' '}
+                    <span className="ug-kbd-pill">Simpan &amp; Lanjut</span>.
+                  </p>
+                </div>
                 <StepPhoneMockup stepNum={4} />
               </div>
 
               <div className="ug-step-block">
-                <p className="ug-step-text">
-                  <strong>5.</strong> Kembalikan HP ke Wi-Fi internet biasa, lalu{' '}
-                  <strong>Scan Barcode / QR Code</strong> pada stiker bodi unit VoltKu dan atur
-                  nama ruangan serta batas daya MCB rumah.
-                </p>
+                <div className="ug-step-head">
+                  <span className="ug-step-num">5</span>
+                  <p className="ug-step-text">
+                    Kembalikan HP ke internet biasa, lalu{' '}
+                    <span className="ug-kbd-pill">Scan QR Code</span> di stiker bodi alat dan atur
+                    nama ruangan serta kapasitas MCB.
+                  </p>
+                </div>
                 <StepPhoneMockup stepNum={5} />
               </div>
             </div>
           ) : (
             <div className="ug-article">
-              <div className="ug-intro-note">
-                Setelah panel terhubung, Anda bisa memantau listrik rumah secara real-time,
-                melihat grafik biaya Rupiah, hingga bertanya langsung ke Asisten AI.
+              <div className="ug-hero-guide-card">
+                <span className="ug-hero-guide-avatar" aria-hidden="true">
+                  <img src={mascotAnalyzeImg} alt="" />
+                </span>
+                <div className="ug-hero-guide-copy">
+                  <strong>Kenali Menu &amp; Fitur dalam 1 Menit</strong>
+                  <p>
+                    Setelah panel aktif, pantau watt secara langsung, cek grafik rupiah, hingga
+                    tanya analisa hemat listrik ke Asisten AI.
+                  </p>
+                </div>
               </div>
 
               <div className="ug-feature-cards">
@@ -275,11 +320,12 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
                     <Zap size={18} />
                   </span>
                   <div className="ug-feat-copy">
-                    <strong>1. Pantau Beban Live &amp; Grafik</strong>
+                    <strong className="ug-feat-title">1. Pantau Beban Live &amp; Grafik</strong>
                     <p>
-                      Ketuk kartu panel di Beranda untuk membuka tab <strong>Live</strong> (daya
-                      Watt, tegangan V, arus A, PF, frekuensi) serta tab <strong>Konsumsi</strong>{' '}
-                      untuk grafik harian dan riwayat jam paling boros.
+                      Ketuk kartu panel di Beranda untuk membuka tab{' '}
+                      <span className="ug-kbd-pill">Live</span> (daya Watt, tegangan V, arus A, PF)
+                      dan tab <span className="ug-kbd-pill">Konsumsi</span> untuk grafik harian serta
+                      jam paling boros.
                     </p>
                   </div>
                 </div>
@@ -289,26 +335,32 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
                     <SlidersHorizontal size={18} />
                   </span>
                   <div className="ug-feat-copy">
-                    <strong>2. Atur Golongan Tarif PLN &amp; Batas MCB</strong>
+                    <strong className="ug-feat-title">
+                      2. Tarif PLN, Zona Waktu &amp; Rekap Harian
+                    </strong>
                     <p>
-                      Buka tab <strong>Tarif &amp; Daya</strong> atau ketuk{' '}
-                      <strong>Atur Alat</strong> pada panel untuk memilih tarif PLN R-1/R-2/Bisnis
-                      agar hitungan biaya Rupiah dan proyeksi akhir bulan akurat sesuai meteran
-                      rumah.
+                      Buka tab <span className="ug-kbd-pill">Tarif &amp; Daya</span> atau ketuk{' '}
+                      <span className="ug-kbd-pill">Atur Alat</span> di panel untuk memilih golongan
+                      PLN (R-1/R-2/Bisnis), batas aman Watt, zona{' '}
+                      <span className="ug-kbd-pill">WIB/WITA/WIT</span>, dan jam rekap harian.
                     </p>
                   </div>
                 </div>
 
                 <div className="ug-feature-card">
                   <span className="ug-feat-icon is-emerald">
-                    <CheckCircle2 size={18} />
+                    <ShieldAlert size={18} />
                   </span>
                   <div className="ug-feat-copy">
-                    <strong>3. Peringatan Anomali &amp; Notifikasi Instan</strong>
+                    <strong className="ug-feat-title">
+                      3. Bedakan Peringatan Alat vs Notifikasi Akun
+                    </strong>
                     <p>
-                      Cek tab <strong>Peringatan</strong> atau ikon lonceng untuk riwayat tegangan
-                      tidak stabil, lonjakan daya mendadak, atau perangkat offline dalam 7 hari
-                      terakhir.
+                      Menu <span className="ug-kbd-pill"><ShieldAlert size={12} /> Peringatan</span>{' '}
+                      menampilkan anomali listrik (tegangan drop/naik, overload, atau alat terputus).
+                      Sedangkan ikon{' '}
+                      <span className="ug-kbd-pill"><Bell size={12} /> Lonceng</span> di kanan atas
+                      berisi kotak masuk akun (status paket Pro &amp; rekap harian).
                     </p>
                   </div>
                 </div>
@@ -318,11 +370,27 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
                     <EnergyAssistantIcon size={18} />
                   </span>
                   <div className="ug-feat-copy">
-                    <strong>4. Asisten Analisa Energi</strong>
+                    <strong className="ug-feat-title">4. Asisten AI Tanya VoltKu</strong>
                     <p>
-                      Ketuk tombol <strong>Asisten</strong> di pojok kanan bawah untuk menanyakan
-                      biaya listrik hari ini, jam tersibuk, proyeksi tagihan bulan ini, atau
-                      pengecekan anomali dengan cepat.
+                      Ketuk tombol <span className="ug-kbd-pill">Tanya VoltKu</span> di pojok kanan
+                      bawah untuk menanyakan biaya hari ini, jam tersibuk, proyeksi tagihan akhir
+                      bulan, atau ringkasan gangguan dengan cepat.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="ug-feature-card">
+                  <span className="ug-feat-icon is-blue">
+                    <ShieldCheck size={18} />
+                  </span>
+                  <div className="ug-feat-copy">
+                    <strong className="ug-feat-title">
+                      5. Kunci PIN 6 Digit Tersinkron Lintas Perangkat
+                    </strong>
+                    <p>
+                      Buka <span className="ug-kbd-pill">Profil → Keamanan Aplikasi</span> untuk
+                      menyalakan PIN 6 digit. Sekali diatur, PIN langsung aktif di Web maupun APK
+                      Android dengan akun yang sama.
                     </p>
                   </div>
                 </div>

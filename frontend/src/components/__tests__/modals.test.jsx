@@ -10,6 +10,7 @@ import { AdminPanel } from '../AdminPanel'
 import { AiChatWidget } from '../AiChatWidget'
 import { AnomaliesList } from '../AnomaliesList'
 import { OnboardingTour } from '../OnboardingTour'
+import { UsageGuideModal } from '../UsageGuideModal'
 import { Header } from '../Header'
 import { AppLockSubView } from '../ProfileSubViews'
 import { getAppLockConfig } from '../../utils/userPrefs'
@@ -330,6 +331,14 @@ describe('VoltKu Paket & Profil modal render guards', () => {
     expect(html).toContain('lucide-bell')
     expect(html).toContain('header-brand-btn')
     expect(html).toContain('Kembali ke Beranda')
+  })
+
+  it('renders UsageGuideModal cleanly with mascot card and inline kbd pills', () => {
+    const html = renderToStaticMarkup(<UsageGuideModal isOpen onClose={() => {}} />)
+    expect(html).toContain('Cara Pemakaian VoltKu')
+    expect(html).toContain('ug-hero-guide-card')
+    expect(html).toContain('ug-kbd-pill')
+    expect(html).toContain('5 Langkah Menghubungkan Panel')
   })
 })
 
