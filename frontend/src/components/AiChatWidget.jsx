@@ -24,6 +24,10 @@ const TOOL_LABELS = {
 export function AiChatWidget({ token, onUnauthorized, hidden = false, appConfig = {} }) {
   const avatarSrc = resolveVisualAsset(appConfig, 'chatbot_avatar')
   const emptySrc = resolveVisualAsset(appConfig, 'chatbot_empty')
+  const quickPrompts =
+    Array.isArray(appConfig?.ai_quick_prompts) && appConfig.ai_quick_prompts.length > 0
+      ? appConfig.ai_quick_prompts
+      : QUICK_PROMPTS
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -164,7 +168,7 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false, appConfig 
                 )}
                 <p>Tanyakan pemakaian kWh, jam paling boros, proyeksi tagihan, atau anomali panel Anda.</p>
                 <div className="ai-chat-chips">
-                  {QUICK_PROMPTS.map((qp) => (
+                  {quickPrompts.map((qp) => (
                     <button
                       key={qp}
                       type="button"

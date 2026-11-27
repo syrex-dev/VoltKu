@@ -71,7 +71,13 @@ const POWER_PRESETS = [450, 900, 1300, 2200, 3500, 4400, 5500, 6600]
 const COOLDOWN_PRESETS = [15, 30, 60]
 const REPORT_HOUR_QUICK = [7, 12, 20, 21]
 
-function TariffPresetDropdown({ currentTariffNum, selectedPresetId, disabled, onSelect }) {
+function TariffPresetDropdown({
+  presets = PLN_TARIFF_PRESETS,
+  currentTariffNum,
+  selectedPresetId,
+  disabled,
+  onSelect,
+}) {
   const [isOpen, setIsOpen] = useState(false)
   const [catFilter, setCatFilter] = useState('all')
   const wrapRef = useRef(null)
@@ -95,13 +101,11 @@ function TariffPresetDropdown({ currentTariffNum, selectedPresetId, disabled, on
   }, [isOpen])
 
   const activePreset =
-    PLN_TARIFF_PRESETS.find((p) => p.id === selectedPresetId) ||
-    PLN_TARIFF_PRESETS.find((p) => Math.abs(currentTariffNum - Number(p.tariffRp)) < 0.01)
+    presets.find((p) => p.id === selectedPresetId) ||
+    presets.find((p) => Math.abs(currentTariffNum - Number(p.tariffRp)) < 0.01)
 
   const filtered =
-    catFilter === 'all'
-      ? PLN_TARIFF_PRESETS
-      : PLN_TARIFF_PRESETS.filter((p) => p.category === catFilter)
+    catFilter === 'all' ? presets : presets.filter((p) => p.category === catFilter)
 
   return (
     <div className="settings-tariff-dropdown" ref={wrapRef}>
@@ -341,6 +345,17 @@ export function SettingsView({
   const [savingDev, setSavingDev] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  const plnTariffsOverride = appConfig?.pln_tariffs
+  const activeTariffPresets = useMemo(() => {
+    if (Array.isArray(plnTariffsOverride) && plnTariffsOverride.length > 0) {
+      return plnTariffsOverride.map((item) => ({
+        ...item,
+        tariffRp: String(item.tariff_rp ?? item.tariffRp ?? '1444.70'),
+      }))
+    }
+    return PLN_TARIFF_PRESETS
+  }, [plnTariffsOverride])
 
   const snapshotKey = `${hasServerSettings ? 'srv' : 'def'}|${syncedSnapshot.tariff}|${syncedSnapshot.powerLimit}|${syncedSnapshot.cooldown}|${syncedSnapshot.extraPercent}|${syncedSnapshot.reportHour}|${syncedSnapshot.reportTimezone}|${syncedSnapshot.reportEnabled}`
   const lastAppliedKeyRef = useRef(snapshotKey)
@@ -708,8 +723,9 @@ export function SettingsView({
           </div>
 
           <div className="settings-preset-block">
-            <span className="settings-preset-label">Golongan Tarif PLN ({PLN_TARIFF_PRESETS.length} Pilihan)</span>
+            <span className="settings-preset-label">Golongan Tarif PLN ({activeTariffPresets.length} Pilihan)</span>
             <TariffPresetDropdown
+              presets={activeTariffPresets}
               currentTariffNum={parsedBaseTariff}
               selectedPresetId={selectedPresetId}
               disabled={!isAuthenticated}

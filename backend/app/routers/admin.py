@@ -35,6 +35,7 @@ from app.models import (
 from app.mqtt_ingest import ingest_service
 from app.routers.anomalies import query_anomalies_list
 from app.routers.devices import (
+    DEVICE_ID_RE,
     _normalize_location,
     _serialize_device,
     _validate_mcb_watt,
@@ -230,6 +231,17 @@ class AdminDiscountUpdateRequest(BaseModel):
     is_active: Optional[bool] = None
 
 
+class AdminDeviceCreateRequest(BaseModel):
+    id: Optional[str] = None
+    id_prefix: Optional[str] = None
+    count: int = 1
+    name: str = "Panel Listrik"
+    location: Optional[str] = None
+    mcb_watt: int = 2200
+    owner_user_id: Optional[int] = None
+    is_public_demo: bool = False
+
+
 class AdminDeviceUpdateRequest(BaseModel):
     name: Optional[str] = None
     location: Optional[str] = None
@@ -289,6 +301,10 @@ class AdminAppSettingsUpdateRequest(BaseModel):
     report_timezone: Optional[str] = None
     report_enabled: Optional[bool] = None
     hero_banners: Optional[list[dict[str, Any]]] = None
+    ai_quick_prompts: Optional[list[str]] = None
+    pln_tariffs: Optional[list[dict[str, Any]]] = None
+    app_release: Optional[dict[str, Any]] = None
+    usage_guide: Optional[dict[str, Any]] = None
 
 
 class AdminVisualAssetUpdateRequest(BaseModel):
@@ -669,6 +685,95 @@ def get_admin_devices(
         d["readings_count"] = int(reading_counts.get(dev_id, 0))
         d["anomalies_7d"] = int(anomaly_counts.get(dev_id, 0))
     return devices
+
+
+@router.post("/devices", status_code=status.HTTP_201_CREATED, response_model=dict[str, Any])
+def create_admin_devices(
+    req: AdminDeviceCreateRequest,
+    session: Session = Depends(get_db),
+):
+    """Membuat 1 atau banyak unit stok perangkat sekaligus dari Panel Admin."""
+    qty = int(req.count or 1)
+    if qty < 1 or qty > 30:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Jumlah stok unit sekali buat harus antara 1 hingga 30.",
+        )
+
+    clean_name = (req.name or "").strip()
+    if not clean_name or len(clean_name) > 120:
+        raise _admin_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Nama perangkat wajib antara 1 hingga 120 karakter.",
+        )
+
+    clean_loc = _normalize_location(req.location)
+    mcb_watt = _validate_mcb_watt(int(req.mcb_watt or 2200))
+
+    owner_uid: Optional[int] = None
+    if req.owner_user_id and int(req.owner_user_id) > 0:
+        owner = session.get(User, int(req.owner_user_id))
+        if not owner:
+            raise _admin_err(status.HTTP_404_NOT_FOUND, "Akun pemilik tidak ditemukan.")
+        owner_uid = owner.id
+
+    candidate_ids: list[str] = []
+    if qty == 1 and req.id and req.id.strip():
+        dev_id = req.id.strip()
+        if not DEVICE_ID_RE.match(dev_id):
+            raise _admin_err(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "ID perangkat harus 2–64 karakter huruf, angka, '-' atau '_'.",
+            )
+        if session.scalar(select(Device).where(Device.id == dev_id)):
+            raise _admin_err(
+                status.HTTP_409_CONFLICT,
+                f"ID perangkat '{dev_id}' sudah terdaftar.",
+            )
+        candidate_ids = [dev_id]
+    else:
+        raw_prefix = (req.id_prefix or req.id or "VK-PANEL-").strip()
+        clean_prefix = "".join(c for c in raw_prefix if c.isalnum() or c in "-_")[:40]
+        if not clean_prefix:
+            clean_prefix = "VK-"
+        idx = 1
+        while len(candidate_ids) < qty and idx < 5000:
+            cand = f"{clean_prefix}{idx:02d}"
+            if DEVICE_ID_RE.match(cand) and not session.scalar(
+                select(Device).where(Device.id == cand)
+            ):
+                candidate_ids.append(cand)
+            idx += 1
+        if len(candidate_ids) < qty:
+            raise _admin_err(
+                status.HTTP_409_CONFLICT,
+                "Tidak dapat menghasilkan ID perangkat unik dengan prefix tersebut.",
+            )
+
+    now_utc = int(time.time())
+    created_devices: list[Device] = []
+    for i, cid in enumerate(candidate_ids):
+        unit_name = clean_name if qty == 1 else f"{clean_name} #{i + 1:02d}"
+        dev = Device(
+            id=cid,
+            name=unit_name[:128],
+            location=clean_loc,
+            mcb_watt=mcb_watt,
+            owner_user_id=owner_uid,
+            is_public_demo=1 if req.is_public_demo else 0,
+            created_at=now_utc,
+            status="offline",
+        )
+        session.add(dev)
+        created_devices.append(dev)
+
+    session.commit()
+    for d in created_devices:
+        session.refresh(d)
+    return {
+        "count": len(created_devices),
+        "created": [_serialize_device(d, now_utc=now_utc) for d in created_devices],
+    }
 
 
 @router.patch("/devices/{device_id}", response_model=dict[str, Any])

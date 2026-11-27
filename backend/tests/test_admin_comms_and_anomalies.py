@@ -260,3 +260,130 @@ def test_admin_telegram_users_crud_and_anomaly_cleanup():
     )
     assert purge_rest.status_code == 200
     assert purge_rest.json()["deleted"] == 1
+
+
+def test_admin_stock_device_create_single_and_batch():
+    open_clean_test_session()
+    user_tok, _ = _register_user("stokuser@voltku.id", "Pelanggan")
+    admin_tok = create_access_token(subject="admin", role="admin")
+
+    # Non-admin ditolak (403)
+    forbidden = client.post(
+        "/api/admin/devices",
+        headers={"Authorization": f"Bearer {user_tok}"},
+        json={"id": "VK-FAIL-1", "name": "Panel Ilegal"},
+    )
+    assert forbidden.status_code == 403
+
+    # Buat 1 unit stok kustom
+    single = client.post(
+        "/api/admin/devices",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={
+            "id": "VK-UNIT-01",
+            "name": "Panel Stok Gudang",
+            "location": "Rak B",
+            "mcb_watt": 3500,
+            "is_public_demo": False,
+        },
+    )
+    assert single.status_code == 201
+    assert single.json()["count"] == 1
+    assert single.json()["created"][0]["id"] == "VK-UNIT-01"
+
+    # Duplikat ID ditolak (409)
+    dup = client.post(
+        "/api/admin/devices",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"id": "VK-UNIT-01", "name": "Duplikat"},
+    )
+    assert dup.status_code == 409
+
+    # Batch create 3 unit
+    batch = client.post(
+        "/api/admin/devices",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={
+            "id_prefix": "VK-BATCH-",
+            "count": 3,
+            "name": "VoltKu Batch",
+            "mcb_watt": 2200,
+            "is_public_demo": True,
+        },
+    )
+    assert batch.status_code == 201
+    assert batch.json()["count"] == 3
+    ids = [d["id"] for d in batch.json()["created"]]
+    assert ids == ["VK-BATCH-01", "VK-BATCH-02", "VK-BATCH-03"]
+    assert all(d["is_public_demo"] is True for d in batch.json()["created"])
+
+
+def test_admin_dynamic_content_tariffs_release_guide_and_ai_prompts():
+    open_clean_test_session()
+    admin_tok = create_access_token(subject="admin", role="admin")
+
+    # Validasi ketat URL APK & prompt kosong
+    bad_apk = client.patch(
+        "/api/admin/app-settings",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"app_release": {"version": "v3.0.0", "apk_download_url": "javascript:alert(1)"}},
+    )
+    assert bad_apk.status_code == 422
+
+    bad_prompts = client.patch(
+        "/api/admin/app-settings",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"ai_quick_prompts": []},
+    )
+    assert bad_prompts.status_code == 422
+
+    rev_before = client.get("/api/public/sync-state").json()["config_rev"]
+    upd = client.patch(
+        "/api/admin/app-settings",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={
+            "ai_quick_prompts": ["Cek beban AC sekarang?", "Hitung tagihan minggu ini"],
+            "pln_tariffs": [
+                {
+                    "id": "promo-rumah",
+                    "category": "rumah",
+                    "group": "Rumah Tangga",
+                    "label": "R-1/TR · Promo Uji",
+                    "tariff_rp": "1500.00",
+                }
+            ],
+            "app_release": {
+                "version": "v2.6.0",
+                "apk_download_url": "https://voltku.synemax.web.id/VoltKu.apk",
+                "release_notes": "Rilis baru dengan kontrol CRUD penuh.",
+                "changelog": [
+                    {
+                        "version": "v2.6.0",
+                        "date": "27 Nov 2026",
+                        "badge": "Baru",
+                        "items": ["Tambahan CRUD stok QR & konten dinamis"],
+                    }
+                ],
+            },
+            "usage_guide": {
+                "pairing_intro_title": "Panduan Cepat Kustom",
+                "pairing_intro_desc": "Siapkan Wi-Fi 2.4 GHz.",
+                "usage_intro_title": "Fitur Utama",
+                "usage_intro_desc": "Pantau real-time.",
+                "pairing_steps": [{"step": 1, "text": "Nyalakan unit lalu scan QR."}],
+                "usage_cards": [{"title": "Live Watt", "desc": "Lihat beban setiap 10 detik."}],
+            },
+        },
+    )
+    assert upd.status_code == 200
+    rev_after = client.get("/api/public/sync-state").json()["config_rev"]
+    assert rev_after != rev_before
+
+    pub = client.get("/api/public/app-config").json()
+    assert pub["ai_quick_prompts"] == ["Cek beban AC sekarang?", "Hitung tagihan minggu ini"]
+    assert pub["pln_tariffs"][0]["id"] == "promo-rumah"
+    assert pub["pln_tariffs"][0]["tariff_rp"] == "1500.00"
+    assert pub["app_release"]["version"] == "v2.6.0"
+    assert pub["app_release"]["apk_download_url"] == "https://voltku.synemax.web.id/VoltKu.apk"
+    assert pub["usage_guide"]["pairing_intro_title"] == "Panduan Cepat Kustom"
+    assert pub["usage_guide"]["pairing_steps"][0]["text"] == "Nyalakan unit lalu scan QR."

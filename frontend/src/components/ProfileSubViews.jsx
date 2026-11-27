@@ -1752,12 +1752,14 @@ export function CreditsSubView({ appName }) {
 
 export function AboutHubSubView({
   appName,
+  appConfig = {},
   waHref,
   tgHandle,
   supportEmail,
   onNavigate,
   onOpenTerms,
 }) {
+  const versionLabel = appConfig?.app_release?.version || APP_VERSION_TAG
   return (
     <div className="profile-subview-stack profile-about-hub-layout">
       <div className="profile-ref-card-group">
@@ -1778,7 +1780,7 @@ export function AboutHubSubView({
           <span className="profile-ref-row-text">
             <span className="profile-ref-row-title">Versi Aplikasi</span>
           </span>
-          <span className="profile-ref-value-muted num-tabular">{APP_VERSION_TAG}</span>
+          <span className="profile-ref-value-muted num-tabular">{versionLabel}</span>
           <ChevronRight size={16} className="profile-ref-chevron" />
         </button>
 
@@ -1812,7 +1814,8 @@ export function AboutHubSubView({
   )
 }
 
-export function AboutDetailSubView({ appName, appTagline, theme, onOpenTerms }) {
+export function AboutDetailSubView({ appName, appTagline, appConfig = {}, theme, onOpenTerms }) {
+  const versionLabel = appConfig?.app_release?.version || APP_VERSION_TAG
   return (
     <div className="profile-subview-stack">
       <div className="profile-about-card profile-about-full-page">
@@ -1896,7 +1899,7 @@ export function AboutDetailSubView({ appName, appTagline, theme, onOpenTerms }) 
 
         <div className="profile-about-footer">
           <span className="profile-about-pkg num-tabular">
-            {APP_PACKAGE_ID} · {APP_VERSION_TAG}
+            {APP_PACKAGE_ID} · {versionLabel}
           </span>
           {onOpenTerms && (
             <div className="profile-about-legal-links">
@@ -1915,10 +1918,44 @@ export function AboutDetailSubView({ appName, appTagline, theme, onOpenTerms }) 
   )
 }
 
-export function ChangelogSubView() {
+export function ChangelogSubView({ appConfig = {} }) {
+  const release = appConfig?.app_release
+  const versionLabel = release?.version || APP_VERSION_TAG
+  const apkUrl = (release?.apk_download_url || '').trim()
+  const releaseNotes = (release?.release_notes || '').trim()
+  const changelogItems =
+    Array.isArray(release?.changelog) && release.changelog.length > 0
+      ? release.changelog
+      : VOLTKU_CHANGELOG
+
   return (
     <div className="profile-subview-stack">
-      {VOLTKU_CHANGELOG.map((rel) => (
+      {(apkUrl || releaseNotes) && (
+        <div className="profile-ref-card-group profile-card-padded">
+          <div className="profile-changelog-head">
+            <strong className="num-tabular">{versionLabel}</strong>
+            <span className="profile-ref-badge is-blue">Rilis Resmi</span>
+          </div>
+          {releaseNotes && (
+            <p className="profile-subcard-hint" style={{ margin: '6px 0 10px' }}>
+              {releaseNotes}
+            </p>
+          )}
+          {apkUrl && (
+            <a
+              href={apkUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-primary btn-compact profile-apk-download-btn"
+            >
+              <ExternalLink size={14} />
+              <span>Unduh APK Android ({versionLabel})</span>
+            </a>
+          )}
+        </div>
+      )}
+
+      {changelogItems.map((rel) => (
         <div key={rel.version} className="profile-ref-card-group profile-card-padded">
           <div className="profile-changelog-head">
             <strong className="num-tabular">{rel.version}</strong>
@@ -1926,7 +1963,7 @@ export function ChangelogSubView() {
             <span className="profile-changelog-date">{rel.date}</span>
           </div>
           <ul className="profile-changelog-list">
-            {rel.items.map((item, idx) => (
+            {(rel.items || []).map((item, idx) => (
               <li key={idx}>{item}</li>
             ))}
           </ul>

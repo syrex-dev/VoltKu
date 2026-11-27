@@ -712,6 +712,8 @@ export function AdminPanel({
             {adminTab === 'devices' && (
               <AdminDevicesSection
                 devices={devices}
+                users={users}
+                appName={appSettings?.app_name || 'VoltKu'}
                 token={token}
                 onLogout={onLogout}
                 onNotice={setNotice}

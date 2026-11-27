@@ -61,7 +61,7 @@ Payload telemetry:
 | `GET/POST /api/admin/plans`, `PATCH/DELETE /api/admin/plans/{id}` | Manajemen CRUD paket langganan dinamis (harga dasar, kuota panel/hari, hak fitur, promo harga coret berbatas waktu, urutan, status aktif) oleh Admin (`role="admin"`). |
 | `GET/POST /api/admin/discounts`, `PATCH/DELETE /api/admin/discounts/{id}` | Manajemen CRUD kode promo/voucher diskon (`percent` atau `fixed_rp`, batas maksimal potongan, minimal pembelian, kuota pakai, target paket/durasi, periode berlaku) oleh Admin (`role="admin"`). |
 | `GET/POST /api/admin/payment-methods`, `PATCH/DELETE /api/admin/payment-methods/{id}`, `POST /api/admin/payment-methods/{id}/qris` | Manajemen metode pembayaran manual (QRIS + unggah gambar QRIS, Transfer Bank, E-Wallet) dari Panel Admin (`role="admin"`). |
-| `GET /api/admin/devices`, `PATCH /api/admin/devices/{id}` | Inventaris perangkat (mendukung paginasi `limit` & `offset`) beserta pemilik, toggle `is_public_demo`, dan pengalihan `owner_user_id`. Wajib `role="admin"`. |
+| `GET/POST /api/admin/devices`, `PATCH /api/admin/devices/{id}` | Inventaris perangkat (mendukung paginasi `limit` & `offset`), pembuatan unit stok tunggal maupun batch oleh Admin (`POST`), toggle `is_public_demo`, dan pengalihan `owner_user_id`. Wajib `role="admin"`. |
 | `GET /api/admin/anomalies`, `DELETE /api/admin/anomalies*` | Log anomali lintas semua perangkat dengan filter `device_id`, `severity`, `from`, `limit`, serta penghapusan log satuan (`/{id}`) atau pembersihan terfilter. Wajib `role="admin"`. |
 | `GET/PATCH/DELETE /api/admin/feedback*` | Manajemen CRUD umpan balik, rating, dan laporan bug pengguna (daftar, pembaruan status `new\|reviewed\|resolved` & balasan admin opsional ke inbox user, serta hapus). Wajib `role="admin"`. |
 | `GET/POST/DELETE /api/admin/notifications*` | Manajemen siaran notifikasi admin ke inbox lonceng pengguna (`all\|free\|pro\|user_id`) beserta opsi kirim Push FCM Android, daftar riwayat broadcast, dan penarikan/penghapusan notifikasi. Wajib `role="admin"`. |
@@ -92,7 +92,7 @@ anomalies(id PK, device_id, ts, type, severity, details_json, message, notified)
 alert_state(device_id, alert_type, state, since, last_notified_at, details_json)   PK (device_id, alert_type)
 scheduled_reports_log(report_type, report_date, sent_at)   PK (report_type, report_date)
 settings(key PK, value)   -- tariff_sen_per_kwh, extra_percent, power_limit_w, alert_cooldown_min, report_hour, report_timezone, report_enabled
-app_config(key PK, value TEXT, updated_at)   -- branding, hero_banners, visual_assets, panduan, legal/terms, auth toggles, paket freemium, kontak dukungan
+app_config(key PK, value TEXT, updated_at)   -- branding, hero_banners, visual_assets, pln_tariffs, app_release, usage_guide, ai_quick_prompts, panduan, legal/terms, auth toggles, paket freemium, kontak dukungan
 telegram_users(chat_id PK, name)
 chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
 push_tokens(id PK, user_id FK->users.id, token UNIQUE, platform, device_label NULL, is_active DEFAULT 1, created_at, updated_at)

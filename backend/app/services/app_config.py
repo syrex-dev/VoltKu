@@ -16,6 +16,20 @@ from app.routers.settings import (
     format_settings_response,
     get_all_settings,
 )
+from app.services.dynamic_content import (
+    DEFAULT_AI_QUICK_PROMPTS,
+    DEFAULT_APP_RELEASE,
+    DEFAULT_PLN_TARIFFS,
+    DEFAULT_USAGE_GUIDE,
+    parse_ai_quick_prompts,
+    parse_app_release,
+    parse_pln_tariffs,
+    parse_usage_guide,
+    validate_ai_quick_prompts,
+    validate_app_release,
+    validate_pln_tariffs,
+    validate_usage_guide,
+)
 from app.services.payments import (
     delete_private_image,
     resolve_private_image_path,
@@ -219,6 +233,10 @@ DEFAULT_APP_CONFIG: dict[str, str] = {
     "announcement_url": "",
     "hero_banners_json": "",
     "visual_assets_json": "",
+    "ai_quick_prompts_json": "",
+    "pln_tariffs_json": "",
+    "app_release_json": "",
+    "usage_guide_json": "",
     "default_theme": "light",
     "onboarding_enabled": "true",
     "onboarding_step1_title": "Kenali Panel Listrik Anda",
@@ -668,6 +686,10 @@ def _build_public_config_payload(session: Session, data: dict[str, str]) -> dict
         "support_email": data["support_email"],
         "hero_banners": parse_hero_banners(data.get("hero_banners_json", "")),
         "visual_assets": build_public_visual_assets(data),
+        "ai_quick_prompts": parse_ai_quick_prompts(data.get("ai_quick_prompts_json", "")),
+        "pln_tariffs": parse_pln_tariffs(data.get("pln_tariffs_json", "")),
+        "app_release": parse_app_release(data.get("app_release_json", "")),
+        "usage_guide": parse_usage_guide(data.get("usage_guide_json", "")),
         "plans": build_public_plans_payload(data, session=session),
     }
 
@@ -727,6 +749,14 @@ def get_admin_app_settings(session: Session) -> dict[str, Any]:
         "hero_banners": parse_hero_banners(data.get("hero_banners_json", "")),
         "default_hero_banners": copy.deepcopy(DEFAULT_HERO_BANNERS),
         "visual_assets": build_public_visual_assets(data),
+        "ai_quick_prompts": parse_ai_quick_prompts(data.get("ai_quick_prompts_json", "")),
+        "default_ai_quick_prompts": list(DEFAULT_AI_QUICK_PROMPTS),
+        "pln_tariffs": parse_pln_tariffs(data.get("pln_tariffs_json", "")),
+        "default_pln_tariffs": copy.deepcopy(DEFAULT_PLN_TARIFFS),
+        "app_release": parse_app_release(data.get("app_release_json", "")),
+        "default_app_release": copy.deepcopy(DEFAULT_APP_RELEASE),
+        "usage_guide": parse_usage_guide(data.get("usage_guide_json", "")),
+        "default_usage_guide": copy.deepcopy(DEFAULT_USAGE_GUIDE),
         **get_freemium_config(data),
     }
 
@@ -779,8 +809,16 @@ def _validate_and_store_config_field(session: Session, key: str, value: Any) -> 
 
 def update_admin_app_settings(session: Session, payload: dict[str, Any]) -> dict[str, Any]:
     """Validasi & simpan pembaruan pengaturan aplikasi serta default operasional dari Admin."""
+    json_managed_keys = {
+        "hero_banners_json",
+        "visual_assets_json",
+        "ai_quick_prompts_json",
+        "pln_tariffs_json",
+        "app_release_json",
+        "usage_guide_json",
+    }
     for key in DEFAULT_APP_CONFIG:
-        if key in ("hero_banners_json", "visual_assets_json"):
+        if key in json_managed_keys:
             continue
         if key in payload and payload[key] is not None:
             _validate_and_store_config_field(session, key, payload[key])
@@ -791,6 +829,30 @@ def update_admin_app_settings(session: Session, payload: dict[str, Any]) -> dict
             session,
             "hero_banners_json",
             json.dumps(cleaned_banners, ensure_ascii=False),
+        )
+    if "ai_quick_prompts" in payload and payload["ai_quick_prompts"] is not None:
+        upsert_app_config(
+            session,
+            "ai_quick_prompts_json",
+            json.dumps(validate_ai_quick_prompts(payload["ai_quick_prompts"]), ensure_ascii=False),
+        )
+    if "pln_tariffs" in payload and payload["pln_tariffs"] is not None:
+        upsert_app_config(
+            session,
+            "pln_tariffs_json",
+            json.dumps(validate_pln_tariffs(payload["pln_tariffs"]), ensure_ascii=False),
+        )
+    if "app_release" in payload and payload["app_release"] is not None:
+        upsert_app_config(
+            session,
+            "app_release_json",
+            json.dumps(validate_app_release(payload["app_release"]), ensure_ascii=False),
+        )
+    if "usage_guide" in payload and payload["usage_guide"] is not None:
+        upsert_app_config(
+            session,
+            "usage_guide_json",
+            json.dumps(validate_usage_guide(payload["usage_guide"]), ensure_ascii=False),
         )
 
     legacy_plan_keys = {

@@ -14,9 +14,12 @@ import { UsageGuideModal } from '../UsageGuideModal'
 import { Header } from '../Header'
 import { AdminVisualAssetsCard } from '../AdminVisualAssetsCard'
 import { AdminFeedbackSubTab, AdminNotifTelegramSubTab } from '../AdminCommsSection'
-import { AppLockSubView, RateFeedbackModal } from '../ProfileSubViews'
+import { AdminStockCreateModal, DeviceQrStickerModal } from '../AdminDeviceModals'
+import { AdminDynamicContentTab } from '../AdminDynamicContentCard'
+import { AppLockSubView, ChangelogSubView, RateFeedbackModal } from '../ProfileSubViews'
 import { getAppLockConfig } from '../../utils/userPrefs'
 import { VISUAL_ASSET_CATALOG, resolveVisualAsset } from '../../utils/mascotAssets'
+import { buildQrMatrix } from '../../utils/qrMatrix'
 
 describe('VoltKu Paket & Profil modal render guards', () => {
   it('renders PlanUpgradeModal without ReferenceError when opened from banner or profile (free plan)', () => {
@@ -435,6 +438,72 @@ describe('VoltKu Paket & Profil modal render guards', () => {
     expect(rateHtml).toContain('Lapor Bug')
     expect(rateHtml).toContain('Usul Fitur')
     expect(rateHtml).toContain('Kirim Nilai')
+  })
+
+  it('generates valid QR sticker matrices and supports Stage 2 Dynamic Content CRUD & overrides', () => {
+    const mx = buildQrMatrix('VOLTKU:VK-STOK-01')
+    expect(mx).toBeTruthy()
+    expect(mx.size).toBeGreaterThanOrEqual(21)
+
+    const qrModalHtml = renderToStaticMarkup(
+      <DeviceQrStickerModal
+        device={{ id: 'VK-STOK-01', name: 'Panel Uji', mcb_watt: 2200 }}
+        appName="VoltKu"
+        onClose={() => {}}
+      />
+    )
+    expect(qrModalHtml).toContain('Stiker QR Pairing Unit')
+    expect(qrModalHtml).toContain('VK-STOK-01')
+    expect(qrModalHtml).toContain('Unduh Stiker PNG')
+
+    const stockModalHtml = renderToStaticMarkup(
+      <AdminStockCreateModal isOpen users={[]} token="adm-tok" onClose={() => {}} />
+    )
+    expect(stockModalHtml).toContain('Tambah Stok Unit Panel')
+    expect(stockModalHtml).toContain('Batch Banyak Unit')
+
+    const customAppConfig = {
+      ai_quick_prompts: ['Prompt Uji Admin 1'],
+      pln_tariffs: [
+        { id: 't-custom', category: 'rumah', group: 'Rumah', label: 'Tarif Kustom', tariff_rp: '1555.00' },
+      ],
+      app_release: {
+        version: 'v2.9.9',
+        apk_download_url: 'https://voltku.synemax.web.id/VoltKu.apk',
+        release_notes: 'Catatan rilis uji.',
+        changelog: [{ version: 'v2.9.9', date: '27 Nov 2026', badge: 'Uji', items: ['Item rilis'] }],
+      },
+      usage_guide: {
+        pairing_intro_title: 'Intro Kustom Admin',
+        pairing_intro_desc: 'Deskripsi intro kustom.',
+        usage_intro_title: 'Pantau Kustom',
+        usage_intro_desc: 'Deskripsi pantau kustom.',
+        pairing_steps: [{ step: 1, text: 'Langkah 1 dari Admin' }],
+        usage_cards: [{ title: 'Kartu Uji', desc: 'Deskripsi kartu uji' }],
+      },
+    }
+
+    const dynAdminHtml = renderToStaticMarkup(
+      <AdminDynamicContentTab appSettings={customAppConfig} onPersistFields={() => {}} />
+    )
+    expect(dynAdminHtml).toContain('Info Versi APK, Tautan Update')
+    expect(dynAdminHtml).toContain('Preset Golongan Tarif PLN (1 Preset)')
+    expect(dynAdminHtml).toContain('Pertanyaan Cepat Asisten AI (1/8)')
+
+    const guideHtml = renderToStaticMarkup(
+      <UsageGuideModal isOpen appConfig={customAppConfig} onClose={() => {}} />
+    )
+    expect(guideHtml).toContain('Intro Kustom Admin')
+    expect(guideHtml).toContain('Langkah 1 dari Admin')
+
+    const changelogHtml = renderToStaticMarkup(<ChangelogSubView appConfig={customAppConfig} />)
+    expect(changelogHtml).toContain('Unduh APK Android (v2.9.9)')
+    expect(changelogHtml).toContain('Item rilis')
+
+    const settingsHtml = renderToStaticMarkup(
+      <SettingsView mode="global" settings={{}} appConfig={customAppConfig} isAuthenticated />
+    )
+    expect(settingsHtml).toContain('Golongan Tarif PLN (1 Pilihan)')
   })
 })
 

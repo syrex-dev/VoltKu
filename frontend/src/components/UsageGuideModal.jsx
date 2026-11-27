@@ -166,10 +166,41 @@ function StepPhoneMockup({ stepNum }) {
   )
 }
 
+const DEFAULT_GUIDE_PAIRING_TEXTS = [
+  'Colokkan panel VoltKu ke listrik, lalu tekan & tahan tombol Pairing selama 5 detik hingga lampu biru berkedip cepat.',
+  'Buka tab Beranda, lalu ketuk + Tambah Panel atau + Tambah Sekarang.',
+  'Pilih Belum, Hubungkan ke Wi-Fi Dulu untuk unit baru, atau langsung Sudah Terhubung bila alat sudah online.',
+  'Hubungkan Wi-Fi HP ke hotspot VoltKu-XXXX, masukkan nama & kata sandi Wi-Fi 2.4 GHz rumah, lalu tekan Simpan & Lanjut.',
+  'Kembalikan HP ke internet biasa, lalu Scan QR Code di stiker bodi alat dan atur nama ruangan serta kapasitas MCB.',
+]
+
+const DEFAULT_GUIDE_USAGE_TITLES = [
+  '1. Pantau Beban Live & Grafik',
+  '2. Tarif PLN, Zona Waktu & Rekap Harian',
+  '3. Bedakan Peringatan Alat vs Notifikasi Akun',
+  '4. Asisten AI Tanya VoltKu',
+  '5. Kunci PIN 6 Digit Tersinkron Lintas Perangkat',
+]
+
 export function UsageGuideModal({ isOpen, onClose, onStartAddDevice, appConfig = {} }) {
   const [guideTab, setGuideTab] = useState('pairing')
   const welcomeSrc = resolveVisualAsset(appConfig, 'onboarding_welcome')
   const analyzeSrc = resolveVisualAsset(appConfig, 'chatbot_empty')
+  const ug = appConfig?.usage_guide || null
+  const customPairingSteps =
+    Array.isArray(ug?.pairing_steps) &&
+    ug.pairing_steps.length > 0 &&
+    (ug.pairing_steps.length !== DEFAULT_GUIDE_PAIRING_TEXTS.length ||
+      ug.pairing_steps.some((s, i) => String(s?.text || '').trim() !== DEFAULT_GUIDE_PAIRING_TEXTS[i]))
+      ? ug.pairing_steps
+      : null
+  const customUsageCards =
+    Array.isArray(ug?.usage_cards) &&
+    ug.usage_cards.length > 0 &&
+    (ug.usage_cards.length !== DEFAULT_GUIDE_USAGE_TITLES.length ||
+      ug.usage_cards.some((c, i) => String(c?.title || '').trim() !== DEFAULT_GUIDE_USAGE_TITLES[i]))
+      ? ug.usage_cards
+      : null
 
   if (!isOpen) return null
 
@@ -232,15 +263,38 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice, appConfig =
                   </span>
                 )}
                 <div className="ug-hero-guide-copy">
-                  <strong>Persiapan Sebelum Pasang</strong>
-                  <p>
-                    Pastikan ponsel terhubung ke <span className="ug-kbd-pill">Wi-Fi 2.4 GHz</span>{' '}
-                    (bukan 5 GHz) dan siapkan stiker <strong>QR Code</strong> pada unit VoltKu.
-                  </p>
+                  <strong>{ug?.pairing_intro_title || 'Persiapan Sebelum Pasang'}</strong>
+                  {ug?.pairing_intro_desc &&
+                  ug.pairing_intro_desc !==
+                    'Pastikan ponsel terhubung ke Wi-Fi 2.4 GHz (bukan 5 GHz) dan siapkan stiker QR Code pada unit VoltKu.' ? (
+                    <p>{ug.pairing_intro_desc}</p>
+                  ) : (
+                    <p>
+                      Pastikan ponsel terhubung ke <span className="ug-kbd-pill">Wi-Fi 2.4 GHz</span>{' '}
+                      (bukan 5 GHz) dan siapkan stiker <strong>QR Code</strong> pada unit VoltKu.
+                    </p>
+                  )}
                 </div>
               </div>
 
-              <div className="ug-section-heading">5 Langkah Menghubungkan Panel</div>
+              <div className="ug-section-heading">
+                {customPairingSteps
+                  ? `${customPairingSteps.length} Langkah Menghubungkan Panel`
+                  : '5 Langkah Menghubungkan Panel'}
+              </div>
+
+              {customPairingSteps ? (
+                customPairingSteps.map((st, idx) => (
+                  <div key={`cp-${idx}`} className="ug-step-block">
+                    <div className="ug-step-head">
+                      <span className="ug-step-num">{st.step || idx + 1}</span>
+                      <p className="ug-step-text">{st.text}</p>
+                    </div>
+                    {idx < 5 && <StepPhoneMockup stepNum={idx + 1} />}
+                  </div>
+                ))
+              ) : (
+                <>
 
               <div className="ug-step-block">
                 <div className="ug-step-head">
@@ -301,6 +355,8 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice, appConfig =
                 </div>
                 <StepPhoneMockup stepNum={5} />
               </div>
+                </>
+              )}
             </div>
           ) : (
             <div className="ug-article">
@@ -311,15 +367,29 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice, appConfig =
                   </span>
                 )}
                 <div className="ug-hero-guide-copy">
-                  <strong>Kenali Menu &amp; Fitur dalam 1 Menit</strong>
+                  <strong>{ug?.usage_intro_title || 'Kenali Menu & Fitur dalam 1 Menit'}</strong>
                   <p>
-                    Setelah panel aktif, pantau watt secara langsung, cek grafik rupiah, hingga
-                    tanya analisa hemat listrik ke Asisten AI.
+                    {ug?.usage_intro_desc ||
+                      'Setelah panel aktif, pantau watt secara langsung, cek grafik rupiah, hingga tanya analisa hemat listrik ke Asisten AI.'}
                   </p>
                 </div>
               </div>
 
               <div className="ug-feature-cards">
+                {customUsageCards ? (
+                  customUsageCards.map((card, idx) => (
+                    <div key={`cuc-${idx}`} className="ug-feature-card">
+                      <span className="ug-feat-icon is-blue">
+                        <BookOpen size={18} />
+                      </span>
+                      <div className="ug-feat-copy">
+                        <strong className="ug-feat-title">{card.title}</strong>
+                        <p>{card.desc}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <>
                 <div className="ug-feature-card">
                   <span className="ug-feat-icon is-blue">
                     <Zap size={18} />
@@ -399,6 +469,8 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice, appConfig =
                     </p>
                   </div>
                 </div>
+                  </>
+                )}
               </div>
             </div>
           )}

@@ -872,6 +872,7 @@ export function ProfileModal({
               {activeView === 'about' && (
                 <AboutHubSubView
                   appName={appName}
+                  appConfig={appConfig}
                   waHref={waHref}
                   tgHandle={tgHandle}
                   supportEmail={supportEmail}
@@ -884,12 +885,13 @@ export function ProfileModal({
                 <AboutDetailSubView
                   appName={appName}
                   appTagline={appTagline}
+                  appConfig={appConfig}
                   theme={theme}
                   onOpenTerms={onOpenTerms}
                 />
               )}
 
-              {activeView === 'changelog' && <ChangelogSubView />}
+              {activeView === 'changelog' && <ChangelogSubView appConfig={appConfig} />}
 
               {activeView === 'channels' && (
                 <OfficialChannelsSubView

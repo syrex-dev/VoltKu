@@ -17,6 +17,7 @@ import {
   ArrowRight,
   MessageSquare,
   BellRing,
+  Sparkles,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatTimeWIB, formatRp } from '../utils/formatters'
@@ -24,6 +25,7 @@ import { InAppSelect } from './InAppSelect'
 import { AdminHeroBannersCard } from './AdminHeroBannersCard'
 import { AdminVisualAssetsCard } from './AdminVisualAssetsCard'
 import { AdminFeedbackSubTab, AdminNotifTelegramSubTab } from './AdminCommsSection'
+import { AdminDynamicContentTab } from './AdminDynamicContentCard'
 
 const SUB_TABS = [
   { id: 'identitas', label: '1. Identitas & Brand', icon: Store },
@@ -34,6 +36,7 @@ const SUB_TABS = [
   { id: 'freemium', label: '6. Paket & Freemium', icon: Crown },
   { id: 'masukan', label: '7. Masukan & Bug', icon: MessageSquare },
   { id: 'komunikasi', label: '8. Broadcast & Telegram', icon: BellRing },
+  { id: 'konten', label: '9. Tarif & Konten App', icon: Sparkles },
 ]
 
 const VIA_LABELS = {
@@ -88,6 +91,32 @@ export function AdminAppSettingsTab({
 
   const updateField = (key, val) => {
     setForm((prev) => ({ ...prev, [key]: val }))
+  }
+
+  const persistDynamicFields = async (fields, successText) => {
+    setSaving(true)
+    if (onNotice) onNotice(null)
+    try {
+      const updated = await apiRequest(
+        '/api/admin/app-settings',
+        { method: 'PATCH', body: fields },
+        token,
+        onLogout
+      )
+      setForm(updated)
+      if (onNotice) {
+        onNotice({ type: 'success', text: successText || 'Konten dinamis berhasil disimpan.' })
+      }
+      if (onSettingsUpdated) await onSettingsUpdated(updated)
+      return true
+    } catch (err) {
+      if (onNotice) {
+        onNotice({ type: 'error', text: err.message || 'Gagal menyimpan konten dinamis.' })
+      }
+      return false
+    } finally {
+      setSaving(false)
+    }
   }
 
   const persistHeroBanners = async (nextBanners, successText) => {
@@ -351,6 +380,12 @@ export function AdminAppSettingsTab({
           onLogout={onLogout}
           onNotice={onNotice}
           refreshSignal={commsRefreshKey}
+        />
+      ) : subTab === 'konten' ? (
+        <AdminDynamicContentTab
+          appSettings={form}
+          busy={saving}
+          onPersistFields={persistDynamicFields}
         />
       ) : (
         <form onSubmit={handleSave} className="admin-section-stack">

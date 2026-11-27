@@ -16,9 +16,11 @@ import {
   UserCheck,
   Package,
   Gauge,
+  QrCode,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatDateTimeWIB, formatNum, formatTimeWIB } from '../utils/formatters'
+import { DeviceQrStickerModal, AdminStockCreateModal } from './AdminDeviceModals'
 
 function getSignalInfo(rssi) {
   if (rssi == null || Number.isNaN(Number(rssi))) {
@@ -227,6 +229,8 @@ function DeviceDetailModal({
 
 export function AdminDevicesSection({
   devices = [],
+  users = [],
+  appName = 'VoltKu',
   token,
   onLogout,
   onNotice,
@@ -241,6 +245,8 @@ export function AdminDevicesSection({
   const [copiedId, setCopiedId] = useState('')
   const [busyId, setBusyId] = useState('')
   const [detailDevice, setDetailDevice] = useState(null)
+  const [qrDevice, setQrDevice] = useState(null)
+  const [stockModalOpen, setStockModalOpen] = useState(false)
 
   const summary = useMemo(() => {
     let online = 0
@@ -392,14 +398,26 @@ export function AdminDevicesSection({
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button
-            type="button"
-            className="btn btn-primary btn-compact"
-            onClick={onOpenAddDevice}
-          >
-            <Plus size={15} />
-            <span>Tambah Unit</span>
-          </button>
+          <div className="admin-inline-actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn-compact"
+              onClick={() => setStockModalOpen(true)}
+            >
+              <Package size={15} />
+              <span>Tambah Stok / Batch</span>
+            </button>
+            {onOpenAddDevice && (
+              <button
+                type="button"
+                className="btn btn-primary btn-compact"
+                onClick={onOpenAddDevice}
+              >
+                <Plus size={15} />
+                <span>Wizard Unit</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {(() => {
@@ -582,6 +600,14 @@ export function AdminDevicesSection({
                           <button
                             type="button"
                             className="admin-icon-action"
+                            title="Stiker QR Pairing"
+                            onClick={() => setQrDevice(d)}
+                          >
+                            <QrCode size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-icon-action"
                             title="Lihat Telemetri & Detail"
                             onClick={() => setDetailDevice(d)}
                           >
@@ -697,6 +723,14 @@ export function AdminDevicesSection({
                     <button
                       type="button"
                       className="btn btn-secondary btn-compact"
+                      onClick={() => setQrDevice(d)}
+                    >
+                      <QrCode size={14} />
+                      <span>Stiker QR</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-compact"
                       onClick={() => setDetailDevice(d)}
                     >
                       <Eye size={14} />
@@ -714,23 +748,21 @@ export function AdminDevicesSection({
                       <button
                         type="button"
                         className="btn btn-danger-solid btn-compact"
-                        style={{ gridColumn: 'span 2' }}
                         onClick={async () => {
                           await onDeleteDevice(d.id)
                           setConfirmDeleteDevId('')
                         }}
                       >
-                        <span>Yakin Hapus Unit?</span>
+                        <span>Yakin Hapus?</span>
                       </button>
                     ) : (
                       <button
                         type="button"
                         className="btn btn-danger-ghost btn-compact"
-                        style={{ gridColumn: 'span 2' }}
                         onClick={() => setConfirmDeleteDevId(d.id)}
                       >
                         <Trash2 size={14} />
-                        <span>Hapus Perangkat</span>
+                        <span>Hapus Unit</span>
                       </button>
                     )}
                   </div>
@@ -749,6 +781,24 @@ export function AdminDevicesSection({
         onToggleDemo={handleTogglePublicDemo}
         onEdit={onEditDevice}
         onClose={() => setDetailDevice(null)}
+      />
+
+      <DeviceQrStickerModal
+        device={qrDevice}
+        appName={appName}
+        onClose={() => setQrDevice(null)}
+      />
+
+      <AdminStockCreateModal
+        isOpen={stockModalOpen}
+        users={users}
+        token={token}
+        onLogout={onLogout}
+        onNotice={onNotice}
+        onCreated={async () => {
+          if (onReload) await onReload()
+        }}
+        onClose={() => setStockModalOpen(false)}
       />
     </div>
   )
