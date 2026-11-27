@@ -133,6 +133,7 @@ describe('VoltKu Paket & Profil modal render guards', () => {
     expect(html).toContain('Jam Kirim Rekap Harian (WITA)')
     expect(html).toContain('settings-tz-pill selected')
     expect(html).toContain('21:00')
+    expect(html).not.toContain('Mode Gelap')
   })
 
   it('renders HeroBannerCarousel with cloned head/tail slides starting cleanly on real slide 1', () => {

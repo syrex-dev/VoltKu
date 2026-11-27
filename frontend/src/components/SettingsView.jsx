@@ -17,8 +17,6 @@ import {
   Calculator,
   Clock,
   Globe,
-  Sun,
-  Moon,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatNum, formatRp } from '../utils/formatters'
@@ -266,8 +264,6 @@ export function SettingsView({
   activeDevice,
   token,
   isAuthenticated = false,
-  theme = 'light',
-  onToggleTheme,
   onSave,
   onDeviceUpdated,
   onDeviceDeleted,
@@ -973,32 +969,6 @@ export function SettingsView({
           )}
         </section>
       </form>
-
-      {onToggleTheme && (
-        <section className="clean-sheet app-menu-group" style={{ marginBottom: 0 }}>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={theme === 'dark'}
-            className="app-menu-row"
-            onClick={onToggleTheme}
-          >
-            <span className="app-menu-icon is-indigo">
-              {theme === 'dark' ? <Moon size={17} /> : <Sun size={17} />}
-            </span>
-            <span className="app-menu-copy">
-              <strong>Mode Gelap</strong>
-              <span>Saat ini: {theme === 'dark' ? 'Tema Gelap' : 'Tema Terang'}</span>
-            </span>
-            <span
-              className={`profile-theme-switch ${theme === 'dark' ? 'is-on' : ''}`}
-              aria-hidden="true"
-            >
-              <span className="profile-theme-knob" />
-            </span>
-          </button>
-        </section>
-      )}
 
       {!isAuthenticated && (showOnboardingRow || onOpenTerms) && (
         <section className="clean-sheet app-menu-group">

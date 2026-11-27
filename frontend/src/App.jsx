@@ -1569,8 +1569,6 @@ function CustomerPortalRoot() {
               token={userToken}
               isAuthenticated={isAuthenticated}
               currentUser={currentUser}
-              theme={theme}
-              onToggleTheme={toggleTheme}
               onSave={handleSaveSettings}
               onOpenLogin={() => {
                 setPendingAddDevice(false)
