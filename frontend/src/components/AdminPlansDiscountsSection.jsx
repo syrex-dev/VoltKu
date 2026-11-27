@@ -1038,7 +1038,7 @@ export function AdminPlansDiscountsSection({
                 />
               </div>
 
-              <div className="admin-filter-pills">
+              <div className="admin-pm-filter-tabs cols-4">
                 {[
                   { id: 'all', label: `Semua (${discounts.length})` },
                   { id: 'active', label: `Aktif (${stats.activeDiscounts})` },

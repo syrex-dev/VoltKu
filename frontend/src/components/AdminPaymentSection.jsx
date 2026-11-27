@@ -330,35 +330,22 @@ export function AdminUpgradeRequestsCard({
               Periksa bukti transfer masuk lalu aktifkan paket berbayar pelanggan secara instan.
             </p>
           </div>
-          <div className="admin-pm-filter-tabs">
-            <button
-              type="button"
-              className={`admin-filter-pill ${filterMode === 'needs_action' ? 'active' : ''}`}
-              onClick={() => setFilterMode('needs_action')}
-            >
-              Perlu Tindakan ({counts.needsAction})
-            </button>
-            <button
-              type="button"
-              className={`admin-filter-pill ${filterMode === 'awaiting' ? 'active' : ''}`}
-              onClick={() => setFilterMode('awaiting')}
-            >
-              Menunggu Bayar ({counts.awaiting})
-            </button>
-            <button
-              type="button"
-              className={`admin-filter-pill ${filterMode === 'approved' ? 'active' : ''}`}
-              onClick={() => setFilterMode('approved')}
-            >
-              Lunas ({counts.approved})
-            </button>
-            <button
-              type="button"
-              className={`admin-filter-pill ${filterMode === 'all' ? 'active' : ''}`}
-              onClick={() => setFilterMode('all')}
-            >
-              Semua ({counts.all})
-            </button>
+          <div className="admin-pm-filter-tabs cols-4">
+            {[
+              { id: 'needs_action', label: `Perlu Tindakan (${counts.needsAction})` },
+              { id: 'awaiting', label: `Menunggu Bayar (${counts.awaiting})` },
+              { id: 'approved', label: `Lunas (${counts.approved})` },
+              { id: 'all', label: `Semua (${counts.all})` },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`admin-filter-pill ${filterMode === tab.id ? 'active' : ''}`}
+                onClick={() => setFilterMode(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
 

@@ -378,52 +378,35 @@ export function AdminUsersSection({
           </button>
         </div>
 
-        <div className="admin-pm-filter-tabs" style={{ marginTop: 10 }}>
-          <button
-            type="button"
-            className={`admin-filter-pill ${filter === 'all' ? 'active' : ''}`}
-            onClick={() => setFilter('all')}
-          >
-            Semua ({summary.total})
-          </button>
-          <button
-            type="button"
-            className={`admin-filter-pill ${filter === 'pro' ? 'active' : ''}`}
-            onClick={() => setFilter('pro')}
-          >
-            VoltKu Pro ({summary.pro})
-          </button>
-          <button
-            type="button"
-            className={`admin-filter-pill ${filter === 'free' ? 'active' : ''}`}
-            onClick={() => setFilter('free')}
-          >
-            Gratis ({summary.free})
-          </button>
-          {summary.inactive > 0 && (
-            <button
-              type="button"
-              className={`admin-filter-pill ${filter === 'inactive' ? 'active' : ''}`}
-              onClick={() => setFilter('inactive')}
+        {(() => {
+          const userFilters = [
+            { id: 'all', label: `Semua (${summary.total})` },
+            { id: 'pro', label: `VoltKu Pro (${summary.pro})` },
+            { id: 'free', label: `Gratis (${summary.free})` },
+            ...(summary.inactive > 0
+              ? [{ id: 'inactive', label: `Nonaktif (${summary.inactive})` }]
+              : []),
+            { id: 'google', label: `Google (${summary.google})` },
+            { id: 'email', label: `Email (${summary.email})` },
+          ]
+          return (
+            <div
+              className={`admin-pm-filter-tabs is-justified cols-${userFilters.length}`}
+              style={{ marginTop: 10 }}
             >
-              Nonaktif ({summary.inactive})
-            </button>
-          )}
-          <button
-            type="button"
-            className={`admin-filter-pill ${filter === 'google' ? 'active' : ''}`}
-            onClick={() => setFilter('google')}
-          >
-            Google ({summary.google})
-          </button>
-          <button
-            type="button"
-            className={`admin-filter-pill ${filter === 'email' ? 'active' : ''}`}
-            onClick={() => setFilter('email')}
-          >
-            Email ({summary.email})
-          </button>
-        </div>
+              {userFilters.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={`admin-filter-pill ${filter === f.id ? 'active' : ''}`}
+                  onClick={() => setFilter(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       {/* 3. Daftar Pengguna (Desktop & Mobile) */}

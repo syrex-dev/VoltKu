@@ -402,8 +402,8 @@ export function AdminDevicesSection({
           </button>
         </div>
 
-        <div className="admin-pm-filter-tabs" style={{ marginTop: 10 }}>
-          {[
+        {(() => {
+          const deviceFilters = [
             { id: 'all', label: `Semua (${summary.total})` },
             { id: 'online', label: `Online (${summary.online})` },
             ...(summary.offline > 0
@@ -412,17 +412,25 @@ export function AdminDevicesSection({
             { id: 'claimed', label: `Terklaim (${summary.claimed})` },
             { id: 'unclaimed', label: `Stok (${summary.unclaimed})` },
             { id: 'demo', label: `Demo Guest (${summary.demo})` },
-          ].map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              className={`admin-filter-pill ${statusFilter === f.id ? 'active' : ''}`}
-              onClick={() => setStatusFilter(f.id)}
+          ]
+          return (
+            <div
+              className={`admin-pm-filter-tabs is-justified cols-${deviceFilters.length}`}
+              style={{ marginTop: 10 }}
             >
-              {f.label}
-            </button>
-          ))}
-        </div>
+              {deviceFilters.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={`admin-filter-pill ${statusFilter === f.id ? 'active' : ''}`}
+                  onClick={() => setStatusFilter(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       {/* 3. Daftar Perangkat (Desktop & Mobile) */}
