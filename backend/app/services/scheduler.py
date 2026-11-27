@@ -63,21 +63,32 @@ def reschedule_daily_report(
     new_hour: Optional[int] = None,
     timezone_name: Optional[str] = None,
 ) -> None:
-    """Memperbarui jadwal laporan harian sesuai jam & zona waktu (WIB/WITA/WIT)."""
+    """Memperbarui jadwal laporan harian & mingguan sesuai jam dan zona waktu (WIB/WITA/WIT)."""
     if not scheduler.running:
         return
-    job = scheduler.get_job("daily_report_job")
-    if job:
-        db_hour, db_tz = _get_setting_report_schedule()
-        target_hour = db_hour if new_hour is None else int(new_hour)
-        target_tz = normalize_timezone_name(timezone_name or db_tz)
-        trigger = CronTrigger(hour=target_hour, minute=0, timezone=resolve_zoneinfo(target_tz))
-        scheduler.reschedule_job("daily_report_job", trigger=trigger)
+    db_hour, db_tz = _get_setting_report_schedule()
+    target_hour = db_hour if new_hour is None else int(new_hour)
+    target_tz = normalize_timezone_name(timezone_name or db_tz)
+    zone_obj = resolve_zoneinfo(target_tz)
+
+    daily_job = scheduler.get_job("daily_report_job")
+    if daily_job:
+        scheduler.reschedule_job(
+            "daily_report_job",
+            trigger=CronTrigger(hour=target_hour, minute=0, timezone=zone_obj),
+        )
         logger.info(
             "Rescheduled daily_report_job to %02d:00 %s (%s)",
             target_hour,
             get_timezone_short_label(target_tz),
             target_tz,
+        )
+
+    weekly_job = scheduler.get_job("weekly_report_job")
+    if weekly_job:
+        scheduler.reschedule_job(
+            "weekly_report_job",
+            trigger=CronTrigger(day_of_week="sun", hour=20, minute=0, timezone=zone_obj),
         )
 
 
@@ -125,11 +136,11 @@ def init_scheduler_jobs(
             coalesce=True,
         )
 
-    # 4. Job Laporan Mingguan: dijalankan tiap Minggu jam 20.00 WIB
+    # 4. Job Laporan Mingguan: mengikuti zona waktu pengaturan aktif
     if not scheduler.get_job("weekly_report_job"):
         scheduler.add_job(
             run_weekly_report_job,
-            trigger=CronTrigger(day_of_week="sun", hour=20, minute=0, timezone=TZ_WIB),
+            trigger=CronTrigger(day_of_week="sun", hour=20, minute=0, timezone=report_tz),
             id="weekly_report_job",
             replace_existing=True,
             max_instances=1,

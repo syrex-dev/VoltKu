@@ -323,6 +323,7 @@ class IngestService:
 
         client.on_connect = on_connect
         client.on_message = on_message
+        client.reconnect_delay_set(min_delay=1, max_delay=30)
         self._mqtt_client = client
         return client
 
@@ -332,12 +333,17 @@ class IngestService:
             self.init_mqtt_client()
         assert self._mqtt_client is not None
         try:
-            self._mqtt_client.connect(settings.mqtt_host, settings.mqtt_port, 60)
+            # Gunakan connect_async + loop_start agar tahan startup race dengan Mosquitto
+            self._mqtt_client.connect_async(settings.mqtt_host, settings.mqtt_port, 60)
             self._mqtt_client.loop_start()
-            logger.info("MQTT loop started.")
+            logger.info(
+                "MQTT async loop started (target %s:%s).",
+                settings.mqtt_host,
+                settings.mqtt_port,
+            )
         except Exception as err:
             logger.warning(
-                "Could not connect to MQTT broker (%s:%s): %s",
+                "Could not start MQTT loop (%s:%s): %s",
                 settings.mqtt_host,
                 settings.mqtt_port,
                 err,

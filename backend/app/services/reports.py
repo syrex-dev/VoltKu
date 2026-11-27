@@ -64,7 +64,8 @@ def calculate_device_summary(
             detail={"error": {"code": 404, "message": f"Device '{device_id}' not found"}},
         )
 
-    now_wib = now_dt.astimezone(TZ_WIB) if now_dt else datetime.now(tz=TZ_WIB)
+    active_tz = now_dt.tzinfo if (now_dt and now_dt.tzinfo) else TZ_WIB
+    now_wib = now_dt.astimezone(active_tz) if now_dt else datetime.now(tz=active_tz)
     active_tariff_sen = get_current_tariff_sen(session, user_id=device.owner_user_id)
     extra_percent = get_extra_percent(session, user_id=device.owner_user_id)
 
@@ -80,18 +81,18 @@ def calculate_device_summary(
                 },
             )
         if range == "today":
-            start_wib = datetime.combine(now_wib.date(), time(0, 0, 0), tzinfo=TZ_WIB)
+            start_wib = datetime.combine(now_wib.date(), time(0, 0, 0), tzinfo=active_tz)
             start_time = int(start_wib.timestamp())
             end_time = int(now_wib.timestamp())
         elif range == "week":
             # Minggu dimulai hari Senin
             start_date = now_wib.date() - timedelta(days=now_wib.weekday())
-            start_wib = datetime.combine(start_date, time(0, 0, 0), tzinfo=TZ_WIB)
+            start_wib = datetime.combine(start_date, time(0, 0, 0), tzinfo=active_tz)
             start_time = int(start_wib.timestamp())
             end_time = int(now_wib.timestamp())
         elif range == "month":
             start_date = now_wib.date().replace(day=1)
-            start_wib = datetime.combine(start_date, time(0, 0, 0), tzinfo=TZ_WIB)
+            start_wib = datetime.combine(start_date, time(0, 0, 0), tzinfo=active_tz)
             start_time = int(start_wib.timestamp())
             end_time = int(now_wib.timestamp())
         else:
@@ -124,8 +125,8 @@ def calculate_device_summary(
         )
 
     # Cek apakah rentang tepat mencakup hari-hari penuh yang lampau (tanpa jam parsial)
-    dt_from = datetime.fromtimestamp(start_time, tz=TZ_WIB)
-    dt_to = datetime.fromtimestamp(end_time, tz=TZ_WIB)
+    dt_from = datetime.fromtimestamp(start_time, tz=active_tz)
+    dt_to = datetime.fromtimestamp(end_time, tz=active_tz)
 
     is_exact_midnight_start = dt_from.time() == time(0, 0, 0)
     is_exact_midnight_end = dt_to.time() in (time(23, 59, 59), time(0, 0, 0))
@@ -159,7 +160,7 @@ def calculate_device_summary(
 
         # Tambahkan hari berjalan (today)
         start_today_ts = int(
-            datetime.combine(now_wib.date(), time(0, 0, 0), tzinfo=TZ_WIB).timestamp()
+            datetime.combine(now_wib.date(), time(0, 0, 0), tzinfo=active_tz).timestamp()
         )
         stmt_today = select(func.sum(Reading.delta_kwh)).where(
             Reading.device_id == device_id,
@@ -191,8 +192,8 @@ def calculate_device_summary(
         cur_date = dt_from.date()
         accum_cost = 0
         while cur_date <= dt_to.date():
-            d_start_dt = datetime.combine(cur_date, time(0, 0, 0), tzinfo=TZ_WIB)
-            d_end_dt = datetime.combine(cur_date, time(23, 59, 59), tzinfo=TZ_WIB)
+            d_start_dt = datetime.combine(cur_date, time(0, 0, 0), tzinfo=active_tz)
+            d_end_dt = datetime.combine(cur_date, time(23, 59, 59), tzinfo=active_tz)
             d_start = max(start_time, int(d_start_dt.timestamp()))
             d_end = min(end_time, int(d_end_dt.timestamp()))
             is_full = d_start == int(d_start_dt.timestamp()) and d_end == int(d_end_dt.timestamp())
@@ -281,7 +282,8 @@ def calculate_device_forecast(
             detail={"error": {"code": 404, "message": f"Device '{device_id}' not found"}},
         )
 
-    now_wib = now_dt.astimezone(TZ_WIB) if now_dt else datetime.now(tz=TZ_WIB)
+    active_tz = now_dt.tzinfo if (now_dt and now_dt.tzinfo) else TZ_WIB
+    now_wib = now_dt.astimezone(active_tz) if now_dt else datetime.now(tz=active_tz)
     today_str = now_wib.strftime("%Y-%m-%d")
     current_month_prefix = now_wib.strftime("%Y-%m")
 
@@ -289,7 +291,7 @@ def calculate_device_forecast(
     all_hours = session.scalars(select(HourlyStat).where(HourlyStat.device_id == device_id)).all()
     samples_per_day: dict[str, int] = {}
     for h in all_hours:
-        d_str = datetime.fromtimestamp(h.hour_start, tz=TZ_WIB).strftime("%Y-%m-%d")
+        d_str = datetime.fromtimestamp(h.hour_start, tz=active_tz).strftime("%Y-%m-%d")
         samples_per_day[d_str] = samples_per_day.get(d_str, 0) + h.samples
 
     # Hari penuh valid: sampel >= 7776 dan hari < hari ini

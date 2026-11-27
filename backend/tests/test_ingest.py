@@ -205,3 +205,26 @@ def test_ingest_non_standard_status_payload_behavior():
             # last_seen_at tidak berubah
             assert dev.last_seen_at == last_seen
 
+
+def test_mqtt_start_uses_connect_async_and_loop_start():
+    """start_mqtt() harus memakai connect_async + loop_start agar tahan startup race."""
+    calls = []
+
+    class DummyMqttClient:
+        def connect_async(self, host, port, keepalive):
+            calls.append(("connect_async", host, port, keepalive))
+
+        def loop_start(self):
+            calls.append(("loop_start",))
+
+        def connect(self, *args, **kwargs):
+            raise AssertionError("connect() sinkron tidak boleh dipakai di start_mqtt")
+
+    svc = IngestService()
+    svc._mqtt_client = DummyMqttClient()
+    svc.start_mqtt()
+
+    assert len(calls) == 2
+    assert calls[0][0] == "connect_async"
+    assert calls[1] == ("loop_start",)
+

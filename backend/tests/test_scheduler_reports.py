@@ -3,7 +3,16 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from app.config import Settings
-from app.models import DailyStat, Device, Reading, ScheduledReportsLog, Setting
+from app.models import (
+    DailyStat,
+    Device,
+    Reading,
+    ScheduledReportsLog,
+    Setting,
+    User,
+    UserNotification,
+    UserSetting,
+)
 from app.mqtt_ingest import process_telemetry_payload
 from app.services.notifier import set_notification_sender
 from app.services.report_generator import (
@@ -210,6 +219,10 @@ async def test_scheduler_reschedule_daily_report():
     assert hour_wita == "20"
     assert str(job_wita.trigger.timezone) == "Asia/Makassar"
 
+    weekly_wita = scheduler.get_job("weekly_report_job")
+    assert weekly_wita is not None
+    assert str(weekly_wita.trigger.timezone) == "Asia/Makassar"
+
     scheduler.shutdown(wait=False)
 
 
@@ -318,3 +331,70 @@ def test_reports_skip_when_all_devices_are_sim():
     res_weekly = generate_and_send_weekly_report(session, target_date_str="2026-11-22")
     assert res_weekly is False
     assert len(sent_msgs) == 0
+
+
+def test_multi_tenant_reports_independent_timezones_and_inbox():
+    """Tenant di WIT dan WITA menerima laporan ke Inbox sesuai jam/zona waktu masing-masing."""
+    _, session = get_test_session()
+    set_notification_sender(None)  # Channel Telegram global tidak aktif
+
+    u_wit = User(name="Budi WIT", email="wit@example.com", password_hash="x", is_active=1)
+    u_wita = User(name="Sari WITA", email="wita@example.com", password_hash="x", is_active=1)
+    session.add_all([u_wit, u_wita])
+    session.flush()
+
+    session.add_all(
+        [
+            UserSetting(user_id=u_wit.id, key="report_timezone", value="Asia/Jayapura"),
+            UserSetting(user_id=u_wit.id, key="report_hour", value="20"),
+            UserSetting(user_id=u_wita.id, key="report_timezone", value="Asia/Makassar"),
+            UserSetting(user_id=u_wita.id, key="report_hour", value="21"),
+            Device(
+                id="dev-wit-1",
+                name="Rumah Jayapura",
+                mcb_watt=2200,
+                owner_user_id=u_wit.id,
+                status="online",
+            ),
+            Device(
+                id="dev-wita-1",
+                name="Rumah Makassar",
+                mcb_watt=2200,
+                owner_user_id=u_wita.id,
+                status="online",
+            ),
+        ]
+    )
+    session.commit()
+
+    # 20:10 WIT = 19:10 WITA -> hanya user WIT yang sudah waktunya
+    dt_t1 = datetime(2026, 11, 20, 20, 10, 0, tzinfo=ZoneInfo("Asia/Jayapura"))
+    actions1 = check_and_send_catchup_reports(session, now_dt=dt_t1)
+    assert f"tenant_{u_wit.id}_daily_2026-11-20" in actions1
+    assert f"tenant_{u_wita.id}_daily_2026-11-20" not in actions1
+
+    wit_notifs = session.scalars(
+        select(UserNotification).where(UserNotification.user_id == u_wit.id)
+    ).all()
+    wita_notifs = session.scalars(
+        select(UserNotification).where(UserNotification.user_id == u_wita.id)
+    ).all()
+    assert len(wit_notifs) == 1
+    assert "WIT" in wit_notifs[0].body
+    assert len(wita_notifs) == 0
+
+    # 21:05 WITA = 22:05 WIT -> sekarang user WITA mendapat laporan, user WIT tidak duplikat
+    dt_t2 = datetime(2026, 11, 20, 21, 5, 0, tzinfo=ZoneInfo("Asia/Makassar"))
+    actions2 = check_and_send_catchup_reports(session, now_dt=dt_t2)
+    assert f"tenant_{u_wita.id}_daily_2026-11-20" in actions2
+    assert f"tenant_{u_wit.id}_daily_2026-11-20" not in actions2
+
+    wit_notifs_after = session.scalars(
+        select(UserNotification).where(UserNotification.user_id == u_wit.id)
+    ).all()
+    wita_notifs_after = session.scalars(
+        select(UserNotification).where(UserNotification.user_id == u_wita.id)
+    ).all()
+    assert len(wit_notifs_after) == 1
+    assert len(wita_notifs_after) == 1
+    assert "WITA" in wita_notifs_after[0].body
