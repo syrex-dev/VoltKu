@@ -375,10 +375,10 @@ export function AdminPanel({
 
   return (
     <div className={`app-layout admin-shell ${hasAdminModal ? 'has-modal-open' : ''}`}>
-      <div className="app-header-wrap clean-header-bar">
+      <div className="app-header-wrap clean-header-bar admin-header-bar">
         <div className="container">
-          <header className="app-header clean-header-inner">
-            <div className="header-main-row">
+          <header className="app-header clean-header-inner admin-header-inner">
+            <div className="header-main-row admin-topbar-row">
               <div className="admin-head-left">
                 <BrandLogo
                   theme={theme}
@@ -386,40 +386,11 @@ export function AdminPanel({
                   appName={appSettings?.app_name || 'VoltKu'}
                   variant="compact"
                 />
+                <span className="admin-brand-divider" aria-hidden="true" />
                 <span className="admin-title-badge">Admin</span>
-                <a
-                  href="/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="desktop-back-btn admin-back-pill"
-                  title="Buka Halaman Pembeli"
-                >
-                  <ExternalLink size={14} />
-                  <span>Web User</span>
-                </a>
               </div>
 
-              <nav className="desktop-header-nav" aria-label="Menu Admin">
-                {tabs.map((t) => {
-                  const Icon = t.icon
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className={`desktop-nav-pill ${adminTab === t.id ? 'active' : ''}`}
-                      onClick={() => setAdminTab(t.id)}
-                    >
-                      <Icon size={15} />
-                      <span>{t.label}</span>
-                      {t.badge > 0 && (
-                        <span className="desktop-nav-badge">{t.badge}</span>
-                      )}
-                    </button>
-                  )
-                })}
-              </nav>
-
-              <div className="header-actions">
+              <div className="header-actions admin-head-actions">
                 <span
                   className={`admin-live-pill is-${syncStatus}`}
                   title="Sinkronisasi otomatis 2 arah dengan publik aktif"
@@ -433,6 +404,17 @@ export function AdminPanel({
                       : 'Live'}
                   </span>
                 </span>
+                <a
+                  href="/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="desktop-back-btn admin-back-pill"
+                  title="Buka Halaman Pembeli"
+                >
+                  <ExternalLink size={14} />
+                  <span>Web User</span>
+                </a>
+                <span className="admin-actions-sep" aria-hidden="true" />
                 <button
                   type="button"
                   className="header-icon-btn"
@@ -440,27 +422,50 @@ export function AdminPanel({
                   aria-label="Muat Ulang Data Admin"
                   title="Muat ulang data"
                 >
-                  <RefreshCw size={17} />
+                  <RefreshCw size={16} />
                 </button>
                 <button
                   type="button"
                   className="header-icon-btn"
                   onClick={onToggleTheme}
                   aria-label="Ganti Tema"
+                  title={theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}
                 >
-                  {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                  {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
                 </button>
                 <button
                   type="button"
-                  className="header-icon-btn"
+                  className="header-icon-btn admin-logout-btn"
                   onClick={onLogout}
                   aria-label="Keluar Admin"
                   title="Keluar Sesi Admin"
                 >
-                  <LogOut size={17} />
+                  <LogOut size={16} />
                 </button>
               </div>
             </div>
+
+            <nav className="admin-subnav-bar" aria-label="Menu Admin">
+              {tabs.map((t) => {
+                const Icon = t.icon
+                const isActive = adminTab === t.id
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`admin-nav-tab ${isActive ? 'active' : ''}`}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => setAdminTab(t.id)}
+                  >
+                    <Icon size={15} />
+                    <span>{t.label}</span>
+                    {t.badge > 0 && (
+                      <span className="desktop-nav-badge">{t.badge}</span>
+                    )}
+                  </button>
+                )
+              })}
+            </nav>
           </header>
         </div>
       </div>

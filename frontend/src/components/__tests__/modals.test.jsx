@@ -6,6 +6,7 @@ import { ProfileModal } from '../ProfileModal'
 import { SettingsView } from '../SettingsView'
 import { HeroBannerCarousel } from '../HeroBannerCarousel'
 import { AdminHeroBannersCard } from '../AdminHeroBannersCard'
+import { AdminPanel } from '../AdminPanel'
 import { AppLockSubView } from '../ProfileSubViews'
 import { getAppLockConfig } from '../../utils/userPrefs'
 
@@ -254,6 +255,16 @@ describe('VoltKu Paket & Profil modal render guards', () => {
     const emptyAdminHtml = renderToStaticMarkup(<AdminHeroBannersCard banners={[]} />)
     expect(emptyAdminHtml).toContain('Tidak ada hero banner aktif')
     expect(emptyAdminHtml).toContain('Tambah Banner Pertama')
+  })
+
+  it('renders AdminPanel with two-tier clean navbar and subnav tabs', () => {
+    const html = renderToStaticMarkup(
+      <AdminPanel token="admin-tok" theme="light" onToggleTheme={() => {}} onLogout={() => {}} />
+    )
+    expect(html).toContain('admin-topbar-row')
+    expect(html).toContain('admin-subnav-bar')
+    expect(html).toContain('admin-nav-tab active')
+    expect(html).toContain('Web User')
   })
 })
 
