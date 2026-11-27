@@ -12,8 +12,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { EnergyAssistantIcon } from './VoltKuIcons'
-import mascotWelcomeImg from '../assets/mascot/voltku-welcome.jpg'
-import mascotAnalyzeImg from '../assets/mascot/voltku-analyze.jpg'
+import { resolveVisualAsset } from '../utils/mascotAssets'
 
 function StepPhoneMockup({ stepNum }) {
   if (stepNum === 1) {
@@ -167,8 +166,10 @@ function StepPhoneMockup({ stepNum }) {
   )
 }
 
-export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
+export function UsageGuideModal({ isOpen, onClose, onStartAddDevice, appConfig = {} }) {
   const [guideTab, setGuideTab] = useState('pairing')
+  const welcomeSrc = resolveVisualAsset(appConfig, 'onboarding_welcome')
+  const analyzeSrc = resolveVisualAsset(appConfig, 'chatbot_empty')
 
   if (!isOpen) return null
 
@@ -225,9 +226,11 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
           {guideTab === 'pairing' ? (
             <div className="ug-article">
               <div className="ug-hero-guide-card">
-                <span className="ug-hero-guide-avatar" aria-hidden="true">
-                  <img src={mascotWelcomeImg} alt="" />
-                </span>
+                {welcomeSrc && (
+                  <span className="ug-hero-guide-avatar" aria-hidden="true">
+                    <img src={welcomeSrc} alt="" />
+                  </span>
+                )}
                 <div className="ug-hero-guide-copy">
                   <strong>Persiapan Sebelum Pasang</strong>
                   <p>
@@ -302,9 +305,11 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
           ) : (
             <div className="ug-article">
               <div className="ug-hero-guide-card">
-                <span className="ug-hero-guide-avatar" aria-hidden="true">
-                  <img src={mascotAnalyzeImg} alt="" />
-                </span>
+                {analyzeSrc && (
+                  <span className="ug-hero-guide-avatar" aria-hidden="true">
+                    <img src={analyzeSrc} alt="" />
+                  </span>
+                )}
                 <div className="ug-hero-guide-copy">
                   <strong>Kenali Menu &amp; Fitur dalam 1 Menit</strong>
                   <p>

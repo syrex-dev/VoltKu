@@ -217,6 +217,7 @@ def test_route_audit_security_lockdown():
         "/api/public/plans",
         "/api/public/payment-methods",
         "/api/payment-methods/{method_id}/qris",
+        "/api/public/visual-assets/{slot}",
     }
 
     for route in app.routes:

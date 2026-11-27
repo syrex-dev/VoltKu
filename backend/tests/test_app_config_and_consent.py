@@ -323,3 +323,103 @@ def test_admin_hero_banners_crud_validation_and_empty_delete():
     assert cleared.status_code == 200
     assert cleared.json()["hero_banners"] == []
     assert client.get("/api/public/app-config").json()["hero_banners"] == []
+
+
+def test_admin_visual_assets_crud_upload_toggle_reset_and_disable():
+    open_clean_test_session()
+    admin_tok = create_access_token(subject="admin", role="admin")
+    reg = client.post(
+        "/api/users/register",
+        json={
+            "name": "Bukan Admin",
+            "email": "bukanadmin@voltku.id",
+            "password": "password123",
+            "accept_terms": True,
+        },
+    )
+    assert reg.status_code == 201
+    user_tok = reg.json()["token"]
+
+    tiny_png_b64 = (
+        "data:image/png;base64,"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+
+    # Non-admin ditolak (403)
+    forbidden = client.put(
+        "/api/admin/visual-assets/pro_banner",
+        headers={"Authorization": f"Bearer {user_tok}"},
+        json={"image_base64": tiny_png_b64},
+    )
+    assert forbidden.status_code == 403
+
+    # Slot tidak dikenal ditolak (404), payload rusak ditolak (422)
+    unknown = client.put(
+        "/api/admin/visual-assets/slot_palsu",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"enabled": False},
+    )
+    assert unknown.status_code == 404
+
+    invalid_img = client.put(
+        "/api/admin/visual-assets/pro_banner",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"image_base64": "bukan-gambar-base64"},
+    )
+    assert invalid_img.status_code == 422
+
+    rev_before = client.get("/api/public/sync-state").json()["config_rev"]
+
+    # Admin upload gambar kustom untuk pro_banner
+    uploaded = client.put(
+        "/api/admin/visual-assets/pro_banner",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"image_base64": tiny_png_b64, "enabled": True},
+    )
+    assert uploaded.status_code == 200
+    pro_meta = uploaded.json()["visual_assets"]["pro_banner"]
+    assert pro_meta["is_custom"] is True
+    assert pro_meta["enabled"] is True
+    assert pro_meta["url"].startswith("/api/public/visual-assets/pro_banner?v=")
+
+    # Public config & file endpoint menyajikan gambar kustom dan sync-state berubah
+    pub = client.get("/api/public/app-config").json()
+    assert pub["visual_assets"]["pro_banner"]["url"] == pro_meta["url"]
+    rev_after = client.get("/api/public/sync-state").json()["config_rev"]
+    assert rev_after != rev_before
+
+    img_res = client.get("/api/public/visual-assets/pro_banner")
+    assert img_res.status_code == 200
+    assert img_res.headers["content-type"].startswith("image/png")
+    assert img_res.content.startswith(b"\x89PNG")
+
+    # Toggle hide sementara mempertahankan custom flag tetapi enabled=False
+    toggled = client.put(
+        "/api/admin/visual-assets/pro_banner",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"enabled": False},
+    )
+    assert toggled.status_code == 200
+    assert toggled.json()["visual_assets"]["pro_banner"]["enabled"] is False
+    assert toggled.json()["visual_assets"]["pro_banner"]["is_custom"] is True
+
+    # Delete action=disable menyembunyikan slot bawaan dan menghapus file kustom
+    disabled = client.delete(
+        "/api/admin/visual-assets/chatbot_avatar?action=disable",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["visual_assets"]["chatbot_avatar"]["enabled"] is False
+    assert disabled.json()["visual_assets"]["chatbot_avatar"]["is_custom"] is False
+
+    # Delete action=reset memulihkan pro_banner ke maskot bawaan & menghapus berkas publik
+    reset_res = client.delete(
+        "/api/admin/visual-assets/pro_banner?action=reset",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+    )
+    assert reset_res.status_code == 200
+    pro_reset = reset_res.json()["visual_assets"]["pro_banner"]
+    assert pro_reset["enabled"] is True
+    assert pro_reset["is_custom"] is False
+    assert pro_reset["url"] is None
+    assert client.get("/api/public/visual-assets/pro_banner").status_code == 404

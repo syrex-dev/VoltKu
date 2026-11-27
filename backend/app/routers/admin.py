@@ -44,10 +44,12 @@ from app.routers.public import PUBLIC_ACCESS_KEY, is_public_dashboard_enabled
 from app.routers.settings import format_settings_response, get_all_settings
 from app.routers.users import EMAIL_RE, _serialize_user, _validate_password_policy
 from app.services.app_config import (
+    delete_admin_visual_asset,
     get_active_terms_version,
     get_admin_app_settings,
     get_app_config_map,
     update_admin_app_settings,
+    update_admin_visual_asset,
     upsert_app_config,
 )
 from app.services.email_service import (
@@ -275,6 +277,11 @@ class AdminAppSettingsUpdateRequest(BaseModel):
     report_timezone: Optional[str] = None
     report_enabled: Optional[bool] = None
     hero_banners: Optional[list[dict[str, Any]]] = None
+
+
+class AdminVisualAssetUpdateRequest(BaseModel):
+    image_base64: Optional[str] = None
+    enabled: Optional[bool] = None
 
 
 def _admin_err(code: int, message: str) -> HTTPException:
@@ -718,6 +725,41 @@ def update_admin_application_settings(
     payload = req.model_dump(exclude_unset=True)
     try:
         return update_admin_app_settings(session, payload)
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+
+@router.put("/visual-assets/{slot}", response_model=dict[str, Any])
+def upsert_admin_visual_asset(
+    slot: str,
+    req: AdminVisualAssetUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    """Mengunggah/mengganti gambar kustom atau mengubah status tampil suatu slot aset visual."""
+    try:
+        return update_admin_visual_asset(
+            session,
+            slot,
+            image_base64=req.image_base64,
+            enabled=req.enabled,
+        )
+    except LookupError as err:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, str(err)) from err
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+
+@router.delete("/visual-assets/{slot}", response_model=dict[str, Any])
+def remove_admin_visual_asset(
+    slot: str,
+    action: str = Query("reset", pattern="^(reset|disable)$"),
+    session: Session = Depends(get_db),
+):
+    """Menghapus gambar custom (reset ke maskot bawaan atau disable dari tampilan aplikasi)."""
+    try:
+        return delete_admin_visual_asset(session, slot, action=action)
+    except LookupError as err:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, str(err)) from err
     except ValueError as err:
         raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
 

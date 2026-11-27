@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import {
   AlertCircle,
+  ShieldCheck,
   WifiOff,
   Zap,
   Gauge,
@@ -8,8 +9,7 @@ import {
   Moon,
 } from 'lucide-react'
 import { formatDateTimeWIB, getPreferredTimeZoneTag } from '../utils/formatters'
-import mascotEcoBadgeImg from '../assets/mascot/voltku-eco-badge.jpg'
-import mascotAlertImg from '../assets/mascot/voltku-alert.jpg'
+import { resolveVisualAsset } from '../utils/mascotAssets'
 
 function getAnomalyMeta(item) {
   const type = item?.type || ''
@@ -47,8 +47,11 @@ export function AnomaliesList({
   anomalies,
   showDeviceLabel = false,
   deviceNamesById = {},
+  appConfig = {},
 }) {
   const [sevFilter, setSevFilter] = useState('all')
+  const alertImgSrc = resolveVisualAsset(appConfig, 'anomaly_alert')
+  const healthyImgSrc = resolveVisualAsset(appConfig, 'anomaly_healthy')
   const list = useMemo(() => anomalies || [], [anomalies])
   const critCount = useMemo(
     () => list.filter((a) => (a.severity || '').toLowerCase() === 'critical').length,
@@ -81,21 +84,23 @@ export function AnomaliesList({
 
       {list.length > 0 && (
         <>
-          <div className="anomaly-alert-hero">
-            <span className="anomaly-alert-hero-thumb" aria-hidden="true">
-              <img src={mascotAlertImg} alt="" />
-            </span>
-            <div className="anomaly-alert-hero-copy">
-              <strong>
-                {critCount > 0
-                  ? `${critCount} Peringatan Kritis Memerlukan Perhatian`
-                  : `${warnCount} Catatan Peringatan Terdeteksi`}
-              </strong>
-              <span>
-                Periksa kondisi panel, tegangan, atau beban listrik Anda pada rincian di bawah.
+          {alertImgSrc && (
+            <div className="anomaly-alert-hero">
+              <span className="anomaly-alert-hero-thumb" aria-hidden="true">
+                <img src={alertImgSrc} alt="" />
               </span>
+              <div className="anomaly-alert-hero-copy">
+                <strong>
+                  {critCount > 0
+                    ? `${critCount} Peringatan Kritis Memerlukan Perhatian`
+                    : `${warnCount} Catatan Peringatan Terdeteksi`}
+                </strong>
+                <span>
+                  Periksa kondisi panel, tegangan, atau beban listrik Anda pada rincian di bawah.
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="anomaly-filter-bar">
             {[
@@ -118,13 +123,13 @@ export function AnomaliesList({
 
       {visibleList.length === 0 ? (
         <div className="empty-healthy-card">
-          {list.length === 0 ? (
+          {list.length === 0 && healthyImgSrc ? (
             <div className="healthy-mascot-wrap" aria-hidden="true">
-              <img src={mascotEcoBadgeImg} alt="" />
+              <img src={healthyImgSrc} alt="" />
             </div>
           ) : (
             <div className="healthy-icon-wrap" aria-hidden="true">
-              <AlertCircle size={24} />
+              {list.length === 0 ? <ShieldCheck size={24} /> : <AlertCircle size={24} />}
             </div>
           )}
           <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-main)' }}>

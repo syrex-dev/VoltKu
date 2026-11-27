@@ -1557,6 +1557,7 @@ function CustomerPortalRoot() {
               anomalies={globalAnomalies}
               showDeviceLabel
               deviceNamesById={deviceNamesById}
+              appConfig={publicAppConfig}
             />
           </div>
         )}
@@ -1646,7 +1647,7 @@ function CustomerPortalRoot() {
 
         {isDeviceScope && activeTab === 'anomalies' && (
           <div className="tab-pane-fade">
-            <AnomaliesList anomalies={deviceAnomalies} />
+            <AnomaliesList anomalies={deviceAnomalies} appConfig={publicAppConfig} />
           </div>
         )}
 
@@ -1855,6 +1856,7 @@ function CustomerPortalRoot() {
       <OnboardingTour
         isOpen={showTour && !isDeviceScope && activeTab === 'home'}
         steps={publicAppConfig.onboarding_steps}
+        appConfig={publicAppConfig}
         onComplete={finishTour}
         onSkip={finishTour}
       />
@@ -1863,6 +1865,7 @@ function CustomerPortalRoot() {
         <Suspense fallback={null}>
           <UsageGuideModal
             isOpen={showUsageGuide}
+            appConfig={publicAppConfig}
             onClose={() => setShowUsageGuide(false)}
             onStartAddDevice={handleRequestAddDevice}
           />
@@ -1872,6 +1875,7 @@ function CustomerPortalRoot() {
       {isAuthenticated && (
         <AiChatWidget
           token={userToken}
+          appConfig={publicAppConfig}
           onUnauthorized={handleUnauthorized}
           hidden={hasForegroundOverlay}
         />

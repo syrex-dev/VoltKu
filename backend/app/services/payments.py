@@ -72,7 +72,7 @@ def decode_base64_image(raw_input: str) -> tuple[bytes, str, str]:
 
 def save_private_image(subdir: str, base64_data: str) -> str:
     """Simpan gambar tervalidasi ke direktori privat storage dan kembalikan path relatif."""
-    if subdir not in ("qris", "payment_proofs"):
+    if subdir not in ("qris", "payment_proofs", "app_visuals"):
         raise ValueError("Subdirektori penyimpanan tidak diizinkan.")
     raw_bytes, ext, _ = decode_base64_image(base64_data)
     root = get_storage_root()

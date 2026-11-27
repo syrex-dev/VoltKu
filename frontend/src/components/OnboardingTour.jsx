@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { ArrowRight, ArrowLeft, Check, X } from 'lucide-react'
-import mascotWelcomeImg from '../assets/mascot/voltku-welcome.jpg'
-import mascotAnalyzeImg from '../assets/mascot/voltku-analyze.jpg'
-import mascotEcoBadgeImg from '../assets/mascot/voltku-eco-badge.jpg'
+import { resolveVisualAsset } from '../utils/mascotAssets'
+
+const ONBOARDING_MASCOT_SLOTS = ['onboarding_welcome', 'chatbot_empty', 'anomaly_healthy']
 
 const DEFAULT_GUIDE_STEPS = [
   {
@@ -25,24 +25,13 @@ const DEFAULT_GUIDE_STEPS = [
   },
 ]
 
-function StepIllustration({ stepIndex }) {
-  const mascotImages = [mascotWelcomeImg, mascotAnalyzeImg, mascotEcoBadgeImg]
-  const src = mascotImages[stepIndex % mascotImages.length]
-  return (
-    <img
-      src={src}
-      alt=""
-      className={`guide-illus-mascot ${stepIndex === 2 ? 'is-badge' : ''}`}
-      aria-hidden="true"
-    />
-  )
-}
-
-export function OnboardingTour({ isOpen, steps = null, onComplete, onSkip }) {
+export function OnboardingTour({ isOpen, steps = null, appConfig = {}, onComplete, onSkip }) {
   const [stepIndex, setStepIndex] = useState(0)
 
   const guideSteps =
     Array.isArray(steps) && steps.length >= 3 ? steps : DEFAULT_GUIDE_STEPS
+  const mascotSlot = ONBOARDING_MASCOT_SLOTS[stepIndex % ONBOARDING_MASCOT_SLOTS.length]
+  const mascotSrc = resolveVisualAsset(appConfig, mascotSlot)
 
   useEffect(() => {
     if (isOpen) setStepIndex(0)
@@ -95,9 +84,16 @@ export function OnboardingTour({ isOpen, steps = null, onComplete, onSkip }) {
         </div>
 
         {/* Ilustrasi Vektor Bersih */}
-        <div className="guide-illus-stage">
-          <StepIllustration stepIndex={stepIndex % 3} />
-        </div>
+        {mascotSrc && (
+          <div className="guide-illus-stage">
+            <img
+              src={mascotSrc}
+              alt=""
+              className={`guide-illus-mascot ${stepIndex % 3 === 2 ? 'is-badge' : ''}`}
+              aria-hidden="true"
+            />
+          </div>
+        )}
 
         <div className="guide-copy-block">
           <h3 className="guide-step-title">{currentStep.title}</h3>

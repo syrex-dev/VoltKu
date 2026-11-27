@@ -12,8 +12,10 @@ import { AnomaliesList } from '../AnomaliesList'
 import { OnboardingTour } from '../OnboardingTour'
 import { UsageGuideModal } from '../UsageGuideModal'
 import { Header } from '../Header'
+import { AdminVisualAssetsCard } from '../AdminVisualAssetsCard'
 import { AppLockSubView } from '../ProfileSubViews'
 import { getAppLockConfig } from '../../utils/userPrefs'
+import { VISUAL_ASSET_CATALOG, resolveVisualAsset } from '../../utils/mascotAssets'
 
 describe('VoltKu Paket & Profil modal render guards', () => {
   it('renders PlanUpgradeModal without ReferenceError when opened from banner or profile (free plan)', () => {
@@ -339,6 +341,75 @@ describe('VoltKu Paket & Profil modal render guards', () => {
     expect(html).toContain('ug-hero-guide-card')
     expect(html).toContain('ug-kbd-pill')
     expect(html).toContain('5 Langkah Menghubungkan Panel')
+  })
+
+  it('supports Admin visual assets CRUD catalog, custom URL resolution, and hiding mascots', () => {
+    expect(VISUAL_ASSET_CATALOG).toHaveLength(7)
+
+    // Default resolution falls back to bundled asset string
+    const defaultBanner = resolveVisualAsset({}, 'pro_banner')
+    expect(typeof defaultBanner).toBe('string')
+    expect(defaultBanner.length).toBeGreaterThan(0)
+
+    // Custom URL overrides default
+    const customBanner = resolveVisualAsset(
+      { visual_assets: { pro_banner: { enabled: true, is_custom: true, url: '/api/public/visual-assets/pro_banner?v=12' } } },
+      'pro_banner'
+    )
+    expect(customBanner).toContain('/api/public/visual-assets/pro_banner?v=12')
+
+    // Disabled slot returns null even if custom URL is set
+    expect(
+      resolveVisualAsset(
+        { visual_assets: { pro_banner: { enabled: false, is_custom: true, url: '/api/public/visual-assets/pro_banner?v=12' } } },
+        'pro_banner'
+      )
+    ).toBeNull()
+
+    // AdminVisualAssetsCard renders all 7 slots with status badges & actions
+    const adminCardHtml = renderToStaticMarkup(
+      <AdminVisualAssetsCard
+        visualAssets={{
+          chatbot_avatar: { enabled: true, is_custom: true, url: '/api/public/visual-assets/chatbot_avatar?v=5' },
+          pro_banner: { enabled: false, is_custom: false, url: null },
+        }}
+      />
+    )
+    expect(adminCardHtml).toContain('Kontrol Gambar &amp; Maskot Aplikasi')
+    expect(adminCardHtml).toContain('Ganti Gambar')
+    expect(adminCardHtml).toContain('Kustom')
+    expect(adminCardHtml).toContain('Disembunyikan')
+    expect(adminCardHtml).toContain('Pulihkan Bawaan')
+
+    // Disabling mascots cleanly hides image stages across customer components
+    const hiddenConfig = {
+      visual_assets: {
+        chatbot_avatar: { enabled: false, is_custom: false, url: null },
+        anomaly_healthy: { enabled: false, is_custom: false, url: null },
+        onboarding_welcome: { enabled: false, is_custom: false, url: null },
+        pro_banner: { enabled: false, is_custom: false, url: null },
+      },
+    }
+    const hiddenChatHtml = renderToStaticMarkup(<AiChatWidget token="tok" appConfig={hiddenConfig} />)
+    expect(hiddenChatHtml).not.toContain('ai-chat-fab-avatar')
+
+    const hiddenHealthyHtml = renderToStaticMarkup(
+      <AnomaliesList anomalies={[]} appConfig={hiddenConfig} />
+    )
+    expect(hiddenHealthyHtml).not.toContain('healthy-mascot-wrap')
+
+    const hiddenTourHtml = renderToStaticMarkup(<OnboardingTour isOpen appConfig={hiddenConfig} />)
+    expect(hiddenTourHtml).not.toContain('guide-illus-stage')
+
+    const hiddenPlanHtml = renderToStaticMarkup(
+      <PlanUpgradeModal
+        isOpen
+        onClose={() => {}}
+        currentUser={{ id: 1, name: 'Uji', email: 'u@e.id', plan: { is_pro: false } }}
+        appConfig={hiddenConfig}
+      />
+    )
+    expect(hiddenPlanHtml).not.toContain('plan-pro-showcase')
   })
 })
 

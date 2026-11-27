@@ -16,6 +16,11 @@ from app.routers.settings import (
     format_settings_response,
     get_all_settings,
 )
+from app.services.payments import (
+    delete_private_image,
+    resolve_private_image_path,
+    save_private_image,
+)
 from app.services.plans import (
     build_public_plans_payload,
     get_freemium_config,
@@ -64,6 +69,16 @@ HERO_BANNER_AUDIENCES = (
 )
 _BANNER_ID_RE = re.compile(r"[^a-z0-9_-]+")
 MAX_HERO_BANNERS = 12
+
+VISUAL_ASSET_SLOTS = (
+    "chatbot_avatar",
+    "chatbot_empty",
+    "home_empty",
+    "anomaly_alert",
+    "anomaly_healthy",
+    "onboarding_welcome",
+    "pro_banner",
+)
 
 DEFAULT_HERO_BANNERS: list[dict[str, Any]] = [
     {
@@ -203,6 +218,7 @@ DEFAULT_APP_CONFIG: dict[str, str] = {
     "announcement_text": "",
     "announcement_url": "",
     "hero_banners_json": "",
+    "visual_assets_json": "",
     "default_theme": "light",
     "onboarding_enabled": "true",
     "onboarding_step1_title": "Kenali Panel Listrik Anda",
@@ -389,6 +405,144 @@ def validate_hero_banners(raw_list: Any) -> list[dict[str, Any]]:
     ]
 
 
+def parse_visual_assets_raw(raw_json: str) -> dict[str, dict[str, Any]]:
+    """Parse peta aset visual (7 slot gambar UI) dari JSON app_config dengan fallback bawaan."""
+    base: dict[str, dict[str, Any]] = {
+        slot: {"enabled": True, "mode": "default", "custom_path": "", "version": 0}
+        for slot in VISUAL_ASSET_SLOTS
+    }
+    if not raw_json or not raw_json.strip():
+        return base
+    try:
+        parsed = json.loads(raw_json)
+    except (ValueError, TypeError):
+        return base
+    if not isinstance(parsed, dict):
+        return base
+
+    for slot in VISUAL_ASSET_SLOTS:
+        entry = parsed.get(slot)
+        if not isinstance(entry, dict):
+            continue
+        mode = str(entry.get("mode") or "default").strip().lower()
+        custom_path = str(entry.get("custom_path") or "").strip()
+        if mode not in ("default", "custom") or not custom_path:
+            mode = "default"
+            custom_path = ""
+        base[slot] = {
+            "enabled": bool(entry.get("enabled", True)),
+            "mode": mode,
+            "custom_path": custom_path,
+            "version": int(entry.get("version") or 0),
+        }
+    return base
+
+
+def build_public_visual_assets(data: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """Susun status & URL tiap slot gambar visual untuk Web dan Android APK."""
+    raw_map = parse_visual_assets_raw(data.get("visual_assets_json", ""))
+    out: dict[str, dict[str, Any]] = {}
+    for slot, item in raw_map.items():
+        has_custom = bool(
+            item["mode"] == "custom"
+            and item["custom_path"]
+            and resolve_private_image_path(item["custom_path"])
+        )
+        ver = item["version"] or 1
+        out[slot] = {
+            "enabled": bool(item["enabled"]),
+            "is_custom": has_custom,
+            "url": f"/api/public/visual-assets/{slot}?v={ver}" if has_custom else None,
+        }
+    return out
+
+
+def get_visual_asset_file(session: Session, slot: str) -> Optional[tuple[Any, str]]:
+    """Ambil path file lokal + media_type jika slot valid memakai gambar custom aktif."""
+    if slot not in VISUAL_ASSET_SLOTS:
+        return None
+    data = get_app_config_map(session)
+    raw_map = parse_visual_assets_raw(data.get("visual_assets_json", ""))
+    item = raw_map.get(slot)
+    if not item or item["mode"] != "custom" or not item["custom_path"]:
+        return None
+    return resolve_private_image_path(item["custom_path"])
+
+
+def update_admin_visual_asset(
+    session: Session,
+    slot: str,
+    *,
+    image_base64: Optional[str] = None,
+    enabled: Optional[bool] = None,
+) -> dict[str, Any]:
+    """Unggah/ganti gambar kustom atau ubah visibilitas (enabled) suatu slot aset visual."""
+    if slot not in VISUAL_ASSET_SLOTS:
+        raise LookupError(f"Slot aset visual '{slot}' tidak ditemukan")
+
+    data = get_app_config_map(session)
+    raw_map = parse_visual_assets_raw(data.get("visual_assets_json", ""))
+    current = raw_map[slot]
+    old_path = current.get("custom_path") or ""
+    new_path: Optional[str] = None
+
+    if image_base64 is not None and image_base64.strip():
+        new_path = save_private_image("app_visuals", image_base64)
+        current["custom_path"] = new_path
+        current["mode"] = "custom"
+        current["version"] = int(time.time())
+        if enabled is None:
+            current["enabled"] = True
+
+    if enabled is not None:
+        current["enabled"] = bool(enabled)
+        if not current["version"]:
+            current["version"] = int(time.time())
+
+    upsert_app_config(
+        session,
+        "visual_assets_json",
+        json.dumps(raw_map, ensure_ascii=False),
+    )
+    session.commit()
+    if new_path and old_path and old_path != new_path:
+        delete_private_image(old_path)
+    return get_admin_app_settings(session)
+
+
+def delete_admin_visual_asset(
+    session: Session,
+    slot: str,
+    *,
+    action: str = "reset",
+) -> dict[str, Any]:
+    """Hapus gambar custom (action='reset' kembali ke bawaan, 'disable' nonaktifkan visual)."""
+    if slot not in VISUAL_ASSET_SLOTS:
+        raise LookupError(f"Slot aset visual '{slot}' tidak ditemukan")
+    if action not in ("reset", "disable"):
+        raise ValueError("Aksi penghapusan visual harus 'reset' atau 'disable'")
+
+    data = get_app_config_map(session)
+    raw_map = parse_visual_assets_raw(data.get("visual_assets_json", ""))
+    current = raw_map[slot]
+    old_path = current.get("custom_path") or ""
+
+    current["custom_path"] = ""
+    current["mode"] = "default"
+    current["enabled"] = action == "reset"
+    current["version"] = int(time.time())
+
+    upsert_app_config(
+        session,
+        "visual_assets_json",
+        json.dumps(raw_map, ensure_ascii=False),
+    )
+    session.commit()
+    if old_path:
+        delete_private_image(old_path)
+    return get_admin_app_settings(session)
+
+
 def get_app_config_map(session: Session) -> dict[str, str]:
     """Gabungkan nilai default aplikasi dengan override di tabel app_config."""
     merged = dict(DEFAULT_APP_CONFIG)
@@ -513,6 +667,7 @@ def _build_public_config_payload(session: Session, data: dict[str, str]) -> dict
         "support_telegram": data["support_telegram"],
         "support_email": data["support_email"],
         "hero_banners": parse_hero_banners(data.get("hero_banners_json", "")),
+        "visual_assets": build_public_visual_assets(data),
         "plans": build_public_plans_payload(data, session=session),
     }
 
@@ -571,6 +726,7 @@ def get_admin_app_settings(session: Session) -> dict[str, Any]:
         "report_enabled": sys_settings["report_enabled"],
         "hero_banners": parse_hero_banners(data.get("hero_banners_json", "")),
         "default_hero_banners": copy.deepcopy(DEFAULT_HERO_BANNERS),
+        "visual_assets": build_public_visual_assets(data),
         **get_freemium_config(data),
     }
 
@@ -624,7 +780,7 @@ def _validate_and_store_config_field(session: Session, key: str, value: Any) -> 
 def update_admin_app_settings(session: Session, payload: dict[str, Any]) -> dict[str, Any]:
     """Validasi & simpan pembaruan pengaturan aplikasi serta default operasional dari Admin."""
     for key in DEFAULT_APP_CONFIG:
-        if key == "hero_banners_json":
+        if key in ("hero_banners_json", "visual_assets_json"):
             continue
         if key in payload and payload[key] is not None:
             _validate_and_store_config_field(session, key, payload[key])

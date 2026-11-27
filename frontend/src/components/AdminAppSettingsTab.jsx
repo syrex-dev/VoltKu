@@ -20,6 +20,7 @@ import { apiRequest } from '../api/client'
 import { formatTimeWIB, formatRp } from '../utils/formatters'
 import { InAppSelect } from './InAppSelect'
 import { AdminHeroBannersCard } from './AdminHeroBannersCard'
+import { AdminVisualAssetsCard } from './AdminVisualAssetsCard'
 
 const SUB_TABS = [
   { id: 'identitas', label: '1. Identitas & Brand', icon: Store },
@@ -103,6 +104,79 @@ export function AdminAppSettingsTab({
         onNotice({ type: 'error', text: err.message || 'Gagal memperbarui hero banner.' })
       }
       return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleUploadVisualAsset = async (slot, imageBase64) => {
+    setSaving(true)
+    if (onNotice) onNotice(null)
+    try {
+      const updated = await apiRequest(
+        `/api/admin/visual-assets/${slot}`,
+        { method: 'PUT', body: { image_base64: imageBase64, enabled: true } },
+        token,
+        onLogout
+      )
+      setForm(updated)
+      if (onNotice) onNotice({ type: 'success', text: 'Gambar aset visual berhasil diperbarui.' })
+      if (onSettingsUpdated) await onSettingsUpdated(updated)
+    } catch (err) {
+      if (onNotice) onNotice({ type: 'error', text: err.message || 'Gagal mengunggah gambar.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleVisualAsset = async (slot, enabled) => {
+    setSaving(true)
+    if (onNotice) onNotice(null)
+    try {
+      const updated = await apiRequest(
+        `/api/admin/visual-assets/${slot}`,
+        { method: 'PUT', body: { enabled } },
+        token,
+        onLogout
+      )
+      setForm(updated)
+      if (onNotice) {
+        onNotice({
+          type: 'success',
+          text: enabled ? 'Aset visual ditampilkan kembali.' : 'Aset visual disembunyikan.',
+        })
+      }
+      if (onSettingsUpdated) await onSettingsUpdated(updated)
+    } catch (err) {
+      if (onNotice) onNotice({ type: 'error', text: err.message || 'Gagal mengubah visibilitas.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteVisualAsset = async (slot, action = 'reset') => {
+    setSaving(true)
+    if (onNotice) onNotice(null)
+    try {
+      const updated = await apiRequest(
+        `/api/admin/visual-assets/${slot}?action=${action}`,
+        { method: 'DELETE' },
+        token,
+        onLogout
+      )
+      setForm(updated)
+      if (onNotice) {
+        onNotice({
+          type: 'success',
+          text:
+            action === 'reset'
+              ? 'Gambar aset visual dipulihkan ke bawaan.'
+              : 'Gambar aset visual dihapus dari tampilan.',
+        })
+      }
+      if (onSettingsUpdated) await onSettingsUpdated(updated)
+    } catch (err) {
+      if (onNotice) onNotice({ type: 'error', text: err.message || 'Gagal memperbarui aset visual.' })
     } finally {
       setSaving(false)
     }
@@ -372,6 +446,14 @@ export function AdminAppSettingsTab({
               defaultBanners={form.default_hero_banners}
               busy={saving}
               onPersistBanners={persistHeroBanners}
+            />
+
+            <AdminVisualAssetsCard
+              visualAssets={form.visual_assets || {}}
+              busy={saving}
+              onUploadAsset={handleUploadVisualAsset}
+              onToggleAsset={handleToggleVisualAsset}
+              onDeleteAsset={handleDeleteVisualAsset}
             />
 
             <section className="clean-sheet admin-card-block">

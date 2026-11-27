@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Send, X } from 'lucide-react'
+import { Send, X, MessageCircle } from 'lucide-react'
 import { apiRequest } from '../api/client'
-import mascotAvatarImg from '../assets/mascot/voltku-avatar.jpg'
-import mascotAnalyzeImg from '../assets/mascot/voltku-analyze.jpg'
+import { EnergyAssistantIcon } from './VoltKuIcons'
+import { resolveVisualAsset } from '../utils/mascotAssets'
 
 const QUICK_PROMPTS = [
   'Berapa biaya listrik hari ini?',
@@ -21,7 +21,9 @@ const TOOL_LABELS = {
   get_anomalies: 'Anomali',
 }
 
-export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
+export function AiChatWidget({ token, onUnauthorized, hidden = false, appConfig = {} }) {
+  const avatarSrc = resolveVisualAsset(appConfig, 'chatbot_avatar')
+  const emptySrc = resolveVisualAsset(appConfig, 'chatbot_empty')
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -113,9 +115,13 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
           aria-label="Buka Asisten Energi VoltKu"
           title="Asisten Energi VoltKu"
         >
-          <span className="ai-chat-fab-avatar" aria-hidden="true">
-            <img src={mascotAvatarImg} alt="" />
-          </span>
+          {avatarSrc ? (
+            <span className="ai-chat-fab-avatar" aria-hidden="true">
+              <img src={avatarSrc} alt="" />
+            </span>
+          ) : (
+            <EnergyAssistantIcon size={17} />
+          )}
           <span>Tanya VoltKu</span>
         </button>
       )}
@@ -124,9 +130,13 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
         <div className="ai-chat-drawer" role="dialog" aria-label="Asisten Energi VoltKu">
           <div className="ai-chat-header">
             <div className="ai-chat-title">
-              <span className="ai-chat-header-avatar" aria-hidden="true">
-                <img src={mascotAvatarImg} alt="" />
-              </span>
+              {avatarSrc ? (
+                <span className="ai-chat-header-avatar" aria-hidden="true">
+                  <img src={avatarSrc} alt="" />
+                </span>
+              ) : (
+                <EnergyAssistantIcon size={18} />
+              )}
               <div>
                 <strong>Asisten Energi VoltKu</strong>
                 <span className="ai-chat-sub">Analisa pemakaian &amp; tagihan berbasis data riil</span>
@@ -145,9 +155,13 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
           <div className="ai-chat-body" ref={scrollRef}>
             {messages.length === 0 && (
               <div className="ai-chat-empty">
-                <div className="ai-chat-empty-illus" aria-hidden="true">
-                  <img src={mascotAnalyzeImg} alt="" />
-                </div>
+                {emptySrc ? (
+                  <div className="ai-chat-empty-illus" aria-hidden="true">
+                    <img src={emptySrc} alt="" />
+                  </div>
+                ) : (
+                  <MessageCircle size={26} />
+                )}
                 <p>Tanyakan pemakaian kWh, jam paling boros, proyeksi tagihan, atau anomali panel Anda.</p>
                 <div className="ai-chat-chips">
                   {QUICK_PROMPTS.map((qp) => (

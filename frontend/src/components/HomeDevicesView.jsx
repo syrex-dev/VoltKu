@@ -3,12 +3,19 @@ import { Zap, Wifi, WifiOff, Plus, LogIn, ShieldCheck, AlertTriangle, RotateCcw 
 import { HeroBannerCarousel } from './HeroBannerCarousel'
 import { RoomFilterBar } from './RoomFilterBar'
 import { formatNum } from '../utils/formatters'
-import mascotEmptyPanelImg from '../assets/mascot/voltku-empty-panel.jpg'
+import { resolveVisualAsset } from '../utils/mascotAssets'
 
-function EmptySmartBoxIllustration() {
+function EmptySmartBoxIllustration({ src }) {
+  if (!src) {
+    return (
+      <div className="healthy-icon-wrap" style={{ marginBottom: 4 }} aria-hidden="true">
+        <Zap size={24} />
+      </div>
+    )
+  }
   return (
     <div className="ewl-empty-mascot-wrap" aria-hidden="true">
-      <img src={mascotEmptyPanelImg} alt="" className="ewl-empty-mascot-img" />
+      <img src={src} alt="" className="ewl-empty-mascot-img" />
     </div>
   )
 }
@@ -210,7 +217,7 @@ export function HomeDevicesView({
       {/* Grid / List Kartu Perangkat */}
       {filteredDevices.length === 0 ? (
         <div className="empty-home-canvas" data-tour-target="device-grid">
-          <EmptySmartBoxIllustration />
+          <EmptySmartBoxIllustration src={resolveVisualAsset(appConfig, 'home_empty')} />
           <h3>
             {hasActiveFilter && devices.length > 0
               ? 'Tidak Ada Panel yang Cocok'

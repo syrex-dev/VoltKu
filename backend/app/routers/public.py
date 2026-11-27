@@ -18,7 +18,12 @@ from app.routers.devices import (
     list_devices_data,
 )
 from app.routers.settings import format_settings_response, get_all_settings
-from app.services.app_config import get_app_config_map, get_public_app_config, record_terms_consent
+from app.services.app_config import (
+    get_app_config_map,
+    get_public_app_config,
+    get_visual_asset_file,
+    record_terms_consent,
+)
 from app.services.payments import resolve_private_image_path, serialize_payment_method
 from app.services.plans import build_public_plans_payload
 from app.services.reports import calculate_device_forecast, calculate_device_summary
@@ -83,6 +88,23 @@ def get_public_sync_state(session: Session = Depends(get_db)):
 def get_public_app_configuration(session: Session = Depends(get_db)):
     """Konfigurasi aplikasi publik (brand, panduan, auth/Google, teks legal, kontak dukungan)."""
     return get_public_app_config(session)
+
+
+@router.get("/visual-assets/{slot}")
+def get_public_visual_asset_image(slot: str, session: Session = Depends(get_db)):
+    """Menyajikan gambar aset visual kustom milik slot UI tertentu dari storage privat."""
+    resolved = get_visual_asset_file(session, slot)
+    if not resolved:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": 404, "message": "Gambar aset visual custom tidak ditemukan"}},
+        )
+    file_path, media_type = resolved
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 @router.get("/plans", response_model=dict[str, Any])
