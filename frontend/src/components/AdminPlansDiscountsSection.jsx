@@ -138,10 +138,21 @@ export function AdminPlansDiscountsSection({
   const [confirmDeleteDiscountId, setConfirmDeleteDiscountId] = useState(null)
   const [busyDiscountId, setBusyDiscountId] = useState(null)
 
+  const [sectionTab, setSectionTab] = useState('plans') // 'plans' | 'discounts'
   const [dcSearch, setDcSearch] = useState('')
   const [dcFilter, setDcFilter] = useState('all')
   const [copiedCode, setCopiedCode] = useState('')
   const [modalErr, setModalErr] = useState('')
+
+  const [quickPromoPlan, setQuickPromoPlan] = useState(null)
+  const [quickPromoForm, setQuickPromoForm] = useState({
+    promo_discount_type: 'percent',
+    promo_discount_value: '20',
+    promo_label: '',
+    promo_starts_at: '',
+    promo_expires_at: '',
+  })
+  const [savingQuickPromo, setSavingQuickPromo] = useState(false)
 
   const nowSec = Math.floor(Date.now() / 1000)
 
@@ -490,16 +501,125 @@ export function AdminPlansDiscountsSection({
     [planForm.price_yearly_rp, planForm.promo_discount_type, planForm.promo_discount_value]
   )
 
+  const openQuickPromoModal = (plan) => {
+    setModalErr('')
+    setQuickPromoPlan(plan)
+    setQuickPromoForm({
+      promo_discount_type: plan.promo_discount_type || 'percent',
+      promo_discount_value:
+        plan.promo_discount_type && Number(plan.promo_discount_value || 0) > 0
+          ? String(plan.promo_discount_value)
+          : '20',
+      promo_label: plan.promo_label || '',
+      promo_starts_at: epochToWibInput(plan.promo_starts_at),
+      promo_expires_at: epochToWibInput(plan.promo_expires_at),
+    })
+  }
+
+  const handleSaveQuickPromo = async (e) => {
+    e.preventDefault()
+    if (!quickPromoPlan) return
+    setModalErr('')
+    const val = Number(quickPromoForm.promo_discount_value || 0)
+    if (!quickPromoForm.promo_discount_type || val <= 0) {
+      setModalErr('Pilih tipe promo dan masukkan nilai diskon lebih dari 0.')
+      return
+    }
+    setSavingQuickPromo(true)
+    try {
+      await apiRequest(
+        `/api/admin/plans/${quickPromoPlan.id}`,
+        {
+          method: 'PATCH',
+          body: {
+            promo_discount_type: quickPromoForm.promo_discount_type,
+            promo_discount_value: val,
+            promo_label: quickPromoForm.promo_label.trim(),
+            promo_starts_at: wibInputToEpoch(quickPromoForm.promo_starts_at),
+            promo_expires_at: wibInputToEpoch(quickPromoForm.promo_expires_at),
+          },
+        },
+        token,
+        onLogout
+      )
+      setQuickPromoPlan(null)
+      if (onNotice) {
+        onNotice({
+          type: 'success',
+          text: `Promo harga coret untuk paket "${quickPromoPlan.name}" berhasil disimpan.`,
+        })
+      }
+      if (onReload) await onReload()
+    } catch (err) {
+      setModalErr(err.message || 'Gagal menyimpan promo paket.')
+    } finally {
+      setSavingQuickPromo(false)
+    }
+  }
+
+  const handleClearQuickPromo = async (plan) => {
+    if (!plan) return
+    setBusyPlanId(plan.id)
+    setModalErr('')
+    if (onNotice) onNotice(null)
+    try {
+      await apiRequest(
+        `/api/admin/plans/${plan.id}`,
+        {
+          method: 'PATCH',
+          body: {
+            promo_discount_type: null,
+            promo_discount_value: 0,
+            promo_label: '',
+            promo_starts_at: null,
+            promo_expires_at: null,
+          },
+        },
+        token,
+        onLogout
+      )
+      if (quickPromoPlan?.id === plan.id) setQuickPromoPlan(null)
+      if (onNotice) {
+        onNotice({ type: 'success', text: `Promo harga coret "${plan.name}" dihentikan.` })
+      }
+      if (onReload) await onReload()
+    } catch (err) {
+      if (onNotice) onNotice({ type: 'error', text: err.message || 'Gagal menghentikan promo.' })
+    } finally {
+      setBusyPlanId(null)
+    }
+  }
+
+  const quickMonthPreview = useMemo(
+    () =>
+      computeClientPromoPreview(
+        quickPromoPlan?.price_monthly_rp || 0,
+        quickPromoForm.promo_discount_type,
+        quickPromoForm.promo_discount_value
+      ),
+    [quickPromoPlan, quickPromoForm.promo_discount_type, quickPromoForm.promo_discount_value]
+  )
+
+  const quickYearPreview = useMemo(
+    () =>
+      computeClientPromoPreview(
+        quickPromoPlan?.price_yearly_rp || 0,
+        quickPromoForm.promo_discount_type,
+        quickPromoForm.promo_discount_value
+      ),
+    [quickPromoPlan, quickPromoForm.promo_discount_type, quickPromoForm.promo_discount_value]
+  )
+
   return (
     <div className="admin-section-stack tab-pane-fade">
-      {/* 1. Ringkasan KPI Paket & Diskon */}
-      <div className="admin-kpi-grid">
+      {/* 1. Ringkasan KPI Ringkas */}
+      <div className="admin-kpi-grid admin-plans-kpi-grid">
         <div className="clean-sheet admin-kpi-card">
-          <span className="admin-kpi-label">Paket Langganan</span>
+          <span className="admin-kpi-label">Paket Aktif</span>
           <strong className="admin-kpi-value num-tabular">
             {stats.activePlans}/{plans.length}
           </strong>
-          <span className="admin-kpi-sub">Paket aktif di katalog</span>
+          <span className="admin-kpi-sub">Katalog berlangganan</span>
         </div>
 
         <div className="clean-sheet admin-kpi-card">
@@ -507,393 +627,631 @@ export function AdminPlansDiscountsSection({
           <strong className="admin-kpi-value num-tabular brand-amber-text">
             {stats.promoPlans} Paket
           </strong>
-          <span className="admin-kpi-sub">Promo langsung sedang berjalan</span>
+          <span className="admin-kpi-sub">Diskon langsung berjalan</span>
         </div>
 
         <div className="clean-sheet admin-kpi-card">
-          <span className="admin-kpi-label">Kupon Aktif</span>
+          <span className="admin-kpi-label">Kupon Checkout</span>
           <strong className="admin-kpi-value num-tabular brand-blue-text">
             {stats.activeDiscounts}/{discounts.length}
           </strong>
-          <span className="admin-kpi-sub">Siap dipakai di checkout</span>
+          <span className="admin-kpi-sub">Kode aktif siap klaim</span>
         </div>
 
         <div className="clean-sheet admin-kpi-card">
-          <span className="admin-kpi-label">Total Klaim Kupon</span>
+          <span className="admin-kpi-label">Klaim Kupon</span>
           <strong className="admin-kpi-value num-tabular brand-emerald-text">
             {stats.totalCouponUses}x
           </strong>
-          <span className="admin-kpi-sub">Tagihan memakai kode promo</span>
+          <span className="admin-kpi-sub">Total pemakaian order</span>
         </div>
       </div>
 
-      {/* 2. Manajemen Katalog Paket Langganan */}
-      <section className="clean-sheet admin-card-block">
-        <div className="admin-card-head is-split">
-          <div>
-            <h3>Katalog Paket Langganan</h3>
-            <p className="admin-row-sub">
-              Buat tier paket (Gratis, Pro, Bisnis, dst.), kuota panel/hari, dan atur promo harga
-              coret secara dinamis.
-            </p>
-          </div>
-          <button type="button" className="btn btn-primary btn-compact" onClick={openCreatePlan}>
-            <Plus size={15} />
-            <span>Tambah Paket</span>
-          </button>
-        </div>
+      {/* 2. Sub-Tab Switcher Terstruktur: Katalog Paket vs Promo & Kupon */}
+      <div className="admin-subtab-bar" role="tablist" aria-label="Kelola Paket dan Diskon">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={sectionTab === 'plans'}
+          className={`admin-subtab-btn ${sectionTab === 'plans' ? 'active' : ''}`}
+          onClick={() => setSectionTab('plans')}
+        >
+          <Crown size={15} />
+          <span>Katalog Paket</span>
+          <span className="admin-subtab-count num-tabular">{plans.length}</span>
+        </button>
 
-        {plans.length === 0 ? (
-          <div className="pay-empty-state">
-            <Crown size={22} />
-            <div>
-              <strong>Belum ada paket termuat</strong>
-              <span>Tekan Muat Ulang atau Tambah Paket untuk mulai menyusun katalog.</span>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={sectionTab === 'discounts'}
+          className={`admin-subtab-btn ${sectionTab === 'discounts' ? 'active' : ''}`}
+          onClick={() => setSectionTab('discounts')}
+        >
+          <Ticket size={15} />
+          <span>Promo &amp; Kupon</span>
+          <span className="admin-subtab-count num-tabular">
+            {stats.promoPlans + discounts.length}
+          </span>
+        </button>
+      </div>
+
+      {/* TAB A: KATALOG PAKET LANGGANAN */}
+      {sectionTab === 'plans' && (
+        <section className="clean-sheet admin-card-block tab-pane-fade">
+          <div className="admin-section-header-bar">
+            <div className="admin-section-header-copy">
+              <h3>Katalog Paket Langganan</h3>
+              <p className="admin-row-sub">
+                Kelola tier paket, harga bulanan/tahunan, batas panel, dan fitur eksklusif.
+              </p>
             </div>
+            <button type="button" className="btn btn-primary btn-compact" onClick={openCreatePlan}>
+              <Plus size={15} />
+              <span>Tambah Paket</span>
+            </button>
           </div>
-        ) : (
-          <div className="admin-plan-grid">
-            {plans.map((p) => {
-              const isFree = Boolean(p.is_default_free || p.slug === 'free')
-              const hasMonthlyPromo =
-                !isFree && Boolean(p.promo_active) && Number(p.monthly_promo_discount_rp || 0) > 0
-              const hasYearlyPromo =
-                !isFree && Boolean(p.promo_active) && Number(p.yearly_promo_discount_rp || 0) > 0
-              const subCount = Number(p.subscriber_count || 0)
-              const deleteBlocked = isFree || subCount > 0
 
-              return (
-                <div
-                  key={p.id}
-                  className={`admin-plan-card ${!p.is_active ? 'is-inactive' : ''} ${
-                    p.is_recommended ? 'is-recommended' : ''
-                  }`}
-                >
-                  <div className="admin-plan-card-head">
-                    <div className="admin-plan-title-wrap">
-                      <div className="admin-plan-title-row">
-                        <span className={`admin-plan-icon ${isFree ? 'is-free' : 'is-paid'}`}>
-                          {isFree ? <Sparkles size={14} /> : <Crown size={14} />}
-                        </span>
-                        <strong className="admin-plan-name">{p.name}</strong>
-                        <span className="admin-plan-slug num-tabular">{p.slug}</span>
-                      </div>
-                      <div className="admin-plan-badges">
-                        {isFree && <span className="admin-pill ok">Gratis Bawaan</span>}
-                        {p.is_recommended && !isFree && (
-                          <span className="admin-pill pro">Rekomendasi</span>
-                        )}
-                        {p.badge_text && <span className="admin-pill muted">{p.badge_text}</span>}
-                        {p.promo_active && !isFree && (
-                          <span className="admin-pill warn">
-                            {p.promo_label ||
-                              (p.promo_discount_type === 'percent'
-                                ? `Promo -${p.promo_discount_value}%`
-                                : `Promo -${formatRp(p.promo_discount_value)}`)}
+          {plans.length === 0 ? (
+            <div className="pay-empty-state">
+              <Crown size={22} />
+              <div>
+                <strong>Belum ada paket termuat</strong>
+                <span>Tekan Muat Ulang atau Tambah Paket untuk mulai menyusun katalog.</span>
+              </div>
+            </div>
+          ) : (
+            <div className="admin-plan-grid">
+              {plans.map((p) => {
+                const isFree = Boolean(p.is_default_free || p.slug === 'free')
+                const hasMonthlyPromo =
+                  !isFree && Boolean(p.promo_active) && Number(p.monthly_promo_discount_rp || 0) > 0
+                const hasYearlyPromo =
+                  !isFree && Boolean(p.promo_active) && Number(p.yearly_promo_discount_rp || 0) > 0
+                const subCount = Number(p.subscriber_count || 0)
+                const deleteBlocked = isFree || subCount > 0
+
+                const badgeClean = (p.badge_text || '').trim()
+                const showCustomBadge = Boolean(
+                  badgeClean &&
+                    !(p.is_recommended && !isFree && badgeClean.toLowerCase() === 'rekomendasi') &&
+                    !(isFree && badgeClean.toLowerCase() === 'gratis bawaan')
+                )
+
+                return (
+                  <div
+                    key={p.id}
+                    className={`admin-plan-card ${!p.is_active ? 'is-inactive' : ''} ${
+                      p.is_recommended ? 'is-recommended' : ''
+                    }`}
+                  >
+                    <div className="admin-plan-card-head">
+                      <div className="admin-plan-title-wrap">
+                        <div className="admin-plan-title-row">
+                          <span className={`admin-plan-icon ${isFree ? 'is-free' : 'is-paid'}`}>
+                            {isFree ? <Sparkles size={14} /> : <Crown size={14} />}
                           </span>
-                        )}
-                        {!p.is_active && <span className="admin-pill muted">Nonaktif</span>}
+                          <strong className="admin-plan-name">{p.name}</strong>
+                          <span className="admin-plan-slug num-tabular">{p.slug}</span>
+                        </div>
+                        <div className="admin-plan-badges">
+                          {isFree && <span className="admin-pill ok">Gratis Bawaan</span>}
+                          {p.is_recommended && !isFree && (
+                            <span className="admin-pill pro">Rekomendasi</span>
+                          )}
+                          {showCustomBadge && <span className="admin-pill muted">{badgeClean}</span>}
+                          {p.promo_active && !isFree && (
+                            <span className="admin-pill warn">
+                              {p.promo_label ||
+                                (p.promo_discount_type === 'percent'
+                                  ? `Promo -${p.promo_discount_value}%`
+                                  : `Promo -${formatRp(p.promo_discount_value)}`)}
+                            </span>
+                          )}
+                          {!p.is_active && <span className="admin-pill muted">Nonaktif</span>}
+                        </div>
                       </div>
+
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={Boolean(p.is_active)}
+                        aria-label={`Aktifkan paket ${p.name}`}
+                        className={`admin-switch is-sm ${p.is_active ? 'on' : ''}`}
+                        disabled={isFree || busyPlanId === p.id}
+                        title={
+                          isFree
+                            ? 'Paket gratis bawaan wajib aktif'
+                            : p.is_active
+                              ? 'Nonaktifkan paket dari pembeli baru'
+                              : 'Aktifkan paket'
+                        }
+                        onClick={() => handleTogglePlanActive(p)}
+                      >
+                        <span className="admin-switch-thumb" />
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={Boolean(p.is_active)}
-                      aria-label={`Aktifkan paket ${p.name}`}
-                      className={`admin-switch is-sm ${p.is_active ? 'on' : ''}`}
-                      disabled={isFree || busyPlanId === p.id}
-                      title={
-                        isFree
-                          ? 'Paket gratis bawaan wajib aktif'
-                          : p.is_active
-                            ? 'Nonaktifkan paket dari pembeli baru'
-                            : 'Aktifkan paket'
-                      }
-                      onClick={() => handleTogglePlanActive(p)}
-                    >
-                      <span className="admin-switch-thumb" />
-                    </button>
-                  </div>
+                    {p.description && <p className="admin-plan-desc">{p.description}</p>}
 
-                  {p.description && <p className="admin-plan-desc">{p.description}</p>}
-
-                  <div className="admin-plan-price-box num-tabular">
                     {isFree ? (
-                      <div className="admin-plan-price-line">
-                        <strong>Rp 0</strong>
-                        <span>/selamanya</span>
+                      <div className="admin-plan-price-box num-tabular">
+                        <div className="admin-plan-price-line">
+                          <strong>Rp 0</strong>
+                          <span>/selamanya</span>
+                        </div>
                       </div>
                     ) : (
-                      <>
-                        <div className="admin-plan-price-line">
+                      <div className="admin-plan-price-split num-tabular">
+                        <div className="admin-plan-price-col">
+                          <span className="admin-plan-price-col-label">Bulanan</span>
                           {hasMonthlyPromo && (
                             <span className="price-strike">{formatRp(p.price_monthly_rp)}</span>
                           )}
-                          <strong>
+                          <strong className="admin-plan-price-col-val">
                             {formatRp(
                               hasMonthlyPromo ? p.effective_monthly_price_rp : p.price_monthly_rp
                             )}
                           </strong>
-                          <span>/bln</span>
                         </div>
-                        <div className="admin-plan-price-sub">
-                          <span>Tahunan: </span>
+
+                        <div className="admin-plan-price-col">
+                          <span className="admin-plan-price-col-label">
+                            Tahunan
+                            {Number(p.yearly_savings_pct || 0) > 0 && (
+                              <span className="admin-plan-save-tag">-{p.yearly_savings_pct}%</span>
+                            )}
+                          </span>
                           {hasYearlyPromo && (
-                            <span className="price-strike" style={{ marginRight: 4 }}>
-                              {formatRp(p.price_yearly_rp)}
-                            </span>
+                            <span className="price-strike">{formatRp(p.price_yearly_rp)}</span>
                           )}
-                          <strong>
+                          <strong className="admin-plan-price-col-val">
                             {formatRp(
                               hasYearlyPromo ? p.effective_yearly_price_rp : p.price_yearly_rp
                             )}
                           </strong>
-                          {Number(p.yearly_savings_pct || 0) > 0 && (
-                            <span className="admin-plan-save-tag">
-                              Hemat {p.yearly_savings_pct}%
-                            </span>
-                          )}
                         </div>
-                      </>
+                      </div>
                     )}
-                  </div>
 
-                  {!isFree && p.promo_discount_type && !p.promo_active && (
-                    <div className="admin-plan-promo-sched num-tabular">
-                      <CalendarClock size={12} />
-                      <span>
-                        Promo {p.promo_label || ''} tidak aktif saat ini (
-                        {p.promo_starts_at ? formatDateTimeWIB(p.promo_starts_at) : 'sekarang'} s.d.{' '}
-                        {p.promo_expires_at ? formatDateTimeWIB(p.promo_expires_at) : 'seterusnya'})
-                      </span>
-                    </div>
-                  )}
+                    {!isFree && p.promo_discount_type && !p.promo_active && (
+                      <div className="admin-plan-promo-sched num-tabular">
+                        <CalendarClock size={12} />
+                        <span>
+                          Jadwal promo {p.promo_label || ''}:{' '}
+                          {p.promo_starts_at ? formatDateTimeWIB(p.promo_starts_at) : 'sekarang'}{' '}
+                          s.d.{' '}
+                          {p.promo_expires_at ? formatDateTimeWIB(p.promo_expires_at) : 'seterusnya'}
+                        </span>
+                      </div>
+                    )}
 
-                  <div className="admin-plan-caps num-tabular">
-                    <span className="admin-cap-chip">
-                      {p.max_devices < 0 ? 'Panel: Tanpa Batas' : `Maks ${p.max_devices} Panel`}
-                    </span>
-                    <span className="admin-cap-chip">Riwayat {p.history_days} Hari</span>
-                    <span className={`admin-cap-chip ${p.forecast_enabled ? 'is-on' : 'is-off'}`}>
-                      Proyeksi {p.forecast_enabled ? '✓' : '✕'}
-                    </span>
-                    <span className={`admin-cap-chip ${p.export_enabled ? 'is-on' : 'is-off'}`}>
-                      CSV {p.export_enabled ? '✓' : '✕'}
-                    </span>
-                    <span className={`admin-cap-chip ${p.anomaly_advanced ? 'is-on' : 'is-off'}`}>
-                      Anomali L2/L3 {p.anomaly_advanced ? '✓' : '✕'}
-                    </span>
-                  </div>
-
-                  <div className="admin-plan-foot">
-                    <span className="admin-plan-subs num-tabular">
-                      <Users size={13} />
-                      <span>
-                        {subCount} pelanggan · Urutan #{p.sort_order}
-                      </span>
-                    </span>
-
-                    <div className="admin-row-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-compact"
-                        onClick={() => openEditPlan(p)}
+                    <div className="admin-plan-specs-grid num-tabular">
+                      <div className="admin-plan-spec-row">
+                        <span>
+                          {p.max_devices < 0 ? 'Panel: Tanpa Batas' : `Maks ${p.max_devices} Panel`}
+                        </span>
+                      </div>
+                      <div className="admin-plan-spec-row">
+                        <span>Riwayat {p.history_days} Hari</span>
+                      </div>
+                      <div
+                        className={`admin-plan-spec-row ${p.forecast_enabled ? 'is-on' : 'is-off'}`}
                       >
-                        <Pencil size={13} />
-                        <span>Edit</span>
-                      </button>
+                        <span>Proyeksi {p.forecast_enabled ? '✓' : '✕'}</span>
+                      </div>
+                      <div className={`admin-plan-spec-row ${p.export_enabled ? 'is-on' : 'is-off'}`}>
+                        <span>Ekspor CSV {p.export_enabled ? '✓' : '✕'}</span>
+                      </div>
+                      <div
+                        className={`admin-plan-spec-row ${p.anomaly_advanced ? 'is-on' : 'is-off'}`}
+                        style={{ gridColumn: 'span 2' }}
+                      >
+                        <span>Deteksi Anomali L2/L3 {p.anomaly_advanced ? '✓' : '✕'}</span>
+                      </div>
+                    </div>
 
-                      {!isFree &&
-                        (confirmDeletePlanId === p.id ? (
+                    <div className="admin-plan-foot">
+                      <span className="admin-plan-subs num-tabular">
+                        <Users size={13} />
+                        <span>
+                          {subCount} akun · #{p.sort_order}
+                        </span>
+                      </span>
+
+                      <div className="admin-row-actions">
+                        {!isFree && (
                           <button
                             type="button"
-                            className="btn btn-danger-solid btn-compact"
-                            disabled={busyPlanId === p.id}
-                            onClick={() => handleDeletePlan(p)}
+                            className="btn btn-secondary btn-compact"
+                            onClick={() => openQuickPromoModal(p)}
                           >
-                            Hapus?
+                            <Tag size={13} />
+                            <span>Promo</span>
                           </button>
-                        ) : (
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-compact"
+                          onClick={() => openEditPlan(p)}
+                        >
+                          <Pencil size={13} />
+                          <span>Edit</span>
+                        </button>
+
+                        {!isFree &&
+                          (confirmDeletePlanId === p.id ? (
+                            <button
+                              type="button"
+                              className="btn btn-danger-solid btn-compact"
+                              disabled={busyPlanId === p.id}
+                              onClick={() => handleDeletePlan(p)}
+                            >
+                              Hapus?
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-danger-ghost btn-compact"
+                              disabled={deleteBlocked || busyPlanId === p.id}
+                              title={
+                                subCount > 0
+                                  ? `Dipakai ${subCount} akun (nonaktifkan saja)`
+                                  : 'Hapus paket ini'
+                              }
+                              onClick={() => setConfirmDeletePlanId(p.id)}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* TAB B: PROMO HARGA CORET & KODE KUPON */}
+      {sectionTab === 'discounts' && (
+        <div className="admin-section-stack tab-pane-fade">
+          {/* B1. Promo Harga Coret Langsung per Paket */}
+          <section className="clean-sheet admin-card-block">
+            <div className="admin-section-header-bar">
+              <div className="admin-section-header-copy">
+                <h3>Promo Harga Coret per Paket</h3>
+                <p className="admin-row-sub">
+                  Potongan otomatis yang langsung mencoret harga asli pada halaman paket pelanggan.
+                </p>
+              </div>
+            </div>
+
+            {paidPlans.length === 0 ? (
+              <div className="pay-empty-state">
+                <Tag size={20} />
+                <div>
+                  <strong>Belum ada paket berbayar</strong>
+                  <span>Tambahkan paket berbayar di tab Katalog Paket terlebih dahulu.</span>
+                </div>
+              </div>
+            ) : (
+              <div className="admin-promo-plan-strip">
+                {paidPlans.map((p) => {
+                  const hasPromo = Boolean(p.promo_discount_type)
+                  const isLive = Boolean(p.promo_active)
+                  return (
+                    <div key={p.id} className="admin-promo-plan-row">
+                      <div className="admin-promo-plan-info">
+                        <div className="admin-promo-plan-top">
+                          <strong style={{ fontSize: 14 }}>{p.name}</strong>
+                          <span className={`admin-pill ${isLive ? 'warn' : hasPromo ? 'awaiting' : 'muted'}`}>
+                            {isLive
+                              ? p.promo_label ||
+                                (p.promo_discount_type === 'percent'
+                                  ? `Promo -${p.promo_discount_value}%`
+                                  : `Promo -${formatRp(p.promo_discount_value)}`)
+                              : hasPromo
+                                ? 'Terjadwal / Berakhir'
+                                : 'Harga Normal'}
+                          </span>
+                        </div>
+                        <div className="admin-promo-plan-prices num-tabular">
+                          <span>
+                            Bulanan:{' '}
+                            {isLive && (
+                              <span className="price-strike" style={{ marginRight: 4 }}>
+                                {formatRp(p.price_monthly_rp)}
+                              </span>
+                            )}
+                            <strong>{formatRp(p.effective_monthly_price_rp)}</strong>
+                          </span>
+                          <span>·</span>
+                          <span>
+                            Tahunan:{' '}
+                            {isLive && (
+                              <span className="price-strike" style={{ marginRight: 4 }}>
+                                {formatRp(p.price_yearly_rp)}
+                              </span>
+                            )}
+                            <strong>{formatRp(p.effective_yearly_price_rp)}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="admin-promo-plan-actions">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-compact"
+                          onClick={() => openQuickPromoModal(p)}
+                        >
+                          <Tag size={13} />
+                          <span>{hasPromo ? 'Ubah Promo' : 'Pasang Promo'}</span>
+                        </button>
+                        {hasPromo && (
                           <button
                             type="button"
                             className="btn btn-danger-ghost btn-compact"
-                            disabled={deleteBlocked || busyPlanId === p.id}
-                            title={
-                              subCount > 0
-                                ? `Tidak bisa dihapus karena masih dipakai ${subCount} pelanggan (nonaktifkan saja)`
-                                : 'Hapus paket ini'
-                            }
-                            onClick={() => setConfirmDeletePlanId(p.id)}
+                            disabled={busyPlanId === p.id}
+                            onClick={() => handleClearQuickPromo(p)}
                           >
-                            <Trash2 size={13} />
+                            Matikan
                           </button>
-                        ))}
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
+                  )
+                })}
+              </div>
+            )}
+          </section>
 
-      {/* 3. Manajemen Kode Promo & Kupon Checkout */}
-      <section className="clean-sheet admin-card-block">
-        <div className="admin-card-head is-split">
-          <div>
-            <h3>Kode Kupon &amp; Voucher Checkout</h3>
-            <p className="admin-row-sub">
-              Pelanggan dapat memasukkan kode ini di halaman pembayaran untuk potongan harga ekstra.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary btn-compact"
-            onClick={openCreateDiscount}
-          >
-            <Plus size={15} />
-            <span>Tambah Kupon</span>
-          </button>
-        </div>
-
-        <div className="admin-pm-toolbar" style={{ marginBottom: 14 }}>
-          <div className="admin-search-wrap" style={{ flex: '1 1 240px' }}>
-            <Search size={15} className="admin-search-icon" />
-            <input
-              type="text"
-              className="modern-input admin-search-input"
-              placeholder="Cari kode kupon, label, atau target paket..."
-              value={dcSearch}
-              onChange={(e) => setDcSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="admin-filter-pills">
-            {[
-              { id: 'all', label: `Semua (${discounts.length})` },
-              {
-                id: 'active',
-                label: `Aktif (${stats.activeDiscounts})`,
-              },
-              {
-                id: 'ended',
-                label: 'Habis / Berakhir',
-              },
-              {
-                id: 'inactive',
-                label: 'Nonaktif',
-              },
-            ].map((f) => (
+          {/* B2. Kode Kupon & Voucher Checkout */}
+          <section className="clean-sheet admin-card-block">
+            <div className="admin-section-header-bar">
+              <div className="admin-section-header-copy">
+                <h3>Kode Kupon &amp; Voucher Checkout</h3>
+                <p className="admin-row-sub">
+                  Pelanggan dapat mengklaim kode ini di tahap pembayaran untuk potongan ekstra.
+                </p>
+              </div>
               <button
-                key={f.id}
                 type="button"
-                className={`admin-filter-pill ${dcFilter === f.id ? 'active' : ''}`}
-                onClick={() => setDcFilter(f.id)}
+                className="btn btn-primary btn-compact"
+                onClick={openCreateDiscount}
               >
-                {f.label}
+                <Plus size={15} />
+                <span>Buat Kupon</span>
               </button>
-            ))}
-          </div>
-        </div>
-
-        {filteredDiscounts.length === 0 ? (
-          <div className="pay-empty-state">
-            <Ticket size={22} />
-            <div>
-              <strong>
-                {discounts.length === 0 ? 'Belum ada kode kupon dibuat' : 'Tidak ada kupon cocok'}
-              </strong>
-              <span>
-                Klik &ldquo;Tambah Kupon&rdquo; untuk membuat kode diskon persentase atau nominal
-                Rupiah.
-              </span>
             </div>
-          </div>
-        ) : (
-          <>
-            <div className="admin-table-desktop">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Kode &amp; Label</th>
-                    <th>Potongan</th>
-                    <th>Target</th>
-                    <th>Kuota</th>
-                    <th>Masa Berlaku (WIB)</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
+
+            <div className="admin-pm-toolbar" style={{ marginBottom: 14 }}>
+              <div className="admin-search-wrap" style={{ flex: '1 1 220px' }}>
+                <Search size={15} className="admin-search-icon" />
+                <input
+                  type="text"
+                  className="modern-input admin-search-input"
+                  placeholder="Cari kode kupon, label, atau target paket..."
+                  value={dcSearch}
+                  onChange={(e) => setDcSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="admin-filter-pills">
+                {[
+                  { id: 'all', label: `Semua (${discounts.length})` },
+                  { id: 'active', label: `Aktif (${stats.activeDiscounts})` },
+                  { id: 'ended', label: 'Habis / Berakhir' },
+                  { id: 'inactive', label: 'Nonaktif' },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`admin-filter-pill ${dcFilter === f.id ? 'active' : ''}`}
+                    onClick={() => setDcFilter(f.id)}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {filteredDiscounts.length === 0 ? (
+              <div className="pay-empty-state">
+                <Ticket size={22} />
+                <div>
+                  <strong>
+                    {discounts.length === 0
+                      ? 'Belum ada kode kupon dibuat'
+                      : 'Tidak ada kupon yang cocok'}
+                  </strong>
+                  <span>
+                    Klik &ldquo;Buat Kupon&rdquo; untuk membuat kode diskon persentase atau nominal
+                    Rupiah.
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="admin-table-desktop">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Kode &amp; Label</th>
+                        <th>Potongan</th>
+                        <th>Target</th>
+                        <th>Kuota</th>
+                        <th>Masa Berlaku (WIB)</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: 'right' }}>Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredDiscounts.map((dc) => {
+                        const st = getDiscountStatusMeta(dc, nowSec)
+                        const isPct = dc.discount_type === 'percent'
+                        return (
+                          <tr key={dc.id}>
+                            <td>
+                              <div className="admin-dc-code-cell">
+                                <span className="admin-dc-code-badge num-tabular">{dc.code}</span>
+                                <button
+                                  type="button"
+                                  className="admin-pm-copy-btn"
+                                  onClick={() => handleCopyCode(dc.code)}
+                                  title="Salin kode"
+                                >
+                                  {copiedCode === dc.code ? (
+                                    <Check size={11} />
+                                  ) : (
+                                    <Copy size={11} />
+                                  )}
+                                  <span>{copiedCode === dc.code ? 'Disalin' : 'Salin'}</span>
+                                </button>
+                              </div>
+                              {dc.label && <div className="admin-dev-id">{dc.label}</div>}
+                            </td>
+
+                            <td className="num-tabular">
+                              <div className="admin-dev-name">
+                                {isPct
+                                  ? `${dc.discount_value}%${
+                                      dc.max_discount_rp
+                                        ? ` (Maks ${formatRp(dc.max_discount_rp)})`
+                                        : ''
+                                    }`
+                                  : formatRp(dc.discount_value)}
+                              </div>
+                              {Number(dc.min_purchase_rp || 0) > 0 && (
+                                <div className="admin-dev-id">
+                                  Min. {formatRp(dc.min_purchase_rp)}
+                                </div>
+                              )}
+                            </td>
+
+                            <td>
+                              <div className="admin-dev-name">
+                                {dc.target_plan_slug
+                                  ? `Paket ${dc.target_plan_slug}`
+                                  : 'Semua Paket'}
+                              </div>
+                              <div className="admin-dev-id">
+                                {dc.target_cycle === 'monthly'
+                                  ? 'Khusus Bulanan'
+                                  : dc.target_cycle === 'yearly'
+                                    ? 'Khusus Tahunan'
+                                    : 'Semua Siklus'}
+                              </div>
+                            </td>
+
+                            <td className="num-tabular">
+                              <div className="admin-dev-name">
+                                {dc.used_count} / {dc.max_uses != null ? dc.max_uses : '∞'}
+                              </div>
+                            </td>
+
+                            <td className="num-tabular">
+                              {dc.starts_at || dc.expires_at ? (
+                                <div className="admin-dev-id">
+                                  <div>
+                                    {dc.starts_at
+                                      ? formatDateTimeWIB(dc.starts_at)
+                                      : 'Mulai kapan saja'}
+                                  </div>
+                                  <div>
+                                    s.d.{' '}
+                                    {dc.expires_at ? formatDateTimeWIB(dc.expires_at) : 'Tanpa batas'}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="admin-dev-id">Tanpa Batas Waktu</span>
+                              )}
+                            </td>
+
+                            <td>
+                              <div className="admin-user-status-cell">
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={Boolean(dc.is_active)}
+                                  aria-label={`Ubah status kupon ${dc.code}`}
+                                  className={`admin-switch is-sm ${dc.is_active ? 'on' : ''}`}
+                                  disabled={busyDiscountId === dc.id}
+                                  onClick={() => handleToggleDiscountActive(dc)}
+                                >
+                                  <span className="admin-switch-thumb" />
+                                </button>
+                                <span className={`admin-pill ${st.cls}`}>{st.label}</span>
+                              </div>
+                            </td>
+
+                            <td style={{ textAlign: 'right' }}>
+                              <div className="admin-row-actions">
+                                <button
+                                  type="button"
+                                  className="admin-icon-action"
+                                  title="Edit Kupon"
+                                  onClick={() => openEditDiscount(dc)}
+                                >
+                                  <Pencil size={15} />
+                                </button>
+                                {confirmDeleteDiscountId === dc.id ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-danger-solid btn-compact"
+                                    disabled={busyDiscountId === dc.id}
+                                    onClick={() => handleDeleteDiscount(dc)}
+                                  >
+                                    Hapus?
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="admin-icon-action danger"
+                                    title="Hapus Kupon"
+                                    onClick={() => setConfirmDeleteDiscountId(dc.id)}
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="admin-cards-mobile">
                   {filteredDiscounts.map((dc) => {
                     const st = getDiscountStatusMeta(dc, nowSec)
                     const isPct = dc.discount_type === 'percent'
                     return (
-                      <tr key={dc.id}>
-                        <td>
-                          <div className="admin-dc-code-cell">
-                            <span className="admin-dc-code-badge num-tabular">{dc.code}</span>
-                            <button
-                              type="button"
-                              className="admin-pm-copy-btn"
-                              onClick={() => handleCopyCode(dc.code)}
-                              title="Salin kode"
-                            >
-                              {copiedCode === dc.code ? <Check size={11} /> : <Copy size={11} />}
-                              <span>{copiedCode === dc.code ? 'Disalin' : 'Salin'}</span>
-                            </button>
-                          </div>
-                          {dc.label && <div className="admin-dev-id">{dc.label}</div>}
-                        </td>
-
-                        <td className="num-tabular">
-                          <div className="admin-dev-name">
-                            {isPct
-                              ? `${dc.discount_value}%${
-                                  dc.max_discount_rp ? ` (Maks ${formatRp(dc.max_discount_rp)})` : ''
-                                }`
-                              : formatRp(dc.discount_value)}
-                          </div>
-                          {Number(dc.min_purchase_rp || 0) > 0 && (
-                            <div className="admin-dev-id">Min. {formatRp(dc.min_purchase_rp)}</div>
-                          )}
-                        </td>
-
-                        <td>
-                          <div className="admin-dev-name">
-                            {dc.target_plan_slug ? `Paket ${dc.target_plan_slug}` : 'Semua Paket'}
-                          </div>
-                          <div className="admin-dev-id">
-                            {dc.target_cycle === 'monthly'
-                              ? 'Khusus Bulanan'
-                              : dc.target_cycle === 'yearly'
-                                ? 'Khusus Tahunan'
-                                : 'Semua Siklus'}
-                          </div>
-                        </td>
-
-                        <td className="num-tabular">
-                          <div className="admin-dev-name">
-                            {dc.used_count} / {dc.max_uses != null ? dc.max_uses : '∞'}
-                          </div>
-                        </td>
-
-                        <td className="num-tabular">
-                          {dc.starts_at || dc.expires_at ? (
-                            <div className="admin-dev-id">
-                              <div>{dc.starts_at ? formatDateTimeWIB(dc.starts_at) : 'Mulai kapan saja'}</div>
-                              <div>
-                                s.d. {dc.expires_at ? formatDateTimeWIB(dc.expires_at) : 'Tanpa batas'}
-                              </div>
+                      <div key={dc.id} className="admin-dc-card-m">
+                        <div className="admin-dc-card-m-head">
+                          <div>
+                            <div className="admin-dc-code-cell">
+                              <span className="admin-dc-code-badge num-tabular">{dc.code}</span>
+                              <button
+                                type="button"
+                                className="admin-pm-copy-btn"
+                                onClick={() => handleCopyCode(dc.code)}
+                              >
+                                {copiedCode === dc.code ? <Check size={11} /> : <Copy size={11} />}
+                                <span>{copiedCode === dc.code ? 'Disalin' : 'Salin'}</span>
+                              </button>
                             </div>
-                          ) : (
-                            <span className="admin-dev-id">Tanpa Batas Waktu</span>
-                          )}
-                        </td>
+                            {dc.label && (
+                              <div className="admin-dev-id" style={{ marginTop: 3 }}>
+                                {dc.label}
+                              </div>
+                            )}
+                          </div>
 
-                        <td>
-                          <div className="admin-user-status-cell">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className={`admin-pill ${st.cls}`}>{st.label}</span>
                             <button
                               type="button"
                               role="switch"
@@ -905,126 +1263,82 @@ export function AdminPlansDiscountsSection({
                             >
                               <span className="admin-switch-thumb" />
                             </button>
-                            <span className={`admin-pill ${st.cls}`}>{st.label}</span>
                           </div>
-                        </td>
+                        </div>
 
-                        <td style={{ textAlign: 'right' }}>
-                          <div className="admin-row-actions">
-                            <button
-                              type="button"
-                              className="admin-icon-action"
-                              title="Edit Kupon"
-                              onClick={() => openEditDiscount(dc)}
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            {confirmDeleteDiscountId === dc.id ? (
-                              <button
-                                type="button"
-                                className="btn btn-danger-solid btn-compact"
-                                disabled={busyDiscountId === dc.id}
-                                onClick={() => handleDeleteDiscount(dc)}
-                              >
-                                Hapus?
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="admin-icon-action danger"
-                                title="Hapus Kupon"
-                                onClick={() => setConfirmDeleteDiscountId(dc.id)}
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            )}
+                        <div className="admin-dc-card-m-grid num-tabular">
+                          <div className="admin-dc-card-m-item">
+                            <span>Potongan</span>
+                            <strong>
+                              {isPct
+                                ? `${dc.discount_value}%${
+                                    dc.max_discount_rp ? ` (≤ ${formatRp(dc.max_discount_rp)})` : ''
+                                  }`
+                                : formatRp(dc.discount_value)}
+                            </strong>
                           </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          <div className="admin-dc-card-m-item">
+                            <span>Kuota Dipakai</span>
+                            <strong>
+                              {dc.used_count} / {dc.max_uses != null ? dc.max_uses : '∞'}
+                            </strong>
+                          </div>
+                          <div className="admin-dc-card-m-item">
+                            <span>Target Paket</span>
+                            <strong>
+                              {dc.target_plan_slug ? dc.target_plan_slug : 'Semua'} ·{' '}
+                              {dc.target_cycle === 'monthly'
+                                ? 'Bulanan'
+                                : dc.target_cycle === 'yearly'
+                                  ? 'Tahunan'
+                                  : 'Semua'}
+                            </strong>
+                          </div>
+                          <div className="admin-dc-card-m-item">
+                            <span>Berakhir (WIB)</span>
+                            <strong>
+                              {dc.expires_at ? formatDateTimeWIB(dc.expires_at) : 'Tanpa Batas'}
+                            </strong>
+                          </div>
+                        </div>
 
-            <div className="admin-cards-mobile">
-              {filteredDiscounts.map((dc) => {
-                const st = getDiscountStatusMeta(dc, nowSec)
-                const isPct = dc.discount_type === 'percent'
-                return (
-                  <div key={dc.id} className="clean-sheet admin-device-card-m">
-                    <div className="admin-m-top">
-                      <div>
-                        <div className="admin-dc-code-cell">
-                          <span className="admin-dc-code-badge num-tabular">{dc.code}</span>
+                        <div className="admin-m-actions admin-m-actions-2col">
                           <button
                             type="button"
-                            className="admin-pm-copy-btn"
-                            onClick={() => handleCopyCode(dc.code)}
+                            className="btn btn-secondary btn-compact"
+                            onClick={() => openEditDiscount(dc)}
                           >
-                            {copiedCode === dc.code ? <Check size={11} /> : <Copy size={11} />}
-                            <span>{copiedCode === dc.code ? 'Disalin' : 'Salin'}</span>
+                            <Pencil size={13} />
+                            <span>Edit</span>
                           </button>
+                          {confirmDeleteDiscountId === dc.id ? (
+                            <button
+                              type="button"
+                              className="btn btn-danger-solid btn-compact"
+                              onClick={() => handleDeleteDiscount(dc)}
+                            >
+                              Hapus?
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-danger-ghost btn-compact"
+                              onClick={() => setConfirmDeleteDiscountId(dc.id)}
+                            >
+                              <Trash2 size={13} />
+                              <span>Hapus</span>
+                            </button>
+                          )}
                         </div>
-                        {dc.label && <div className="admin-dev-id">{dc.label}</div>}
                       </div>
-                      <span className={`admin-pill ${st.cls}`}>{st.label}</span>
-                    </div>
-
-                    <div className="admin-m-metrics admin-m-metrics-2col num-tabular">
-                      <div>
-                        <span>Potongan</span>
-                        <strong>
-                          {isPct
-                            ? `${dc.discount_value}%${
-                                dc.max_discount_rp ? ` (≤ ${formatRp(dc.max_discount_rp)})` : ''
-                              }`
-                            : formatRp(dc.discount_value)}
-                        </strong>
-                      </div>
-                      <div>
-                        <span>Terpakai</span>
-                        <strong>
-                          {dc.used_count} / {dc.max_uses != null ? dc.max_uses : '∞'}
-                        </strong>
-                      </div>
-                    </div>
-
-                    <div className="admin-m-actions admin-m-actions-2col">
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-compact"
-                        onClick={() => openEditDiscount(dc)}
-                      >
-                        <Pencil size={13} />
-                        <span>Edit</span>
-                      </button>
-                      {confirmDeleteDiscountId === dc.id ? (
-                        <button
-                          type="button"
-                          className="btn btn-danger-solid btn-compact"
-                          onClick={() => handleDeleteDiscount(dc)}
-                        >
-                          Hapus?
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn-danger-ghost btn-compact"
-                          onClick={() => setConfirmDeleteDiscountId(dc.id)}
-                        >
-                          <Trash2 size={13} />
-                          <span>Hapus</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )}
-      </section>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      )}
 
       {/* Modal Tambah / Edit Paket Langganan */}
       {planModalOpen && (
@@ -1763,6 +2077,175 @@ export function AdminPlansDiscountsSection({
                   <Save size={15} />
                   <span>{savingDiscount ? 'Menyimpan...' : 'Simpan Kupon'}</span>
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cepat Atur Promo Harga Coret Paket */}
+      {quickPromoPlan && (
+        <div
+          className="modal-overlay pwa-guide-overlay"
+          onClick={() => setQuickPromoPlan(null)}
+        >
+          <div
+            className="modal-dialog-modern pwa-guide-sheet plan-modal-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="pwa-guide-head">
+              <div>
+                <h3 className="pwa-guide-title">Promo Harga Coret · {quickPromoPlan.name}</h3>
+                <p className="pwa-guide-sub">
+                  Potongan otomatis langsung tampil dengan harga asli dicoret di katalog pelanggan.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-close"
+                onClick={() => setQuickPromoPlan(null)}
+                aria-label="Tutup"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {modalErr && <div className="feedback-msg error">{modalErr}</div>}
+
+            <form onSubmit={handleSaveQuickPromo} className="admin-modal-stack">
+              <div className="admin-modal-section">
+                <div className="settings-fields-grid">
+                  <div className="form-field-group" style={{ marginBottom: 0 }}>
+                    <label className="field-label" htmlFor="qp-type">
+                      Jenis Potongan
+                    </label>
+                    <InAppSelect
+                      id="qp-type"
+                      value={quickPromoForm.promo_discount_type}
+                      onChange={(val) =>
+                        setQuickPromoForm((prev) => ({ ...prev, promo_discount_type: val }))
+                      }
+                      options={[
+                        { value: 'percent', label: 'Persentase (%)' },
+                        { value: 'fixed_rp', label: 'Potongan Nominal (Rp)' },
+                      ]}
+                    />
+                  </div>
+
+                  <div className="form-field-group" style={{ marginBottom: 0 }}>
+                    <label className="field-label" htmlFor="qp-val">
+                      {quickPromoForm.promo_discount_type === 'percent'
+                        ? 'Persen Diskon (1-100%)'
+                        : 'Nominal Potongan (Rp)'}
+                    </label>
+                    <input
+                      id="qp-val"
+                      type="number"
+                      min="1"
+                      max={quickPromoForm.promo_discount_type === 'percent' ? 100 : 100000000}
+                      className="modern-input num-tabular"
+                      value={quickPromoForm.promo_discount_value}
+                      onChange={(e) =>
+                        setQuickPromoForm((prev) => ({
+                          ...prev,
+                          promo_discount_value: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="form-field-group" style={{ marginBottom: 0 }}>
+                    <label className="field-label" htmlFor="qp-label">
+                      Label Badge Promo (Opsional)
+                    </label>
+                    <input
+                      id="qp-label"
+                      type="text"
+                      className="modern-input"
+                      placeholder="Contoh: Flash Sale / Diskon Awal Bulan"
+                      value={quickPromoForm.promo_label}
+                      onChange={(e) =>
+                        setQuickPromoForm((prev) => ({ ...prev, promo_label: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="form-field-group" style={{ marginBottom: 0 }}>
+                    <label className="field-label" htmlFor="qp-start">
+                      Mulai Berlaku (WIB · Opsional)
+                    </label>
+                    <input
+                      id="qp-start"
+                      type="datetime-local"
+                      className="modern-input num-tabular"
+                      value={quickPromoForm.promo_starts_at}
+                      onChange={(e) =>
+                        setQuickPromoForm((prev) => ({
+                          ...prev,
+                          promo_starts_at: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="form-field-group" style={{ marginBottom: 0 }}>
+                    <label className="field-label" htmlFor="qp-end">
+                      Berakhir (WIB · Opsional)
+                    </label>
+                    <input
+                      id="qp-end"
+                      type="datetime-local"
+                      className="modern-input num-tabular"
+                      value={quickPromoForm.promo_expires_at}
+                      onChange={(e) =>
+                        setQuickPromoForm((prev) => ({
+                          ...prev,
+                          promo_expires_at: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="admin-promo-preview-bar num-tabular">
+                  <span>Pratinjau Harga Akhir:</span>
+                  <strong>
+                    Bulanan: {formatRp(quickMonthPreview.effective)} (normal{' '}
+                    {formatRp(quickPromoPlan.price_monthly_rp)})
+                  </strong>
+                  <span>·</span>
+                  <strong>
+                    Tahunan: {formatRp(quickYearPreview.effective)} (normal{' '}
+                    {formatRp(quickPromoPlan.price_yearly_rp)})
+                  </strong>
+                </div>
+              </div>
+
+              <div className="pwa-guide-footer" style={{ gap: 8, flexWrap: 'wrap' }}>
+                {quickPromoPlan.promo_discount_type && (
+                  <button
+                    type="button"
+                    className="btn btn-danger-ghost"
+                    disabled={savingQuickPromo}
+                    onClick={() => handleClearQuickPromo(quickPromoPlan)}
+                  >
+                    Hapus Promo
+                  </button>
+                )}
+                <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setQuickPromoPlan(null)}
+                  >
+                    Batal
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={savingQuickPromo}>
+                    <Save size={15} />
+                    <span>{savingQuickPromo ? 'Menyimpan...' : 'Simpan Promo'}</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
