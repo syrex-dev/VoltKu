@@ -4,7 +4,7 @@ import hashlib
 import time
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -15,9 +15,11 @@ from app.models import (
     PaymentMethod,
     Setting,
     SubscriptionPlan,
+    TelegramUser,
     TermsConsent,
     UpgradeRequest,
     User,
+    UserFeedback,
     UserNotification,
     UserSetting,
 )
@@ -266,6 +268,23 @@ def compute_admin_sync_state(session: Session, now_ts: Optional[int] = None) -> 
     ).one()
     consents_rev = _digest_parts(int(consent_stats[0] or 0), int(consent_stats[1] or 0))
 
+    fb_stats = session.execute(
+        select(
+            func.count(UserFeedback.id),
+            func.max(UserFeedback.updated_at),
+            func.sum(case((UserFeedback.status == "new", 1), else_=0)),
+        )
+    ).one()
+    fb_total = int(fb_stats[0] or 0)
+    fb_max_upd = int(fb_stats[1] or 0)
+    fb_new = int(fb_stats[2] or 0)
+    feedback_rev = _digest_parts(fb_total, fb_max_upd, fb_new)
+
+    tg_rows = session.execute(
+        select(TelegramUser.chat_id, TelegramUser.name).order_by(TelegramUser.chat_id.asc())
+    ).all()
+    telegram_users_rev = _digest_parts(*[f"{cid}:{name}" for cid, name in tg_rows])
+
     discount_rows = session.execute(
         select(
             DiscountCode.id,
@@ -345,6 +364,8 @@ def compute_admin_sync_state(session: Session, now_ts: Optional[int] = None) -> 
         discounts_rev,
         settings_rev,
         consents_rev,
+        feedback_rev,
+        telegram_users_rev,
         public_state["rev"],
     )
 
@@ -360,6 +381,8 @@ def compute_admin_sync_state(session: Session, now_ts: Optional[int] = None) -> 
         "settings_rev": settings_rev,
         "config_rev": public_state["config_rev"],
         "consents_rev": consents_rev,
+        "feedback_rev": feedback_rev,
+        "telegram_users_rev": telegram_users_rev,
         "public_read_enabled": public_state["public_read_enabled"],
         "counts": {
             "verifying": len(verifying_rows),
@@ -369,6 +392,8 @@ def compute_admin_sync_state(session: Session, now_ts: Optional[int] = None) -> 
             "users": len(user_rows),
             "devices": len(device_rows),
             "anomalies": anom_count,
+            "new_feedback": fb_new,
+            "telegram_users": len(tg_rows),
         },
         "latest_verifying": latest_verifying,
         "latest_awaiting": latest_awaiting,

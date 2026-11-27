@@ -47,6 +47,7 @@ Payload telemetry:
 | `POST /api/chat`, `GET /api/chat/history` | Asisten AI Chat (`{"question": "..."}`) dengan tool deterministik, rate limit 20 pesan/jam/user, audit `chat_log`, dan riwayat pertanyaan. Wajib Bearer JWT. |
 | `POST /api/users/push-token`, `DELETE /api/users/push-token` | Registrasi atau penonaktifan token push notifikasi (`android`, `ios`, `web`) untuk pengguna login (FCM HTTP v1). |
 | `GET /api/users/notifications`, `POST /api/users/notifications/read` | Mengambil inbox notifikasi tenant (mendukung sinkronisasi inkremental `since_id` oleh worker APK) dan menandai notifikasi sudah dibaca. |
+| `GET /api/users/feedback`, `POST /api/users/feedback` | Mengambil riwayat masukan/rating milik akun login dan mengirim masukan, rating bintang (1–5), atau laporan bug (`feedback \| bug \| feature`) ke database. |
 | `GET /api/settings` | Pengambilan pengaturan aktif (untuk `user`, memadukan preferensi `user_settings` dengan default global). |
 | `PATCH /api/settings` | Pembaruan pengaturan (`tariff_rp`, `power_limit_w`, `alert_cooldown_min`, `extra_percent`, `report_hour`, `report_timezone`, `report_enabled`). Untuk `user`, disimpan per tenant di `user_settings` dan dipakai penjadwal rekap per zona waktu (WIB/WITA/WIT). |
 | `GET /api/public/sync-state`, `GET /api/users/sync-state`, `GET /api/admin/sync-state` | Snapshot revisi ringan untuk sinkronisasi real-time paket, metode bayar, profil, notifikasi, & transaksi antara Publik, User, dan Admin. |
@@ -61,7 +62,10 @@ Payload telemetry:
 | `GET/POST /api/admin/discounts`, `PATCH/DELETE /api/admin/discounts/{id}` | Manajemen CRUD kode promo/voucher diskon (`percent` atau `fixed_rp`, batas maksimal potongan, minimal pembelian, kuota pakai, target paket/durasi, periode berlaku) oleh Admin (`role="admin"`). |
 | `GET/POST /api/admin/payment-methods`, `PATCH/DELETE /api/admin/payment-methods/{id}`, `POST /api/admin/payment-methods/{id}/qris` | Manajemen metode pembayaran manual (QRIS + unggah gambar QRIS, Transfer Bank, E-Wallet) dari Panel Admin (`role="admin"`). |
 | `GET /api/admin/devices`, `PATCH /api/admin/devices/{id}` | Inventaris perangkat (mendukung paginasi `limit` & `offset`) beserta pemilik, toggle `is_public_demo`, dan pengalihan `owner_user_id`. Wajib `role="admin"`. |
-| `GET /api/admin/anomalies` | Log anomali lintas semua perangkat dengan filter `device_id`, `severity`, `from`, `limit`. Wajib `role="admin"`. |
+| `GET /api/admin/anomalies`, `DELETE /api/admin/anomalies*` | Log anomali lintas semua perangkat dengan filter `device_id`, `severity`, `from`, `limit`, serta penghapusan log satuan (`/{id}`) atau pembersihan terfilter. Wajib `role="admin"`. |
+| `GET/PATCH/DELETE /api/admin/feedback*` | Manajemen CRUD umpan balik, rating, dan laporan bug pengguna (daftar, pembaruan status `new\|reviewed\|resolved` & balasan admin opsional ke inbox user, serta hapus). Wajib `role="admin"`. |
+| `GET/POST/DELETE /api/admin/notifications*` | Manajemen siaran notifikasi admin ke inbox lonceng pengguna (`all\|free\|pro\|user_id`) beserta opsi kirim Push FCM Android, daftar riwayat broadcast, dan penarikan/penghapusan notifikasi. Wajib `role="admin"`. |
+| `GET/POST/PATCH/DELETE /api/admin/telegram-users*` | Manajemen allowlist penerima & pengguna Bot Telegram (`chat_id`, `name`) serta ringkasan audit `chat_log`. Wajib `role="admin"`. |
 | `GET /api/admin/access`, `PATCH /api/admin/access` | Membaca dan mengubah kebijakan `public_read_enabled`. Wajib `role="admin"`. |
 | `GET /api/admin/app-settings`, `PATCH /api/admin/app-settings` | Membaca dan menyimpan seluruh pengaturan aplikasi (identitas, branding navbar, panduan, autentikasi/Google Client ID, teks/versi Syarat & Ketentuan + Privasi, paket & kuota Freemium, operasional default, kontak dukungan). Wajib `role="admin"`. |
 | `GET /api/admin/consents` | Audit riwayat persetujuan Syarat & Ketentuan dan Kebijakan Privasi seluruh pengguna & sesi tamu (mendukung `limit` & `offset`). Wajib `role="admin"`. |
@@ -93,6 +97,7 @@ telegram_users(chat_id PK, name)
 chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
 push_tokens(id PK, user_id FK->users.id, token UNIQUE, platform, device_label NULL, is_active DEFAULT 1, created_at, updated_at)
 user_notifications(id PK, user_id FK->users.id, device_id NULL, title, body, category, severity, data_json NULL, event_key UNIQUE NULL, is_read DEFAULT 0, pushed_fcm DEFAULT 0, created_at)
+user_feedback(id PK, user_id FK->users.id NULL, user_name_snapshot, user_email_snapshot NULL, rating DEFAULT 5, category DEFAULT 'feedback', comment NULL, status DEFAULT 'new', admin_reply NULL, replied_at NULL, created_at, updated_at)
 ```
 - `cost_rp`: `INTEGER` (Rupiah bulat, dihitung menggunakan Python `Decimal` dengan pembulatan `ROUND_HALF_UP`).
 - `tariff_sen`: `INTEGER` (tarif per kWh dalam satuan sen, misal Rp1.444,70/kWh disimpan sebagai 144470).

@@ -2016,11 +2016,38 @@ export function OfficialChannelsSubView({ waHref, tgHandle, supportEmail, appNam
   )
 }
 
-export function RateFeedbackModal({ isOpen, onClose, appName, waHref, supportEmail }) {
+export function RateFeedbackModal({
+  isOpen,
+  onClose,
+  token = '',
+  onUnauthorized,
+  appName,
+  waHref,
+  supportEmail,
+}) {
   const existing = getLatestUserFeedback()
   const [rating, setRating] = useState(existing?.rating || 5)
+  const [category, setCategory] = useState('feedback')
   const [comment, setComment] = useState(existing?.comment || '')
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitErr, setSubmitErr] = useState('')
+  const [serverHistory, setServerHistory] = useState([])
+
+  useEffect(() => {
+    if (!isOpen || !token) return undefined
+    let cancelled = false
+    apiRequest('/api/users/feedback?limit=3', {}, token, onUnauthorized)
+      .then((rows) => {
+        if (!cancelled && Array.isArray(rows)) {
+          setServerHistory(rows)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, token, onUnauthorized])
 
   if (!isOpen) return null
 
@@ -2032,9 +2059,33 @@ export function RateFeedbackModal({ isOpen, onClose, appName, waHref, supportEma
     5: 'Luar biasa memuaskan!',
   }
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault()
-    saveUserFeedbackEntry({ rating, comment })
+    setSubmitErr('')
+    saveUserFeedbackEntry({ rating, comment, category })
+    if (token) {
+      setSubmitting(true)
+      try {
+        const created = await apiRequest(
+          '/api/users/feedback',
+          {
+            method: 'POST',
+            body: { rating, category, comment: comment.trim() || null },
+          },
+          token,
+          onUnauthorized
+        )
+        if (created) {
+          setServerHistory((prev) => [created, ...prev.slice(0, 2)])
+        }
+      } catch (err) {
+        setSubmitErr(err.message || 'Gagal mengirim masukan ke server.')
+        setSubmitting(false)
+        return
+      } finally {
+        setSubmitting(false)
+      }
+    }
     triggerHaptic(18)
     setSubmitted(true)
   }
@@ -2115,21 +2166,74 @@ export function RateFeedbackModal({ isOpen, onClose, appName, waHref, supportEma
             </div>
             <div className="profile-rate-caption">{ratingLabels[rating]}</div>
 
+            <div className="profile-rate-cat-row" role="radiogroup" aria-label="Kategori masukan">
+              {[
+                { id: 'feedback', label: 'Ulasan' },
+                { id: 'bug', label: 'Lapor Bug' },
+                { id: 'feature', label: 'Usul Fitur' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`profile-rate-cat-pill ${category === c.id ? 'active' : ''}`}
+                  onClick={() => setCategory(c.id)}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
             <textarea
               rows={3}
               className="modern-input"
-              placeholder="Tulis saran fitur atau masukan Anda (opsional)..."
+              placeholder={
+                category === 'bug'
+                  ? 'Jelaskan kendala yang dialami agar tim segera perbaiki...'
+                  : 'Tulis saran fitur atau masukan Anda (opsional)...'
+              }
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               maxLength={400}
             />
 
+            {submitErr && (
+              <p className="feedback-msg error" style={{ margin: 0 }}>
+                {submitErr}
+              </p>
+            )}
+
+            {serverHistory.length > 0 && (
+              <div className="profile-rate-history">
+                <div className="profile-rate-history-head">Riwayat Kiriman Anda</div>
+                {serverHistory.slice(0, 2).map((fb) => (
+                  <div key={fb.id} className="profile-rate-history-item">
+                    <div className="profile-rate-history-meta">
+                      <span>
+                        {'★'.repeat(fb.rating || 5)} ·{' '}
+                        {fb.status === 'resolved'
+                          ? 'Selesai'
+                          : fb.status === 'reviewed'
+                          ? 'Ditinjau'
+                          : 'Terkirim'}
+                      </span>
+                      <span className="num-tabular">{formatDateTimeWIB(fb.created_at)}</span>
+                    </div>
+                    {fb.admin_reply && (
+                      <div className="profile-rate-admin-reply">
+                        <strong>Balasan Admin:</strong> {fb.admin_reply}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="profile-rate-split-actions">
               <button type="button" className="profile-rate-split-btn" onClick={onClose}>
                 Tutup
               </button>
-              <button type="submit" className="profile-rate-split-btn is-primary">
-                Kirim Nilai
+              <button type="submit" className="profile-rate-split-btn is-primary" disabled={submitting}>
+                {submitting ? 'Mengirim...' : 'Kirim Nilai'}
               </button>
             </div>
           </form>

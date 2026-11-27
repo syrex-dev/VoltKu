@@ -15,12 +15,15 @@ import {
   UserCheck,
   Crown,
   ArrowRight,
+  MessageSquare,
+  BellRing,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatTimeWIB, formatRp } from '../utils/formatters'
 import { InAppSelect } from './InAppSelect'
 import { AdminHeroBannersCard } from './AdminHeroBannersCard'
 import { AdminVisualAssetsCard } from './AdminVisualAssetsCard'
+import { AdminFeedbackSubTab, AdminNotifTelegramSubTab } from './AdminCommsSection'
 
 const SUB_TABS = [
   { id: 'identitas', label: '1. Identitas & Brand', icon: Store },
@@ -29,6 +32,8 @@ const SUB_TABS = [
   { id: 'legal', label: '4. Legal & Audit', icon: ShieldCheck },
   { id: 'operasional', label: '5. Operasional & Dukungan', icon: Sliders },
   { id: 'freemium', label: '6. Paket & Freemium', icon: Crown },
+  { id: 'masukan', label: '7. Masukan & Bug', icon: MessageSquare },
+  { id: 'komunikasi', label: '8. Broadcast & Telegram', icon: BellRing },
 ]
 
 const VIA_LABELS = {
@@ -44,6 +49,8 @@ export function AdminAppSettingsTab({
   appSettings,
   consentsData,
   plans = [],
+  users = [],
+  commsRefreshKey = 0,
   onOpenPlansTab = null,
   onLogout,
   onSettingsUpdated,
@@ -330,7 +337,23 @@ export function AdminAppSettingsTab({
         )}
       </div>
 
-      <form onSubmit={handleSave} className="admin-section-stack">
+      {subTab === 'masukan' ? (
+        <AdminFeedbackSubTab
+          token={token}
+          onLogout={onLogout}
+          onNotice={onNotice}
+          refreshSignal={commsRefreshKey}
+        />
+      ) : subTab === 'komunikasi' ? (
+        <AdminNotifTelegramSubTab
+          token={token}
+          users={users}
+          onLogout={onLogout}
+          onNotice={onNotice}
+          refreshSignal={commsRefreshKey}
+        />
+      ) : (
+        <form onSubmit={handleSave} className="admin-section-stack">
         {subTab === 'identitas' && (
           <>
             <section className="clean-sheet admin-card-block">
@@ -1102,7 +1125,8 @@ export function AdminAppSettingsTab({
             <span>{saving ? 'Menyimpan Semua Pengaturan...' : 'Simpan Pengaturan Aplikasi'}</span>
           </button>
         </div>
-      </form>
+        </form>
+      )}
     </div>
   )
 }

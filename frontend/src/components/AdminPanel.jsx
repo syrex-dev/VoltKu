@@ -17,6 +17,7 @@ import {
   MoreHorizontal,
   Check,
   BellRing,
+  Trash2,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatTimeWIB } from '../utils/formatters'
@@ -59,6 +60,10 @@ export function AdminPanel({
   // Filters
   const [anomDeviceFilter, setAnomDeviceFilter] = useState('')
   const [anomSeverityFilter, setAnomSeverityFilter] = useState('')
+  const [deletingAnomId, setDeletingAnomId] = useState(null)
+  const [confirmAnomId, setConfirmAnomId] = useState(null)
+  const [confirmPurgeAnom, setConfirmPurgeAnom] = useState(false)
+  const [purgingAnom, setPurgingAnom] = useState(false)
 
   // Device Edit Modal State
   const [editingDevice, setEditingDevice] = useState(null)
@@ -181,6 +186,16 @@ export function AdminPanel({
             title: 'Tagihan Upgrade Baru Dibuat',
             sub: `${nextAwait.user_name} membuat order ${nextAwait.plan_name} (${nextAwait.order_code || `#${nextAwait.id}`}).`,
             targetTab: 'payments',
+          })
+        } else if (
+          (state.counts?.new_feedback ?? 0) > (prev.counts?.new_feedback ?? 0)
+        ) {
+          showAutoResponseToast({
+            id: `fb-${Date.now()}`,
+            kind: 'awaiting',
+            title: 'Masukan / Laporan Baru Masuk',
+            sub: 'Pelanggan baru saja mengirim rating atau laporan kendala di aplikasi.',
+            targetTab: 'settings',
           })
         }
 
@@ -338,6 +353,48 @@ export function AdminPanel({
       await handleAdminMutated()
     } catch (err) {
       setNotice({ type: 'error', text: err.message || 'Gagal menghapus akun pengguna.' })
+    }
+  }
+
+  const handleDeleteSingleAnomaly = async (anomalyId) => {
+    setDeletingAnomId(anomalyId)
+    setNotice(null)
+    try {
+      await apiRequest(`/api/admin/anomalies/${anomalyId}`, { method: 'DELETE' }, token, onLogout)
+      setConfirmAnomId(null)
+      setNotice({ type: 'success', text: 'Catatan anomali berhasil dihapus.' })
+      await handleAdminMutated()
+    } catch (err) {
+      setNotice({ type: 'error', text: err.message || 'Gagal menghapus catatan anomali.' })
+    } finally {
+      setDeletingAnomId(null)
+    }
+  }
+
+  const handlePurgeFilteredAnomalies = async () => {
+    setPurgingAnom(true)
+    setNotice(null)
+    try {
+      const qs = new URLSearchParams()
+      if (anomDeviceFilter) qs.set('device_id', anomDeviceFilter)
+      if (anomSeverityFilter) qs.set('severity', anomSeverityFilter)
+      const qStr = qs.toString()
+      const res = await apiRequest(
+        `/api/admin/anomalies${qStr ? `?${qStr}` : ''}`,
+        { method: 'DELETE' },
+        token,
+        onLogout
+      )
+      setConfirmPurgeAnom(false)
+      setNotice({
+        type: 'success',
+        text: `${res?.deleted ?? 0} catatan anomali dibersihkan sesuai filter.`,
+      })
+      await handleAdminMutated()
+    } catch (err) {
+      setNotice({ type: 'error', text: err.message || 'Gagal membersihkan log anomali.' })
+    } finally {
+      setPurgingAnom(false)
     }
   }
 
@@ -706,6 +763,40 @@ export function AdminPanel({
                       </button>
                     ))}
                   </div>
+
+                  {filteredAnomalies.length > 0 && (
+                    <div className="admin-inline-actions">
+                      {confirmPurgeAnom ? (
+                        <div className="admin-inline-confirm">
+                          <button
+                            type="button"
+                            className="btn btn-danger-solid btn-compact"
+                            disabled={purgingAnom}
+                            onClick={handlePurgeFilteredAnomalies}
+                          >
+                            {purgingAnom ? 'Membersihkan...' : `Ya, Hapus (${filteredAnomalies.length})`}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-compact"
+                            disabled={purgingAnom}
+                            onClick={() => setConfirmPurgeAnom(false)}
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-compact"
+                          onClick={() => setConfirmPurgeAnom(true)}
+                        >
+                          <Trash2 size={13} />
+                          <span>Bersihkan Filter</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {filteredAnomalies.length === 0 ? (
@@ -735,6 +826,36 @@ export function AdminPanel({
                               </span>
                               <span className="num-tabular">{formatTimeWIB(a.ts)}</span>
                             </div>
+                          </div>
+                          <div className="anomaly-feed-actions">
+                            {confirmAnomId === a.id ? (
+                              <div className="admin-inline-confirm">
+                                <button
+                                  type="button"
+                                  className="btn btn-danger-solid btn-compact"
+                                  disabled={deletingAnomId === a.id}
+                                  onClick={() => handleDeleteSingleAnomaly(a.id)}
+                                >
+                                  Hapus
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-compact"
+                                  onClick={() => setConfirmAnomId(null)}
+                                >
+                                  Batal
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-compact"
+                                aria-label={`Hapus anomali ${a.id}`}
+                                onClick={() => setConfirmAnomId(a.id)}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       )
@@ -786,6 +907,8 @@ export function AdminPanel({
                 appSettings={appSettings}
                 consentsData={consentsData}
                 plans={plans}
+                users={users}
+                commsRefreshKey={refreshSignal + pmSyncKey}
                 onOpenPlansTab={() => setAdminTab('plans')}
                 onLogout={onLogout}
                 onNotice={setNotice}

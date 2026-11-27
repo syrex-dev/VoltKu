@@ -13,7 +13,8 @@ import { OnboardingTour } from '../OnboardingTour'
 import { UsageGuideModal } from '../UsageGuideModal'
 import { Header } from '../Header'
 import { AdminVisualAssetsCard } from '../AdminVisualAssetsCard'
-import { AppLockSubView } from '../ProfileSubViews'
+import { AdminFeedbackSubTab, AdminNotifTelegramSubTab } from '../AdminCommsSection'
+import { AppLockSubView, RateFeedbackModal } from '../ProfileSubViews'
 import { getAppLockConfig } from '../../utils/userPrefs'
 import { VISUAL_ASSET_CATALOG, resolveVisualAsset } from '../../utils/mascotAssets'
 
@@ -410,6 +411,30 @@ describe('VoltKu Paket & Profil modal render guards', () => {
       />
     )
     expect(hiddenPlanHtml).not.toContain('plan-pro-showcase')
+  })
+
+  it('renders Stage 1 Admin Comms sub-tabs (Feedback & Broadcast/Telegram) and RateFeedbackModal cleanly', () => {
+    const fbTabHtml = renderToStaticMarkup(<AdminFeedbackSubTab token="adm-tok" />)
+    expect(fbTabHtml).toContain('Daftar Ulasan, Saran &amp; Laporan Bug Pelanggan')
+    expect(fbTabHtml).toContain('Total Masukan')
+
+    const commsHtml = renderToStaticMarkup(
+      <AdminNotifTelegramSubTab
+        token="adm-tok"
+        users={[{ id: 1, name: 'Bu Ulis', email: 'bu@voltku.id', is_active: true }]}
+      />
+    )
+    expect(commsHtml).toContain('Kirim Broadcast Notifikasi Pelanggan')
+    expect(commsHtml).toContain('Allowlist Penerima &amp; Operator Bot Telegram')
+    expect(commsHtml).toContain('Tambah Chat ID')
+
+    const rateHtml = renderToStaticMarkup(
+      <RateFeedbackModal isOpen onClose={() => {}} token="usr-tok" appName="VoltKu" />
+    )
+    expect(rateHtml).toContain('Ulasan')
+    expect(rateHtml).toContain('Lapor Bug')
+    expect(rateHtml).toContain('Usul Fitur')
+    expect(rateHtml).toContain('Kirim Nilai')
   })
 })
 

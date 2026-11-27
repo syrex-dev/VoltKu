@@ -43,6 +43,18 @@ from app.routers.devices import (
 from app.routers.public import PUBLIC_ACCESS_KEY, is_public_dashboard_enabled
 from app.routers.settings import format_settings_response, get_all_settings
 from app.routers.users import EMAIL_RE, _serialize_user, _validate_password_policy
+from app.services.admin_comms import (
+    broadcast_admin_notification,
+    create_admin_telegram_user,
+    delete_admin_feedback,
+    delete_admin_notifications,
+    delete_admin_telegram_user,
+    list_admin_feedback,
+    list_admin_notifications,
+    list_admin_telegram_users,
+    update_admin_feedback,
+    update_admin_telegram_user,
+)
 from app.services.app_config import (
     delete_admin_visual_asset,
     get_active_terms_version,
@@ -282,6 +294,31 @@ class AdminAppSettingsUpdateRequest(BaseModel):
 class AdminVisualAssetUpdateRequest(BaseModel):
     image_base64: Optional[str] = None
     enabled: Optional[bool] = None
+
+
+class AdminFeedbackUpdateRequest(BaseModel):
+    status: Optional[str] = None
+    admin_reply: Optional[str] = None
+    notify_user: bool = False
+
+
+class AdminNotificationBroadcastRequest(BaseModel):
+    title: str
+    body: str
+    category: str = "announcement"
+    severity: str = "info"
+    target: str = "all"
+    target_user_id: Optional[int] = None
+    send_push: bool = True
+
+
+class AdminTelegramUserCreateRequest(BaseModel):
+    chat_id: int
+    name: str
+
+
+class AdminTelegramUserUpdateRequest(BaseModel):
+    name: str
 
 
 def _admin_err(code: int, message: str) -> HTTPException:
@@ -686,6 +723,38 @@ def get_admin_anomalies(
         severity=severity,
         limit=limit,
     )
+
+
+@router.delete("/anomalies/{anomaly_id}", response_model=dict[str, Any])
+def delete_admin_single_anomaly(anomaly_id: int, session: Session = Depends(get_db)):
+    """Menghapus satu baris catatan anomali dari log sistem."""
+    row = session.get(Anomaly, anomaly_id)
+    if not row:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, "Catatan anomali tidak ditemukan.")
+    session.delete(row)
+    session.commit()
+    return {"deleted": True, "id": anomaly_id}
+
+
+@router.delete("/anomalies", response_model=dict[str, Any])
+def purge_admin_anomalies(
+    device_id: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    older_than_days: Optional[int] = Query(None, ge=1, le=3650),
+    session: Session = Depends(get_db),
+):
+    """Membersihkan log anomali sesuai filter perangkat, severity, atau umur hari."""
+    stmt = delete(Anomaly)
+    if device_id:
+        stmt = stmt.where(Anomaly.device_id == device_id.strip())
+    if severity:
+        stmt = stmt.where(Anomaly.severity == severity.strip().lower())
+    if older_than_days is not None:
+        cutoff = int(time.time()) - (int(older_than_days) * 86400)
+        stmt = stmt.where(Anomaly.ts < cutoff)
+    res = session.execute(stmt)
+    session.commit()
+    return {"deleted": int(res.rowcount or 0)}
 
 
 @router.get("/access", response_model=dict[str, bool])
@@ -1659,3 +1728,162 @@ def delete_admin_discount(discount_id: int, session: Session = Depends(get_db)):
     session.delete(dc)
     session.commit()
     return {"deleted": True, "id": discount_id}
+
+
+@router.get("/feedback", response_model=dict[str, Any])
+def get_admin_feedback(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    category: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    session: Session = Depends(get_db),
+):
+    """Daftar masukan, rating, dan laporan bug dari pelanggan."""
+    try:
+        return list_admin_feedback(
+            session, status_filter=status_filter, category=category, limit=limit
+        )
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+
+@router.patch("/feedback/{feedback_id}", response_model=dict[str, Any])
+def patch_admin_feedback(
+    feedback_id: int,
+    req: AdminFeedbackUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    """Memperbarui status penanganan atau balasan admin atas masukan user."""
+    try:
+        return update_admin_feedback(
+            session,
+            feedback_id,
+            new_status=req.status,
+            admin_reply=req.admin_reply,
+            reply_provided="admin_reply" in req.model_fields_set,
+            notify_user=bool(req.notify_user),
+        )
+    except LookupError as err:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, str(err)) from err
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+
+@router.delete("/feedback/{feedback_id}", response_model=dict[str, Any])
+def remove_admin_feedback(feedback_id: int, session: Session = Depends(get_db)):
+    """Menghapus masukan/ulasan spam dari database."""
+    try:
+        return delete_admin_feedback(session, feedback_id)
+    except LookupError as err:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, str(err)) from err
+
+
+@router.get("/notifications", response_model=dict[str, Any])
+def get_admin_notifications_list(
+    limit: int = Query(120, ge=1, le=300),
+    session: Session = Depends(get_db),
+):
+    """Melihat riwayat broadcast notifikasi & balasan dukungan dari Admin."""
+    return list_admin_notifications(session, limit=limit)
+
+
+@router.post(
+    "/notifications/broadcast",
+    status_code=status.HTTP_201_CREATED,
+    response_model=dict[str, Any],
+)
+def send_admin_notification_broadcast(
+    req: AdminNotificationBroadcastRequest,
+    session: Session = Depends(get_db),
+):
+    """Mengirim notifikasi siaran ke inbox lonceng pengguna & opsional Push FCM."""
+    try:
+        return broadcast_admin_notification(
+            session,
+            title=req.title,
+            body=req.body,
+            category=req.category,
+            severity=req.severity,
+            target=req.target,
+            target_user_id=req.target_user_id,
+            send_push=req.send_push,
+        )
+    except LookupError as err:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, str(err)) from err
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+
+@router.delete("/notifications/{notification_id}", response_model=dict[str, Any])
+def remove_admin_single_notification(
+    notification_id: int, session: Session = Depends(get_db)
+):
+    """Menarik/menghapus satu item notifikasi dari inbox pengguna."""
+    try:
+        return delete_admin_notifications(session, notification_id=notification_id)
+    except LookupError as err:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, str(err)) from err
+
+
+@router.delete("/notifications", response_model=dict[str, Any])
+def remove_admin_notification_batch(
+    batch_key: str = Query(..., min_length=3),
+    session: Session = Depends(get_db),
+):
+    """Menarik satu gelombang broadcast notifikasi dari seluruh inbox penerima."""
+    try:
+        return delete_admin_notifications(session, batch_key=batch_key)
+    except LookupError as err:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, str(err)) from err
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+
+@router.get("/telegram-users", response_model=dict[str, Any])
+def get_admin_telegram_users_list(
+    chat_log_limit: int = Query(20, ge=1, le=100),
+    session: Session = Depends(get_db),
+):
+    """Daftar penerima allowlist Bot Telegram dan log tanya-jawab terbaru."""
+    return list_admin_telegram_users(session, chat_log_limit=chat_log_limit)
+
+
+@router.post(
+    "/telegram-users",
+    status_code=status.HTTP_201_CREATED,
+    response_model=dict[str, Any],
+)
+def add_admin_telegram_user(
+    req: AdminTelegramUserCreateRequest,
+    session: Session = Depends(get_db),
+):
+    """Menambahkan chat_id baru ke allowlist Bot Telegram."""
+    try:
+        return create_admin_telegram_user(session, chat_id=req.chat_id, name=req.name)
+    except FileExistsError as err:
+        raise _admin_err(status.HTTP_409_CONFLICT, str(err)) from err
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+
+@router.patch("/telegram-users/{chat_id}", response_model=dict[str, Any])
+def edit_admin_telegram_user(
+    chat_id: int,
+    req: AdminTelegramUserUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    """Memperbarui nama label penerima Bot Telegram."""
+    try:
+        return update_admin_telegram_user(session, chat_id=chat_id, name=req.name)
+    except LookupError as err:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, str(err)) from err
+    except ValueError as err:
+        raise _admin_err(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
+
+
+@router.delete("/telegram-users/{chat_id}", response_model=dict[str, Any])
+def remove_admin_telegram_user(chat_id: int, session: Session = Depends(get_db)):
+    """Menghapus chat_id dari allowlist Bot Telegram."""
+    try:
+        return delete_admin_telegram_user(session, chat_id=chat_id)
+    except LookupError as err:
+        raise _admin_err(status.HTTP_404_NOT_FOUND, str(err)) from err

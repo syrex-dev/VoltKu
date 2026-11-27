@@ -380,3 +380,31 @@ class UserNotification(Base):
         index=True,
     )
 
+
+class UserFeedback(Base):
+    __tablename__ = "user_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    user_name_snapshot: Mapped[str] = mapped_column(String(128), nullable=False)
+    user_email_snapshot: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    rating: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    category: Mapped[str] = mapped_column(String(24), default="feedback", nullable=False)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="new", nullable=False)
+    admin_reply: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    replied_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[int] = mapped_column(
+        Integer,
+        default=lambda: int(datetime.now(timezone.utc).timestamp()),
+        nullable=False,
+        index=True,
+    )
+    updated_at: Mapped[int] = mapped_column(
+        Integer,
+        default=lambda: int(datetime.now(timezone.utc).timestamp()),
+        nullable=False,
+    )
+

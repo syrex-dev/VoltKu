@@ -216,6 +216,7 @@ def create_and_dispatch_user_notification(
     data: Optional[dict[str, Any]] = None,
     event_key: Optional[str] = None,
     now_ts: Optional[int] = None,
+    send_push: bool = True,
 ) -> Optional[UserNotification]:
     """Menyimpan notifikasi ke inbox user & mengirim push FCM ke semua token aktif user tersebut."""
     if not user_id:
@@ -258,7 +259,7 @@ def create_and_dispatch_user_notification(
     ).all()
 
     any_pushed = False
-    if active_tokens and is_fcm_configured():
+    if send_push and active_tokens and is_fcm_configured():
         for pt in active_tokens:
             delivered, deactivate = _send_fcm_http_v1(
                 token=pt.token,

@@ -29,6 +29,7 @@ from app.models import (
     UpgradeRequest,
     User,
 )
+from app.services.admin_comms import create_user_feedback, list_user_feedback_history
 from app.services.app_config import (
     get_active_terms_version,
     get_app_config_map,
@@ -125,6 +126,12 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+class UserFeedbackCreateRequest(BaseModel):
+    rating: int = 5
+    category: str = "feedback"
+    comment: Optional[str] = None
 
 
 class UserProfileUpdateRequest(BaseModel):
@@ -1263,5 +1270,43 @@ def disable_app_pin(
         account_password=req.account_password,
     )
     return {"disabled": True, "app_lock": app_lock}
+
+
+@router.get("/feedback", response_model=list[dict[str, Any]])
+def get_my_feedback(
+    limit: int = Query(20, ge=1, le=50),
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mengambil riwayat masukan/bug milik akun pengguna yang login beserta balasan admin."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+    return list_user_feedback_history(session, user_id=int(uid), limit=limit)
+
+
+@router.post("/feedback", status_code=status.HTTP_201_CREATED, response_model=dict[str, Any])
+def submit_user_feedback(
+    req: UserFeedbackCreateRequest,
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Menyimpan penilaian bintang, saran fitur, atau laporan bug dari pengguna ke database."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+    user = session.get(User, int(uid))
+    if not user or not user.is_active:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "User not found")
+    try:
+        return create_user_feedback(
+            session,
+            user,
+            rating=req.rating,
+            category=req.category,
+            comment=req.comment,
+        )
+    except ValueError as err:
+        raise _api_error(status.HTTP_422_UNPROCESSABLE_ENTITY, str(err)) from err
 
 

@@ -907,6 +907,8 @@ export function ProfileModal({
       <RateFeedbackModal
         isOpen={showRateModal}
         onClose={() => setShowRateModal(false)}
+        token={token}
+        onUnauthorized={onLogout}
         appName={appName}
         waHref={waHref}
         supportEmail={supportEmail}
