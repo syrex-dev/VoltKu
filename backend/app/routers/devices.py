@@ -14,13 +14,14 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.constants import OFFLINE_THRESHOLD_SECONDS
 from app.db import get_db
-from app.models import AlertState, Anomaly, DailyStat, Device, HourlyStat, Reading
+from app.models import AlertState, Anomaly, DailyStat, Device, HourlyStat, Reading, User
 from app.mqtt_ingest import get_device_status
 from app.services.app_config import get_app_config_map
 from app.services.plans import (
     enforce_device_creation_quota,
     enforce_series_history_access,
     enforce_user_feature_access,
+    resolve_user_plan,
 )
 from app.services.reports import calculate_device_forecast, calculate_device_summary
 
@@ -137,6 +138,8 @@ def list_devices_data(
     include_latest: bool = False,
     owner_user_id: Optional[int] = None,
     public_demo_only: bool = False,
+    limit: Optional[int] = None,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
     """Query helper daftar perangkat dengan filter kepemilikan / mode demo publik."""
     stmt = select(Device)
@@ -144,7 +147,12 @@ def list_devices_data(
         stmt = stmt.where(Device.is_public_demo == 1)
     elif owner_user_id is not None:
         stmt = stmt.where(Device.owner_user_id == owner_user_id)
-    devices = session.scalars(stmt.order_by(Device.id.asc())).all()
+    stmt = stmt.order_by(Device.id.asc())
+    if offset > 0:
+        stmt = stmt.offset(offset)
+    if limit is not None and limit > 0:
+        stmt = stmt.limit(limit)
+    devices = session.scalars(stmt).all()
     now_utc = int(datetime.now(timezone.utc).timestamp())
 
     latest_by_device: dict[str, Reading] = {}
@@ -164,15 +172,30 @@ def list_devices_data(
         ).all()
         latest_by_device = {r.device_id: r for r in rows}
 
-    return [
-        _serialize_device(
+    excess_ids: set[str] = set()
+    if owner_user_id is not None and len(devices) > 1:
+        user_obj = session.get(User, int(owner_user_id))
+        if user_obj is not None:
+            plan = resolve_user_plan(
+                session, user_obj, get_app_config_map(session), device_count=len(devices)
+            )
+            max_dev = plan["limits"]["max_devices"]
+            if plan["freemium_enabled"] and max_dev >= 0 and len(devices) > max_dev:
+                ordered = sorted(devices, key=lambda d: (int(d.created_at or 0), d.id))
+                excess_ids = {d.id for d in ordered[max_dev:]}
+
+    results: list[dict[str, Any]] = []
+    for d in devices:
+        item = _serialize_device(
             d,
             now_utc=now_utc,
             latest=latest_by_device.get(d.id),
             include_latest=include_latest,
         )
-        for d in devices
-    ]
+        if owner_user_id is not None:
+            item["quota_exceeded"] = d.id in excess_ids
+        results.append(item)
+    return results
 
 
 @router.get("", response_model=list[dict[str, Any]])

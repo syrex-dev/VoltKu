@@ -674,6 +674,8 @@ def resolve_user_plan(
         else get_user_device_count(session, user.id)
     )
     remaining = None if max_devices < 0 else max(0, max_devices - used_devices)
+    excess = max(0, used_devices - max_devices) if max_devices >= 0 else 0
+    over_quota = excess > 0
 
     pending = session.scalar(
         select(UpgradeRequest)
@@ -716,6 +718,8 @@ def resolve_user_plan(
         "usage": {
             "device_count": used_devices,
             "remaining_devices": remaining,
+            "excess_devices": excess,
+            "over_quota": over_quota,
         },
         "pending_upgrade": serialize_upgrade_request(pending) if pending else None,
         "latest_upgrade": serialize_upgrade_request(latest) if latest else None,

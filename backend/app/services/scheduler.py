@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Setting
 from app.services.alert import run_alert_check_job
+from app.services.anomaly_service import run_l2_l3_anomaly_job
 from app.services.report_generator import (
     run_catchup_reports_job,
     run_daily_report_job,
@@ -147,12 +148,23 @@ def init_scheduler_jobs(
             coalesce=True,
         )
 
-    # 5. Job Catch-up Laporan Terlewat: diperiksa tiap 60 detik (dan saat startup)
+    # 5. Job Catch-up Laporan Terlewat & Tenant Multizona: diperiksa tiap 60 detik
     if not scheduler.get_job("catchup_reports_job"):
         scheduler.add_job(
             run_catchup_reports_job,
             trigger=IntervalTrigger(seconds=60, timezone=TZ_WIB),
             id="catchup_reports_job",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+
+    # 6. Job Anomali L2 & L3 (Baseline Spike & Beban Dasar Malam): tiap 5 menit
+    if not scheduler.get_job("anomaly_l2_l3_job"):
+        scheduler.add_job(
+            run_l2_l3_anomaly_job,
+            trigger=IntervalTrigger(minutes=5, timezone=TZ_WIB),
+            id="anomaly_l2_l3_job",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

@@ -35,12 +35,16 @@ class MarkNotificationsReadRequest(BaseModel):
     notification_ids: Optional[list[int]] = None
 
 
+def _notif_err(code: int, message: str) -> HTTPException:
+    return HTTPException(status_code=code, detail={"error": {"code": code, "message": message}})
+
+
 def _require_user_id(current_user: dict[str, Any]) -> int:
     uid = current_user.get("user_id")
     if not uid:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Endpoint notifikasi hanya berlaku untuk akun pengguna terdaftar.",
+        raise _notif_err(
+            status.HTTP_403_FORBIDDEN,
+            "Endpoint notifikasi hanya berlaku untuk akun pengguna terdaftar.",
         )
     return int(uid)
 
@@ -78,16 +82,16 @@ def register_push_token(
     user_id = _require_user_id(current_user)
     clean_token = (req.token or "").strip()
     if len(clean_token) < 12 or len(clean_token) > 512:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Format push token tidak valid.",
+        raise _notif_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Format push token tidak valid.",
         )
 
     platform = (req.platform or "android").strip().lower()
     if platform not in ALLOWED_PLATFORMS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Platform harus 'android', 'ios', atau 'web'.",
+        raise _notif_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Platform harus 'android', 'ios', atau 'web'.",
         )
 
     clean_label = (
@@ -135,9 +139,9 @@ def unregister_push_token(
     user_id = _require_user_id(current_user)
     raw_token = (token or (req.token if req else "") or "").strip()
     if not raw_token:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Parameter token wajib diisi.",
+        raise _notif_err(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Parameter token wajib diisi.",
         )
 
     existing = session.scalar(

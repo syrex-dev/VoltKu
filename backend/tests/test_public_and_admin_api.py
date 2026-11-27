@@ -265,4 +265,12 @@ def test_multi_tenant_user_isolation_and_admin_separation():
         == 403
     )
 
+    # 6. Paginasi Admin users & devices berfungsi
+    paged_users = client.get("/api/admin/users?limit=1&offset=1", headers=adm_headers).json()
+    assert len(paged_users) == 1
+    paged_devs = client.get("/api/admin/devices?limit=1&offset=0", headers=adm_headers).json()
+    assert len(paged_devs) == 1
+    empty_devs = client.get("/api/admin/devices?limit=10&offset=5", headers=adm_headers).json()
+    assert empty_devs == []
+
     app.dependency_overrides.clear()

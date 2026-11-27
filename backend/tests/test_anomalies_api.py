@@ -4,7 +4,8 @@ import time
 from app.auth import create_access_token
 from app.db import get_db
 from app.main import app
-from app.models import Anomaly
+from app.models import Anomaly, Device, Reading, User
+from app.services.anomaly_service import evaluate_all_l2_l3_anomalies
 from fastapi.testclient import TestClient
 from mysql_test_helper import open_clean_test_session
 
@@ -144,3 +145,125 @@ def test_get_anomalies_device_filter():
     data2 = resp2.json()
     assert len(data2) == 1
     assert data2[0]["device_id"] == "demo-2"
+
+
+def test_l2_anomaly_runtime_wiring_and_tier_gate():
+    """AnomalyEngine L2/L3 berjalan via evaluate_all_l2_l3_anomalies dan dibatasi per tier."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    session = setup_test_db()
+    tz_wib = ZoneInfo("Asia/Jakarta")
+    now_dt = datetime(2026, 11, 20, 14, 15, 0, tzinfo=tz_wib)
+    now_ts = int(now_dt.timestamp())
+
+    free_user = User(
+        name="User Free", email="free_anom@voltku.id", password_hash="x", plan_tier="free"
+    )
+    pro_user = User(
+        name="User Pro",
+        email="pro_anom@voltku.id",
+        password_hash="x",
+        plan_tier="pro",
+        plan_expires_at=int(time.time()) + 86400,
+    )
+    session.add_all([free_user, pro_user])
+    session.flush()
+
+    session.add_all(
+        [
+            Device(id="dev-free", name="Panel Free", mcb_watt=2200, owner_user_id=free_user.id),
+            Device(id="dev-pro", name="Panel Pro", mcb_watt=2200, owner_user_id=pro_user.id),
+        ]
+    )
+
+    # Buat 4 hari riwayat jam 14:xx WIB (~150W, >=24 jendela @5m) + 3 jendela spike ~600W
+    cur_bucket = (now_ts // 300) * 300
+    for dev_id in ("dev-free", "dev-pro"):
+        for d_off in (4, 3, 2, 1):
+            day_base = cur_bucket - (d_off * 86400) - 900
+            for w_idx in range(10):
+                w_start = day_base + w_idx * 300
+                for s in range(25):
+                    session.add(
+                        Reading(
+                            device_id=dev_id,
+                            ts=w_start + s * 10,
+                            v=220.0,
+                            i=0.7,
+                            p=150.0 + (s % 3) * 5.0,
+                            e_kwh=10.0,
+                            delta_kwh=0.001,
+                            f=50.0,
+                            pf=0.95,
+                            rssi=-60,
+                        )
+                    )
+        # 3 jendela 5 menit berturut-turut dengan lonjakan 600W sebelum now_ts
+        for step, w_start in enumerate(
+            [cur_bucket - 900, cur_bucket - 600, cur_bucket - 300], start=1
+        ):
+            for s in range(25):
+                session.add(
+                    Reading(
+                        device_id=dev_id,
+                        ts=w_start + s * 10,
+                        v=220.0,
+                        i=2.7,
+                        p=600.0,
+                        e_kwh=12.0 + step,
+                        delta_kwh=0.005,
+                        f=50.0,
+                        pf=0.98,
+                        rssi=-60,
+                    )
+                )
+    session.commit()
+
+    # Jalankan 3 tick beruntun per akhir masing-masing jendela spike agar persistence=3 terpicu
+    cur_bucket = (now_ts // 300) * 300
+    evaluate_all_l2_l3_anomalies(session, now_ts=cur_bucket - 590)
+    evaluate_all_l2_l3_anomalies(session, now_ts=cur_bucket - 290)
+    evaluate_all_l2_l3_anomalies(session, now_ts=cur_bucket + 10)
+
+    pro_anoms = session.query(Anomaly).filter_by(device_id="dev-pro", type="l2_spike").all()
+    free_anoms = session.query(Anomaly).filter_by(device_id="dev-free", type="l2_spike").all()
+    assert len(pro_anoms) >= 1
+    assert len(free_anoms) == 0
+
+    # Uji endpoint GET /api/anomalies untuk user Free (disaring L2/L3) vs Pro (muncul)
+    session.add(
+        Anomaly(
+            device_id="dev-free",
+            ts=now_ts - 60,
+            type="l2_spike",
+            severity="warning",
+            details_json="{}",
+            message="Spike",
+            notified=0,
+        )
+    )
+    session.add(
+        Anomaly(
+            device_id="dev-free",
+            ts=now_ts - 50,
+            type="power_limit",
+            severity="warning",
+            details_json="{}",
+            message="Overload",
+            notified=0,
+        )
+    )
+    session.commit()
+
+    free_tok = create_access_token(subject=free_user.email, role="user", user_id=free_user.id)
+    res_free = client.get(
+        "/api/anomalies", headers={"Authorization": f"Bearer {free_tok}"}
+    ).json()
+    assert [a["type"] for a in res_free] == ["power_limit"]
+
+    pro_tok = create_access_token(subject=pro_user.email, role="user", user_id=pro_user.id)
+    res_pro = client.get(
+        "/api/anomalies", headers={"Authorization": f"Bearer {pro_tok}"}
+    ).json()
+    assert any(a["type"] == "l2_spike" for a in res_pro)

@@ -384,16 +384,27 @@ def get_admin_overview(session: Session = Depends(get_db)):
 
 
 @router.get("/users", response_model=list[dict[str, Any]])
-def list_admin_users(session: Session = Depends(get_db)):
-    """Daftar seluruh akun tenant/pembeli beserta jumlah perangkat dan paket langganannya."""
-    users = session.scalars(select(User).order_by(User.id.desc())).all()
+def list_admin_users(
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    session: Session = Depends(get_db),
+):
+    """Daftar akun tenant/pembeli beserta jumlah perangkat & paket (mendukung paginasi)."""
+    users = session.scalars(
+        select(User).order_by(User.id.desc()).offset(offset).limit(limit)
+    ).all()
     cfg_map = get_app_config_map(session)
-    dev_counts = dict(
-        session.execute(
-            select(Device.owner_user_id, func.count(Device.id))
-            .where(Device.owner_user_id.is_not(None))
-            .group_by(Device.owner_user_id)
-        ).all()
+    user_ids = [u.id for u in users]
+    dev_counts = (
+        dict(
+            session.execute(
+                select(Device.owner_user_id, func.count(Device.id))
+                .where(Device.owner_user_id.in_(user_ids))
+                .group_by(Device.owner_user_id)
+            ).all()
+        )
+        if user_ids
+        else {}
     )
     results = []
     for u in users:
@@ -562,23 +573,46 @@ def delete_admin_user(user_id: int, session: Session = Depends(get_db)):
 
 
 @router.get("/devices", response_model=list[dict[str, Any]])
-def get_admin_devices(session: Session = Depends(get_db)):
-    """Daftar lengkap unit perangkat beserta pemilik tenant, metrik, & status Demo Publik."""
-    devices = list_devices_data(session, include_latest=True)
+def get_admin_devices(
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    session: Session = Depends(get_db),
+):
+    """Daftar unit perangkat beserta pemilik tenant, metrik, & status Demo Publik (paginasi)."""
+    devices = list_devices_data(session, include_latest=True, limit=limit, offset=offset)
     cutoff_7d = int(time.time()) - (7 * 86400)
 
-    users_map = {u.id: u for u in session.scalars(select(User)).all()}
-    reading_counts = dict(
-        session.execute(
-            select(Reading.device_id, func.count(Reading.id)).group_by(Reading.device_id)
-        ).all()
+    owner_ids = {int(d["owner_user_id"]) for d in devices if d.get("owner_user_id") is not None}
+    users_map = (
+        {
+            u.id: u
+            for u in session.scalars(select(User).where(User.id.in_(owner_ids))).all()
+        }
+        if owner_ids
+        else {}
     )
-    anomaly_counts = dict(
-        session.execute(
-            select(Anomaly.device_id, func.count(Anomaly.id))
-            .where(Anomaly.ts >= cutoff_7d)
-            .group_by(Anomaly.device_id)
-        ).all()
+    dev_ids = [d["id"] for d in devices]
+    reading_counts = (
+        dict(
+            session.execute(
+                select(Reading.device_id, func.count(Reading.id))
+                .where(Reading.device_id.in_(dev_ids))
+                .group_by(Reading.device_id)
+            ).all()
+        )
+        if dev_ids
+        else {}
+    )
+    anomaly_counts = (
+        dict(
+            session.execute(
+                select(Anomaly.device_id, func.count(Anomaly.id))
+                .where(Anomaly.device_id.in_(dev_ids), Anomaly.ts >= cutoff_7d)
+                .group_by(Anomaly.device_id)
+            ).all()
+        )
+        if dev_ids
+        else {}
     )
 
     for d in devices:
@@ -690,6 +724,7 @@ def update_admin_application_settings(
 @router.get("/consents", response_model=dict[str, Any])
 def get_admin_terms_consents(
     limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     session: Session = Depends(get_db),
 ):
     """Audit riwayat persetujuan Syarat Penggunaan & Kebijakan Privasi pengguna dan tamu."""
@@ -697,13 +732,27 @@ def get_admin_terms_consents(
     rows = session.scalars(
         select(TermsConsent)
         .order_by(TermsConsent.accepted_at.desc(), TermsConsent.id.desc())
+        .offset(offset)
         .limit(limit)
     ).all()
-    users = session.scalars(select(User)).all()
-    users_map = {u.id: u for u in users}
+    users_total = session.scalar(select(func.count(User.id))) or 0
+    agreed_current = (
+        session.scalar(
+            select(func.count(User.id)).where(User.terms_version_accepted == current_ver)
+        )
+        or 0
+    )
+    pending_or_outdated = max(0, int(users_total) - int(agreed_current))
 
-    agreed_current = sum(1 for u in users if u.terms_version_accepted == current_ver)
-    pending_or_outdated = len(users) - agreed_current
+    consent_uids = {int(r.user_id) for r in rows if r.user_id is not None}
+    users_map = (
+        {
+            u.id: u
+            for u in session.scalars(select(User).where(User.id.in_(consent_uids))).all()
+        }
+        if consent_uids
+        else {}
+    )
 
     items = []
     for r in rows:
@@ -727,8 +776,8 @@ def get_admin_terms_consents(
 
     return {
         "current_terms_version": current_ver,
-        "users_total": len(users),
-        "users_agreed_current": agreed_current,
+        "users_total": int(users_total),
+        "users_agreed_current": int(agreed_current),
         "users_pending_or_outdated": pending_or_outdated,
         "total_logged": len(items),
         "items": items,
@@ -762,7 +811,15 @@ def list_admin_upgrade_requests(
     rows = session.scalars(
         stmt.order_by(UpgradeRequest.created_at.desc(), UpgradeRequest.id.desc()).limit(limit)
     ).all()
-    users_map = {u.id: u for u in session.scalars(select(User)).all()}
+    req_uids = {int(r.user_id) for r in rows}
+    users_map = (
+        {
+            u.id: u
+            for u in session.scalars(select(User).where(User.id.in_(req_uids))).all()
+        }
+        if req_uids
+        else {}
+    )
     return [serialize_upgrade_request(r, user=users_map.get(r.user_id)) for r in rows]
 
 
