@@ -26,20 +26,46 @@ describe('VoltKu Paket & Profil modal render guards', () => {
           email: 'warung@example.com',
           plan: { is_pro: false, plan_name: 'VoltKu Gratis', limits: { max_devices: 1, history_days: 3 } },
         }}
-        appConfig={{
-          app_name: 'VoltKu',
-          plans: {
-            upgrade_instructions: 'Transfer lalu upload bukti bayar.',
-            free: { name: 'VoltKu Gratis', max_devices: 1, history_days: 3 },
-            pro: { name: 'VoltKu Pro', price_monthly_rp: 30000, price_yearly_rp: 300000 },
-          },
-        }}
-        token="test-token"
+          appConfig={{
+            app_name: 'VoltKu',
+            plans: {
+              upgrade_instructions: 'Transfer lalu upload bukti bayar.',
+              free: { name: 'VoltKu Gratis', max_devices: 1, history_days: 3 },
+              pro: { name: 'VoltKu Pro', price_monthly_rp: 30000, price_yearly_rp: 300000 },
+              items: [
+                {
+                  slug: 'free',
+                  name: 'VoltKu Gratis',
+                  is_default_free: true,
+                  max_devices: 1,
+                  history_days: 3,
+                },
+                {
+                  slug: 'pro',
+                  name: 'VoltKu Pro',
+                  is_recommended: true,
+                  price_monthly_rp: 30000,
+                  price_yearly_rp: 300000,
+                  effective_monthly_price_rp: 30000,
+                  effective_yearly_price_rp: 300000,
+                  max_devices: 10,
+                  history_days: 90,
+                  forecast_enabled: true,
+                  export_enabled: true,
+                  anomaly_advanced: true,
+                  features: ['Hingga 10 panel aktif', 'Prioritas WhatsApp'],
+                },
+              ],
+            },
+          }}
+          token="test-token"
       />
     )
     expect(html).toContain('Pilih Paket VoltKu')
     expect(html).toContain('VoltKu Gratis')
     expect(html).toContain('VoltKu Pro')
+    expect(html).toContain('Prioritas WhatsApp')
+    expect((html.match(/Hingga 10 panel aktif/g) || []).length).toBe(1)
   })
 
   it('renders PlanUpgradeModal cleanly with empty appConfig and active pro user', () => {

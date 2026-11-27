@@ -7750,6 +7750,7 @@ button,
 .plan-compare-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  align-items: stretch;
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -7762,6 +7763,7 @@ button,
 
 .plan-tier-card {
   position: relative;
+  height: 100%;
   padding: 16px;
   border-radius: 18px;
   background: var(--surface-card);
@@ -7821,7 +7823,8 @@ button,
 }
 
 .plan-tier-footer-cta {
-  margin-top: 14px;
+  margin-top: auto;
+  width: 100%;
   padding: 11px 14px;
   border-radius: 9999px;
   display: flex;
@@ -8132,7 +8135,8 @@ button,
 .plan-feature-list {
   list-style: none;
   padding: 0;
-  margin: 10px 0 0 0;
+  margin: 10px 0 14px 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -13564,14 +13568,14 @@ button,
 
 .plan-pro-showcase-img {
   width: 100%;
-  height: 132px;
+  height: 148px;
   object-fit: cover;
-  object-position: center;
+  object-position: center 42%;
   display: block;
 }
 
 @media (max-width: 480px) {
   .plan-pro-showcase-img {
-    height: 112px;
+    height: 120px;
   }
 }

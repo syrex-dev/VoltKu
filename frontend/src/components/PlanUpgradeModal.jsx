@@ -1038,8 +1038,20 @@ export function PlanUpgradeModal({
                   const cardYrSavePct = Number(planItem.yearly_savings_pct ?? 0)
                   const pMaxDev = Number(planItem.max_devices ?? 1)
                   const pHistDays = Number(planItem.history_days ?? 3)
+                  const builtinLines = new Set([
+                    (pMaxDev < 0 ? 'panel aktif tanpa batas' : `hingga ${pMaxDev} panel aktif`),
+                    `grafik historis hingga ${pHistDays} hari`,
+                    'proyeksi tagihan akhir bulan otomatis',
+                    'ekspor laporan konsumsi csv',
+                    'deteksi anomali lengkap l2/l3',
+                  ])
                   const customBullets = Array.isArray(planItem.features)
-                    ? planItem.features.slice(0, 3)
+                    ? planItem.features
+                        .filter((f) => {
+                          const norm = String(f || '').trim().toLowerCase()
+                          return norm && !builtinLines.has(norm)
+                        })
+                        .slice(0, 3)
                     : []
 
                   if (isFreeCard) {
