@@ -837,6 +837,22 @@ export function AdminPanel({
                   </button>
                 )
               })}
+              <a
+                href="/"
+                target="_blank"
+                rel="noreferrer"
+                className="admin-more-item"
+                style={{ textDecoration: 'none' }}
+                onClick={() => setMobileMoreOpen(false)}
+              >
+                <span className="admin-more-item-ico">
+                  <ExternalLink size={17} />
+                </span>
+                <span className="admin-more-item-copy">
+                  <strong>Buka Web User</strong>
+                  <span>Lihat portal pelanggan di tab baru</span>
+                </span>
+              </a>
             </div>
           </div>
         </div>

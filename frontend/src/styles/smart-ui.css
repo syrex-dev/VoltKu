@@ -4069,18 +4069,31 @@ html {
 /* ==========================================================================
    MOBILE-FRIENDLY ADMIN PANEL (/admin)
    ========================================================================== */
-.admin-header-inner {
-  padding-bottom: 0;
+.app-header.clean-header-inner.admin-header-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  min-height: 0;
+  padding: 6px 0 0;
 }
 
 .admin-topbar-row {
-  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 46px;
+  gap: 8px;
+  padding-bottom: 6px;
 }
 
 .admin-head-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -4103,6 +4116,7 @@ html {
   background: rgba(22, 119, 255, 0.1);
   border: 1px solid rgba(22, 119, 255, 0.2);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 [data-theme="dark"] .admin-title-badge {
@@ -4115,6 +4129,7 @@ html {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 0 0 auto;
 }
 
 .admin-actions-sep {
@@ -4139,8 +4154,9 @@ html {
 .admin-subnav-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 4px;
+  width: 100%;
+  gap: 6px;
+  margin-top: 0;
   padding-top: 2px;
   border-top: 1px solid var(--border-subtle);
   overflow-x: auto;
@@ -4165,6 +4181,7 @@ html {
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   transition: color 0.15s ease, background-color 0.15s ease;
 }
@@ -4191,13 +4208,39 @@ html {
 }
 
 @media (max-width: 768px) {
-  .admin-header-inner {
-    padding-bottom: 6px;
+  .app-header.clean-header-inner.admin-header-inner {
+    padding: 4px 0;
+  }
+
+  .admin-topbar-row {
+    min-height: 44px;
+    padding-bottom: 0;
   }
 
   .admin-subnav-bar,
-  .admin-actions-sep {
+  .admin-actions-sep,
+  .admin-brand-divider,
+  .admin-back-pill {
     display: none;
+  }
+
+  .admin-title-badge {
+    padding: 2px 7px;
+    font-size: 11px;
+  }
+
+  .admin-live-pill {
+    padding: 3px 7px;
+    font-size: 10.5px;
+  }
+
+  .admin-head-actions {
+    gap: 5px;
+  }
+
+  .admin-head-actions .header-icon-btn {
+    width: 31px;
+    height: 31px;
   }
 }
 
