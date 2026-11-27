@@ -10,8 +10,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Zap,
-  Sparkles,
 } from 'lucide-react'
+import { SignalPulseIcon } from './VoltKuIcons'
 import { apiRequest } from '../api/client'
 import { BarcodeScannerBox } from './BarcodeScannerBox'
 
@@ -584,7 +584,7 @@ export function AddDeviceModal({
                   </span>
                 ) : (
                   <span className="wizard-status-pill waiting">
-                    <Sparkles size={12} /> Menunggu sinyal alat
+                    <SignalPulseIcon size={12} /> Menunggu sinyal alat
                   </span>
                 )}
               </div>

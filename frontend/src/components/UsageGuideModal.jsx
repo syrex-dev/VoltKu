@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { ArrowLeft, Plus, Wifi, Sparkles, BookOpen, CheckCircle2, Zap, SlidersHorizontal, Bot } from 'lucide-react'
+import { ArrowLeft, Plus, Wifi, BookOpen, CheckCircle2, Zap, SlidersHorizontal, Check } from 'lucide-react'
+import { EnergyAssistantIcon } from './VoltKuIcons'
 
 function StepPhoneMockup({ stepNum }) {
   if (stepNum === 1) {
@@ -314,12 +315,12 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
 
                 <div className="ug-feature-card">
                   <span className="ug-feat-icon is-indigo">
-                    <Bot size={18} />
+                    <EnergyAssistantIcon size={18} />
                   </span>
                   <div className="ug-feat-copy">
-                    <strong>4. Tanya Asisten VoltKu AI</strong>
+                    <strong>4. Asisten Analisa Energi</strong>
                     <p>
-                      Ketuk tombol <strong>Tanya AI</strong> di pojok kanan bawah untuk menanyakan
+                      Ketuk tombol <strong>Asisten</strong> di pojok kanan bawah untuk menanyakan
                       biaya listrik hari ini, jam tersibuk, proyeksi tagihan bulan ini, atau
                       pengecekan anomali dengan cepat.
                     </p>
@@ -349,7 +350,7 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
               className="ewl-primary-pill-btn ug-cta-btn"
               onClick={onClose}
             >
-              <Sparkles size={16} />
+              <Check size={16} />
               <span>Mengerti, Kembali ke Beranda</span>
             </button>
           )}

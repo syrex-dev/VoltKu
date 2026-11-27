@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
-  Sparkles,
   Crown,
   QrCode,
   SlidersHorizontal,
@@ -9,6 +8,7 @@ import {
   BellRing,
   BookOpen,
 } from 'lucide-react'
+import { EnergyAssistantIcon } from './VoltKuIcons'
 import { formatRp } from '../utils/formatters'
 
 const AUTO_SCROLL_MS = 4500
@@ -99,11 +99,11 @@ export function HeroBannerCarousel({
     list.push({
       id: 'ai-assistant',
       tone: 'is-cobalt',
-      badge: 'ASISTEN AI',
-      title: 'Tanya Biaya & Jam Boros ke AI',
-      subtitle: 'Analisa tagihan listrik & proyeksi bulan ini secara instan',
-      cta: 'Tanya AI',
-      Icon: Sparkles,
+      badge: 'ANALISA TAGIHAN',
+      title: 'Cek Jam Boros & Estimasi Biaya',
+      subtitle: 'Tanya ringkasan kWh harian & proyeksi bulan ini berbasis data meteran',
+      cta: 'Buka Asisten',
+      Icon: EnergyAssistantIcon,
       onClick: () => {
         if (isAuthenticated) {
           window.dispatchEvent(new CustomEvent('voltku:open-ai-chat'))
@@ -173,6 +173,8 @@ export function HeroBannerCarousel({
   }, [
     appConfig,
     currentUser?.plan?.is_pro,
+    currentUser?.plan?.plan_name,
+    currentUser?.plan?.limits?.history_days,
     isAuthenticated,
     onOpenAddDevice,
     onOpenUsageGuide,

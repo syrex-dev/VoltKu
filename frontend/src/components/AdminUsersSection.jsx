@@ -12,8 +12,8 @@ import {
   WifiOff,
   X,
   Mail,
-  Sparkles,
 } from 'lucide-react'
+import { MeterPulseIcon } from './VoltKuIcons'
 import { apiRequest } from '../api/client'
 import { formatDateTimeWIB } from '../utils/formatters'
 
@@ -147,7 +147,7 @@ function UserDetailModal({
               onClose()
             }}
           >
-            <Sparkles size={14} />
+            <MeterPulseIcon size={14} />
             <span>{isPro ? 'Perpanjang +30 Hr' : `Aktifkan ${defaultPaidName} 30 Hr`}</span>
           </button>
           <button

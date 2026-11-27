@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Zap,
   History,
-  Sparkles,
   FlaskConical,
   Cpu,
   CalendarClock,
@@ -17,11 +16,11 @@ import {
   Info,
   Mail,
   Wifi,
-  Bot,
   BellRing,
   Send,
   Wallet,
 } from 'lucide-react'
+import { EnergyAssistantIcon, TierShieldIcon } from './VoltKuIcons'
 import { apiRequest } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
 import {
@@ -416,7 +415,7 @@ export function ProfileModal({
                         <span className="profile-ref-name">{displayName}</span>
                         {showPlanCard && (
                           <span className={`profile-tier-chip ${isPro ? 'is-pro' : 'is-free'}`}>
-                            {isPro ? <Crown size={11} /> : <Sparkles size={11} />}
+                            {isPro ? <Crown size={11} /> : <TierShieldIcon size={11} />}
                             <span>{tierShortLabel}</span>
                           </span>
                         )}
@@ -567,16 +566,16 @@ export function ProfileModal({
                 >
                   <div className="profile-spotlight-copy">
                     <span className="profile-spotlight-eyebrow">
-                      {Number(prefs.monthlyBudgetRp || 0) > 0 ? 'TARGET ANGGARAN' : 'ASISTEN PINTAR'}
+                      {Number(prefs.monthlyBudgetRp || 0) > 0 ? 'TARGET ANGGARAN' : 'ANALISA KONSUMSI'}
                     </span>
                     <div className="profile-spotlight-title">
                       {Number(prefs.monthlyBudgetRp || 0) > 0
                         ? `Batas Listrik: ${formatRp(prefs.monthlyBudgetRp)}/bln`
-                        : 'Analisa Jam Boros & Biaya AI'}
+                        : 'Cek Jam Boros & Estimasi Tagihan'}
                     </div>
                   </div>
                   <span className="profile-spotlight-cta">
-                    {Number(prefs.monthlyBudgetRp || 0) > 0 ? 'Atur >' : 'Tanya AI >'}
+                    {Number(prefs.monthlyBudgetRp || 0) > 0 ? 'Atur >' : 'Buka >'}
                   </span>
                 </div>
               </div>
@@ -600,8 +599,8 @@ export function ProfileModal({
                       <span className="eco-dot is-blue" title="MQTT TLS">
                         <Wifi size={11} />
                       </span>
-                      <span className="eco-dot is-indigo" title="Asisten AI">
-                        <Bot size={11} />
+                      <span className="eco-dot is-indigo" title="Asisten Energi">
+                        <EnergyAssistantIcon size={11} />
                       </span>
                       <span className="eco-dot is-amber" title="Push Notif">
                         <BellRing size={11} />

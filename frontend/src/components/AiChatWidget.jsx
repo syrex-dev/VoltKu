@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Bot, Send, X, Sparkles, MessageCircle } from 'lucide-react'
+import { Send, X, MessageCircle } from 'lucide-react'
+import { EnergyAssistantIcon } from './VoltKuIcons'
 import { apiRequest } from '../api/client'
 
 const QUICK_PROMPTS = [
@@ -108,22 +109,22 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
           type="button"
           className="ai-chat-fab"
           onClick={() => setIsOpen(true)}
-          aria-label="Tanya Asisten AI VoltKu"
-          title="Tanya VoltKu AI"
+          aria-label="Buka Asisten Energi VoltKu"
+          title="Asisten Energi VoltKu"
         >
-          <Sparkles size={17} />
-          <span>Tanya AI</span>
+          <EnergyAssistantIcon size={17} />
+          <span>Asisten</span>
         </button>
       )}
 
       {isOpen && (
-        <div className="ai-chat-drawer" role="dialog" aria-label="Asisten Listrik VoltKu AI">
+        <div className="ai-chat-drawer" role="dialog" aria-label="Asisten Energi VoltKu">
           <div className="ai-chat-header">
             <div className="ai-chat-title">
-              <Bot size={18} />
+              <EnergyAssistantIcon size={18} />
               <div>
-                <strong>Asisten VoltKu AI</strong>
-                <span className="ai-chat-sub">Analisa listrik &amp; tagihan berbasis data riil</span>
+                <strong>Asisten Energi VoltKu</strong>
+                <span className="ai-chat-sub">Analisa pemakaian &amp; tagihan berbasis data riil</span>
               </div>
             </div>
             <button

@@ -16,7 +16,6 @@ import {
   ZoomIn,
   Download,
   RotateCcw,
-  Sparkles,
   ShieldCheck,
   ArrowLeft,
   ArrowRight,
@@ -24,6 +23,7 @@ import {
   Tag,
   Ticket,
 } from 'lucide-react'
+import { MeterPulseIcon, TierShieldIcon } from './VoltKuIcons'
 import { apiRequest, buildApiUrl } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
 import { compressImageToDataUrl } from '../utils/imageCompress'
@@ -78,13 +78,13 @@ export function PlanUpgradeModal({
   const [localPending, setLocalPending] = useState(undefined)
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
 
-  const plans = appConfig?.plans || {}
-  const freeCfg = plans.free || {}
-  const proCfg = plans.pro || {}
+  const plansItems = appConfig?.plans?.items
+  const freeCfg = useMemo(() => appConfig?.plans?.free || {}, [appConfig?.plans?.free])
+  const proCfg = useMemo(() => appConfig?.plans?.pro || {}, [appConfig?.plans?.pro])
 
   const catalogPlans = useMemo(() => {
-    if (Array.isArray(plans.items) && plans.items.length > 0) {
-      return plans.items
+    if (Array.isArray(plansItems) && plansItems.length > 0) {
+      return plansItems
     }
     const baseMonthly = Number(proCfg.price_monthly_rp ?? 30000)
     const baseYearly = Number(proCfg.price_yearly_rp ?? 300000)
@@ -137,7 +137,7 @@ export function PlanUpgradeModal({
         is_recommended: true,
       },
     ]
-  }, [plans.items, freeCfg, proCfg])
+  }, [plansItems, freeCfg, proCfg])
 
   const paidPlans = useMemo(
     () => catalogPlans.filter((p) => !p.is_default_free && p.slug !== 'free'),
@@ -1137,7 +1137,11 @@ export function PlanUpgradeModal({
                           )}
                           {(planItem.badge_text || planItem.is_recommended) && (
                             <span className="plan-tier-badge pro">
-                              <Sparkles size={10} /> {planItem.badge_text || 'Rekomendasi'}
+                              <TierShieldIcon size={11} />{' '}
+                              {planItem.badge_text &&
+                              planItem.badge_text.trim().toLowerCase() !== 'rekomendasi'
+                                ? planItem.badge_text
+                                : 'Rekomendasi'}
                             </span>
                           )}
                         </div>
@@ -1298,7 +1302,7 @@ export function PlanUpgradeModal({
                       <div className="plan-duration-meta">
                         <div className="plan-duration-title-row">
                           <span className="plan-duration-name">
-                            <Sparkles size={14} /> Paket Tahunan
+                            <MeterPulseIcon size={14} /> Paket Tahunan
                           </span>
                           {yearlySavingsPct > 0 && (
                             <span className="plan-save-chip">Hemat {yearlySavingsPct}%</span>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { App as CapApp } from '@capacitor/app'
 import { StatusBar, Style } from '@capacitor/status-bar'
@@ -18,28 +18,43 @@ import {
 } from './utils/googleAuth'
 import { Header } from './components/Header'
 import { LoginModal } from './components/LoginModal'
-import { AdminLoginScreen } from './components/AdminLoginScreen'
 import { HomeDevicesView } from './components/HomeDevicesView'
 import { WarningBanner } from './components/WarningBanner'
 import { RealtimeTelemetry } from './components/RealtimeTelemetry'
 import { EnergyMetrics } from './components/EnergyMetrics'
-import { PowerChart } from './components/PowerChart'
-import { DailyChart } from './components/DailyChart'
 import { AnomaliesList } from './components/AnomaliesList'
 import { SettingsView } from './components/SettingsView'
 import { BottomNav } from './components/BottomNav'
 import { AddDeviceModal } from './components/AddDeviceModal'
 import { PwaInstallPrompt } from './components/PwaInstallPrompt'
-import { AdminPanel } from './components/AdminPanel'
 import { TermsAgreementModal } from './components/TermsAgreementModal'
 import { OnboardingTour } from './components/OnboardingTour'
-import { UsageGuideModal } from './components/UsageGuideModal'
-import { PlanUpgradeModal } from './components/PlanUpgradeModal'
-import { ProfileModal } from './components/ProfileModal'
 import { ResetPasswordScreen } from './components/ResetPasswordScreen'
 import { AiChatWidget } from './components/AiChatWidget'
 import { BrandLogo } from './components/BrandLogo'
 import { AppLockOverlay } from './components/AppLockSecurity'
+
+const AdminLoginScreen = lazy(() =>
+  import('./components/AdminLoginScreen').then((m) => ({ default: m.AdminLoginScreen }))
+)
+const AdminPanel = lazy(() =>
+  import('./components/AdminPanel').then((m) => ({ default: m.AdminPanel }))
+)
+const PowerChart = lazy(() =>
+  import('./components/PowerChart').then((m) => ({ default: m.PowerChart }))
+)
+const DailyChart = lazy(() =>
+  import('./components/DailyChart').then((m) => ({ default: m.DailyChart }))
+)
+const UsageGuideModal = lazy(() =>
+  import('./components/UsageGuideModal').then((m) => ({ default: m.UsageGuideModal }))
+)
+const PlanUpgradeModal = lazy(() =>
+  import('./components/PlanUpgradeModal').then((m) => ({ default: m.PlanUpgradeModal }))
+)
+const ProfileModal = lazy(() =>
+  import('./components/ProfileModal').then((m) => ({ default: m.ProfileModal }))
+)
 import {
   clearAppLock,
   getAppLockConfig,
@@ -189,11 +204,13 @@ function AdminPortalRoot() {
   if (!adminToken) {
     return (
       <>
-        <AdminLoginScreen
-          onAdminLogin={handleAdminLogin}
-          error={adminLoginError}
-          theme={theme}
-        />
+        <Suspense fallback={<div style={{ padding: 32, textAlign: 'center' }}>Memuat...</div>}>
+          <AdminLoginScreen
+            onAdminLogin={handleAdminLogin}
+            error={adminLoginError}
+            theme={theme}
+          />
+        </Suspense>
         <PwaInstallPrompt hasBottomNav={false} />
       </>
     )
@@ -201,14 +218,16 @@ function AdminPortalRoot() {
 
   return (
     <>
-      <AdminPanel
-        token={adminToken}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onOpenAddDevice={() => setIsAddDeviceOpen(true)}
-        onLogout={handleAdminLogout}
-        refreshSignal={refreshKey}
-      />
+      <Suspense fallback={<div style={{ padding: 32, textAlign: 'center' }}>Memuat Panel Admin...</div>}>
+        <AdminPanel
+          token={adminToken}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onOpenAddDevice={() => setIsAddDeviceOpen(true)}
+          onLogout={handleAdminLogout}
+          refreshSignal={refreshKey}
+        />
+      </Suspense>
 
       <AddDeviceModal
         isOpen={isAddDeviceOpen}
@@ -1581,27 +1600,31 @@ function CustomerPortalRoot() {
               onOpenUpgrade={openPlanModal}
             />
             <div className="charts-desktop-grid">
-              <PowerChart
-                points={powerPoints}
-                range={powerRange}
-                onRangeChange={(newRange) => {
-                  setPowerRange(newRange)
-                  loadPowerChart(newRange)
-                }}
-                theme={theme}
-                historyDaysLimit={historyDaysLimit}
-                onOpenUpgrade={openPlanModal}
-              />
-              <DailyChart
-                points={dailyPoints}
-                theme={theme}
-                tariff={tariffNum}
-                historyDays={Math.min(historyDaysLimit, 14)}
-                exportEnabled={exportEnabled}
-                exporting={exportingCsv}
-                onExportCsv={handleExportDeviceCsv}
-                onOpenUpgrade={openPlanModal}
-              />
+              <Suspense fallback={<div className="clean-sheet" style={{ minHeight: 220 }} />}>
+                <PowerChart
+                  points={powerPoints}
+                  range={powerRange}
+                  onRangeChange={(newRange) => {
+                    setPowerRange(newRange)
+                    loadPowerChart(newRange)
+                  }}
+                  theme={theme}
+                  historyDaysLimit={historyDaysLimit}
+                  onOpenUpgrade={openPlanModal}
+                />
+              </Suspense>
+              <Suspense fallback={<div className="clean-sheet" style={{ minHeight: 220 }} />}>
+                <DailyChart
+                  points={dailyPoints}
+                  theme={theme}
+                  tariff={tariffNum}
+                  historyDays={Math.min(historyDaysLimit, 14)}
+                  exportEnabled={exportEnabled}
+                  exporting={exportingCsv}
+                  onExportCsv={handleExportDeviceCsv}
+                  onOpenUpgrade={openPlanModal}
+                />
+              </Suspense>
             </div>
           </div>
         )}
@@ -1667,51 +1690,55 @@ function CustomerPortalRoot() {
         />
       )}
 
-      {isAuthenticated && (
-        <PlanUpgradeModal
-          isOpen={isPlanModalOpen}
-          onClose={() => {
-            setIsPlanModalOpen(false)
-            setPlanModalReason('')
-          }}
-          currentUser={currentUser}
-          appConfig={publicAppConfig}
-          token={userToken}
-          onLogout={handleLogout}
-          onUpgradeSubmitted={() => refreshCurrentUser({ silent: true })}
-          lockedReason={planModalReason}
-          syncTick={paymentMethodsTick}
-        />
+      {isAuthenticated && isPlanModalOpen && (
+        <Suspense fallback={null}>
+          <PlanUpgradeModal
+            isOpen={isPlanModalOpen}
+            onClose={() => {
+              setIsPlanModalOpen(false)
+              setPlanModalReason('')
+            }}
+            currentUser={currentUser}
+            appConfig={publicAppConfig}
+            token={userToken}
+            onLogout={handleLogout}
+            onUpgradeSubmitted={() => refreshCurrentUser({ silent: true })}
+            lockedReason={planModalReason}
+            syncTick={paymentMethodsTick}
+          />
+        </Suspense>
       )}
 
-      {isAuthenticated && (
-        <ProfileModal
-          isOpen={isProfileModalOpen}
-          onClose={() => setIsProfileModalOpen(false)}
-          currentUser={currentUser}
-          token={userToken}
-          onLogout={handleLogout}
-          onUserUpdated={(updatedUser) => setCurrentUser(updatedUser)}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          onReplayTour={() => {
-            setActiveDeviceId('')
-            setActiveTab('home')
-            setShowTour(true)
-          }}
-          onOpenUsageGuide={() => setShowUsageGuide(true)}
-          onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
-          onOpenPlanModal={openPlanModal}
-          onOpenSettings={() => handleTabChange('settings')}
-          onOpenAddDevice={handleRequestAddDevice}
-          onSelectDevice={handleOpenDeviceDetail}
-          devices={devices}
-          settings={settings}
-          onSaveSettings={handleSaveSettings}
-          isDeviceOnlineFn={(d) => isDeviceOnlineHelper(d)}
-          onTriggerAppLock={() => setIsAppLocked(true)}
-          appConfig={publicAppConfig}
-        />
+      {isAuthenticated && isProfileModalOpen && (
+        <Suspense fallback={null}>
+          <ProfileModal
+            isOpen={isProfileModalOpen}
+            onClose={() => setIsProfileModalOpen(false)}
+            currentUser={currentUser}
+            token={userToken}
+            onLogout={handleLogout}
+            onUserUpdated={(updatedUser) => setCurrentUser(updatedUser)}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            onReplayTour={() => {
+              setActiveDeviceId('')
+              setActiveTab('home')
+              setShowTour(true)
+            }}
+            onOpenUsageGuide={() => setShowUsageGuide(true)}
+            onOpenTerms={(docType) => setTermsReaderDoc(docType || 'terms')}
+            onOpenPlanModal={openPlanModal}
+            onOpenSettings={() => handleTabChange('settings')}
+            onOpenAddDevice={handleRequestAddDevice}
+            onSelectDevice={handleOpenDeviceDetail}
+            devices={devices}
+            settings={settings}
+            onSaveSettings={handleSaveSettings}
+            isDeviceOnlineFn={(d) => isDeviceOnlineHelper(d)}
+            onTriggerAppLock={() => setIsAppLocked(true)}
+            appConfig={publicAppConfig}
+          />
+        </Suspense>
       )}
 
       {showLoginModal && !userToken && (
@@ -1760,11 +1787,15 @@ function CustomerPortalRoot() {
         onSkip={finishTour}
       />
 
-      <UsageGuideModal
-        isOpen={showUsageGuide}
-        onClose={() => setShowUsageGuide(false)}
-        onStartAddDevice={handleRequestAddDevice}
-      />
+      {showUsageGuide && (
+        <Suspense fallback={null}>
+          <UsageGuideModal
+            isOpen={showUsageGuide}
+            onClose={() => setShowUsageGuide(false)}
+            onStartAddDevice={handleRequestAddDevice}
+          />
+        </Suspense>
+      )}
 
       {isAuthenticated && (
         <AiChatWidget

@@ -13,8 +13,6 @@ import {
   Fingerprint,
   Cpu,
   Wifi,
-  Sparkles,
-  Bot,
   BellRing,
   Zap,
   ShieldCheck,
@@ -38,6 +36,7 @@ import {
 } from 'lucide-react'
 import { BrandLogo } from './BrandLogo'
 import { PinKeypad } from './AppLockSecurity'
+import { EnergyAssistantIcon, TierShieldIcon } from './VoltKuIcons'
 import {
   formatNum,
   formatRp,
@@ -1181,12 +1180,12 @@ export function EcosystemSubView({
 
         <div className="profile-eco-card-row">
           <span className="profile-ref-row-icon is-indigo">
-            <Bot size={17} />
+            <EnergyAssistantIcon size={17} />
           </span>
           <div className="profile-ref-row-text">
-            <span className="profile-ref-row-title">Asisten AI Tanya VoltKu</span>
+            <span className="profile-ref-row-title">Asisten Energi VoltKu</span>
             <span className="profile-ref-row-sub">
-              Analisa konsumsi kWh &amp; proyeksi tagihan berbasis tool deterministik
+              Analisa konsumsi kWh &amp; proyeksi tagihan berbasis data meteran
             </span>
           </div>
           <button
@@ -1194,7 +1193,7 @@ export function EcosystemSubView({
             className="btn btn-primary btn-compact"
             onClick={onOpenAiChat}
           >
-            Tanya AI
+            Buka
           </button>
         </div>
 
@@ -1344,7 +1343,7 @@ export function LabsSubView({ prefs, updatePrefs, isPro }) {
           onClick={() => toggleLab('proactiveAiTips')}
         >
           <span className="profile-ref-row-icon is-amber">
-            <Bot size={17} />
+            <EnergyAssistantIcon size={17} />
           </span>
           <span className="profile-ref-row-text">
             <span className="profile-ref-row-title">
@@ -1684,7 +1683,7 @@ export function AboutDetailSubView({ appName, appTagline, theme, onOpenTerms }) 
           </div>
           <div className="profile-about-feat-row">
             <span className="profile-about-feat-ico is-emerald">
-              <Sparkles size={14} />
+              <TierShieldIcon size={14} />
             </span>
             <div>
               <strong>Asisten AI &amp; Deteksi Anomali</strong>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Check, Sliders, Shield } from 'lucide-react'
+import { X, Sliders } from 'lucide-react'
 import { getPreferredTimeZoneTag } from '../utils/formatters'
 
 export function SettingsModal({

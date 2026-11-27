@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Calendar, TrendingUp, Clock, Lock } from 'lucide-react'
 import { formatRp, formatNum } from '../utils/formatters'
 
@@ -11,10 +11,12 @@ export function EnergyMetrics({
   forecastLocked = false,
   onOpenUpgrade,
 }) {
-  const currentMonthYear = new Date().toLocaleDateString('id-ID', {
-    month: 'long',
-    year: 'numeric',
-  })
+  const [currentMonthYear] = useState(() =>
+    new Date().toLocaleDateString('id-ID', {
+      month: 'long',
+      year: 'numeric',
+    })
+  )
 
   const tariffRp = settings?.tariff_sen_per_kwh
     ? parseInt(settings.tariff_sen_per_kwh, 10) / 100

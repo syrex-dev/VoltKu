@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import {
   Crown,
-  Sparkles,
   Tag,
   Ticket,
   Plus,
@@ -16,6 +15,7 @@ import {
   CalendarClock,
   Users,
 } from 'lucide-react'
+import { TierShieldIcon } from './VoltKuIcons'
 import { apiRequest } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
 import { InAppSelect } from './InAppSelect'
@@ -154,7 +154,7 @@ export function AdminPlansDiscountsSection({
   })
   const [savingQuickPromo, setSavingQuickPromo] = useState(false)
 
-  const nowSec = Math.floor(Date.now() / 1000)
+  const [nowSec] = useState(() => Math.floor(Date.now() / 1000))
 
   const stats = useMemo(() => {
     const activePlans = plans.filter((p) => p.is_active).length
@@ -729,7 +729,7 @@ export function AdminPlansDiscountsSection({
                       <div className="admin-plan-title-wrap">
                         <div className="admin-plan-title-row">
                           <span className={`admin-plan-icon ${isFree ? 'is-free' : 'is-paid'}`}>
-                            {isFree ? <Sparkles size={14} /> : <Crown size={14} />}
+                            {isFree ? <TierShieldIcon size={14} /> : <Crown size={14} />}
                           </span>
                           <strong className="admin-plan-name">{p.name}</strong>
                           <span className="admin-plan-slug num-tabular">{p.slug}</span>
@@ -1622,7 +1622,7 @@ export function AdminPlansDiscountsSection({
 
               <div className="admin-modal-section">
                 <div className="admin-modal-sec-head">
-                  <Sparkles size={14} />
+                  <TierShieldIcon size={14} />
                   <span>3. Kuota Fitur &amp; Pembatasan</span>
                 </div>
                 <div className="settings-fields-grid">

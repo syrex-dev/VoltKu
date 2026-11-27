@@ -2,18 +2,18 @@
 
 :root,
 [data-theme="dark"] {
-  /* Color Palette - Deep Obsidian & Tech Slate */
-  --bg-app: #080b11;
-  --bg-radial: radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.08) 0%, rgba(99, 102, 241, 0.03) 35%, transparent 70%);
-  --surface-card: rgba(16, 22, 34, 0.75);
-  --surface-card-hover: rgba(22, 30, 46, 0.85);
-  --surface-inset: rgba(10, 14, 22, 0.6);
-  --surface-popover: #0e1422;
+  /* Color Palette - Clean Utility Slate & VoltKu Engineering Blue */
+  --bg-app: #0b0f17;
+  --bg-radial: none;
+  --surface-card: #121824;
+  --surface-card-hover: #172030;
+  --surface-inset: #0e141f;
+  --surface-popover: #141c2b;
   
   /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-hover: rgba(255, 255, 255, 0.14);
-  --border-active: rgba(14, 165, 233, 0.5);
+  --border-subtle: rgba(148, 163, 184, 0.14);
+  --border-hover: rgba(148, 163, 184, 0.24);
+  --border-active: rgba(22, 119, 255, 0.65);
   
   /* Typography Colors */
   --text-main: #f8fafc;
@@ -51,9 +51,9 @@
 }
 
 [data-theme="light"] {
-  /* Color Palette - Clean Crisp Daylight Slate */
-  --bg-app: #f1f5f9;
-  --bg-radial: radial-gradient(circle at 50% 0%, rgba(2, 132, 199, 0.08) 0%, rgba(99, 102, 241, 0.03) 35%, transparent 70%);
+  /* Color Palette - Clean Crisp Daylight Utility */
+  --bg-app: #f3f6fa;
+  --bg-radial: none;
   --surface-card: #ffffff;
   --surface-card-hover: #f8fafc;
   --surface-inset: #f1f5f9;
