@@ -18,6 +18,8 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    def relKsPath = System.getenv("VOLTKU_RELEASE_KEYSTORE")
+    def hasReleaseKeystore = relKsPath && file(relKsPath).exists()
     signingConfigs {
         debug {
             def customKs = System.getenv("VOLTKU_DEBUG_KEYSTORE")
@@ -28,10 +30,9 @@ android {
                 keyPassword "android"
             }
         }
-        release {
-            def relKs = System.getenv("VOLTKU_RELEASE_KEYSTORE")
-            if (relKs && file(relKs).exists()) {
-                storeFile file(relKs)
+        if (hasReleaseKeystore) {
+            release {
+                storeFile file(relKsPath)
                 storePassword System.getenv("VOLTKU_RELEASE_KEYSTORE_PASSWORD") ?: ""
                 keyAlias System.getenv("VOLTKU_RELEASE_KEY_ALIAS") ?: ""
                 keyPassword System.getenv("VOLTKU_RELEASE_KEY_PASSWORD") ?: ""
@@ -43,8 +44,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            def relKs = System.getenv("VOLTKU_RELEASE_KEYSTORE")
-            if (relKs && file(relKs).exists()) {
+            if (hasReleaseKeystore) {
                 signingConfig signingConfigs.release
             }
             minifyEnabled true

@@ -21,6 +21,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -35,7 +36,7 @@ jobs:
       - name: Run Pytest
         env:
           APP_ENV: test
-          DATABASE_URL: sqlite:///:memory:
+          DATABASE_URL: "sqlite:///:memory:"
           JWT_SECRET: ci-test-jwt-secret-key-minimum-32-chars
           DASHBOARD_PASSWORD: ci-test-dashboard-password-123
         run: pytest -q
