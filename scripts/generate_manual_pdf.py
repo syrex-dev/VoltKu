@@ -797,17 +797,17 @@ html_content = f"""<!DOCTYPE html>
           <rect x="30" y="30" width="180" height="170" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
           <text x="120" y="55" fill="#38bdf8" font-size="12" font-weight="800" text-anchor="middle">PZEM-004T v3.0 / V4.0</text>
           <text x="120" y="70" fill="#94a3b8" font-size="9" text-anchor="middle">Modul Sensor Listrik</text>
-          
+
           <!-- Pin PZEM -->
           <rect x="170" y="90" width="30" height="16" rx="3" fill="#ef4444" />
           <text x="185" y="102" fill="#fff" font-size="8" font-weight="700" text-anchor="middle">5V</text>
-          
+
           <rect x="170" y="115" width="30" height="16" rx="3" fill="#3b82f6" />
           <text x="185" y="127" fill="#fff" font-size="8" font-weight="700" text-anchor="middle">RX</text>
-          
+
           <rect x="170" y="140" width="30" height="16" rx="3" fill="#10b981" />
           <text x="185" y="152" fill="#fff" font-size="8" font-weight="700" text-anchor="middle">TX</text>
-          
+
           <rect x="170" y="165" width="30" height="16" rx="3" fill="#475569" />
           <text x="185" y="177" fill="#fff" font-size="8" font-weight="700" text-anchor="middle">GND</text>
 
@@ -819,30 +819,30 @@ html_content = f"""<!DOCTYPE html>
           <!-- Pin ESP32 -->
           <rect x="480" y="90" width="36" height="16" rx="3" fill="#ef4444" />
           <text x="498" y="102" fill="#fff" font-size="8" font-weight="700" text-anchor="middle">VIN</text>
-          
+
           <rect x="480" y="115" width="36" height="16" rx="3" fill="#3b82f6" />
           <text x="498" y="127" fill="#fff" font-size="8" font-weight="700" text-anchor="middle">GPIO17</text>
-          
+
           <rect x="480" y="140" width="36" height="16" rx="3" fill="#10b981" />
           <text x="498" y="152" fill="#fff" font-size="8" font-weight="700" text-anchor="middle">GPIO16</text>
-          
+
           <rect x="480" y="165" width="36" height="16" rx="3" fill="#475569" />
           <text x="498" y="177" fill="#fff" font-size="8" font-weight="700" text-anchor="middle">GND</text>
 
           <!-- Jalur Kabel Warna-Warni -->
           <!-- 5V ke VIN -->
           <path d="M 200 98 L 480 98" stroke="#ef4444" stroke-width="2.5" fill="none" />
-          
+
           <!-- RX ke GPIO17 (TX2) -->
           <path d="M 200 123 L 480 123" stroke="#3b82f6" stroke-width="2.5" fill="none" />
 
           <!-- TX ke Resistor Divider ke GPIO16 -->
           <path d="M 200 148 L 270 148" stroke="#10b981" stroke-width="2.5" fill="none" />
-          
+
           <!-- Resistor 10k -->
           <rect x="270" y="141" width="38" height="14" rx="2" fill="#f59e0b" stroke="#fff" stroke-width="1" />
           <text x="289" y="152" fill="#0f172a" font-size="7.5" font-weight="800" text-anchor="middle">10kΩ</text>
-          
+
           <path d="M 308 148 L 480 148" stroke="#10b981" stroke-width="2.5" fill="none" />
 
           <!-- Resistor 20k turun ke GND -->

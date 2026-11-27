@@ -1,15 +1,14 @@
 """
 Script Remote Access (Tunnel) - Monitor Listrik Pintar
-Membuka akses dashboard web ke internet secara aman (HTTPS) tanpa perlu setting router/port forwarding.
+Membuka akses dashboard web ke internet secara aman (HTTPS) tanpa port forwarding.
 Bisa diakses dari HP dengan paket data 4G/5G atau Wi-Fi kantor dari luar rumah!
 """
 
-import os
 import re
 import shutil
 import subprocess
 import sys
-import time
+
 
 def check_backend_running(port=8000):
     import socket
@@ -37,14 +36,16 @@ def main():
     if cloudflared_bin:
         print("\n🚀 Menjalankan Cloudflare Tunnel (Metode Resmi & Tercepat)...")
         cmd = [cloudflared_bin, "tunnel", "--url", "http://localhost:8000"]
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+        )
         for line in proc.stdout:
             sys.stdout.write(line)
             match = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", line)
             if match:
                 url = match.group(0)
                 print("\n" + "=" * 65)
-                print(f"🎉 TAUTAN REMOTE ANDA BERHASIL AKTIF:")
+                print("🎉 TAUTAN REMOTE ANDA BERHASIL AKTIF:")
                 print(f"👉 {url}")
                 print("=" * 65)
                 print("Buka tautan di atas dari browser HP Anda (dengan paket data 4G/5G).")
@@ -55,23 +56,30 @@ def main():
         print("\n🚀 Menjalankan Localtunnel via NPX (Otomatis & Gratis)...")
         cmd = ["npx", "--yes", "localtunnel", "--port", "8000"]
         # On Windows, npx might be npx.cmd
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=True)
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=True
+        )
         for line in proc.stdout:
             sys.stdout.write(line)
             if "your url is:" in line.lower():
                 url = line.strip().split()[-1]
                 print("\n" + "=" * 65)
-                print(f"🎉 TAUTAN REMOTE ANDA BERHASIL AKTIF:")
+                print("🎉 TAUTAN REMOTE ANDA BERHASIL AKTIF:")
                 print(f"👉 {url}")
                 print("=" * 65)
                 print("Buka tautan di atas dari browser HP Anda (dengan paket data 4G/5G).")
-                print("Tips: Jika muncul halaman verifikasi pertama kali, klik tombol 'Click to Submit' / masukkan IP publik Anda.")
+                print(
+                    "Tips: Jika muncul halaman verifikasi, klik 'Click to Submit' / "
+                    "masukkan IP publik Anda."
+                )
                 print("Tekan Ctrl+C untuk menutup akses tunnel.\n")
         proc.wait()
 
     else:
         print("❌ Tidak menemukan 'npx' atau 'cloudflared' di komputer Anda.")
-        print("   Pastikan Node.js terinstall untuk menggunakan localtunnel, atau install cloudflared.")
+        print(
+            "   Pastikan Node.js terinstall untuk localtunnel, atau install cloudflared."
+        )
 
 if __name__ == "__main__":
     main()

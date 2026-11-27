@@ -25,14 +25,15 @@ Payload telemetry:
 | `POST /api/users/forgot-password`, `POST /api/users/reset-password` | Meminta tautan reset kata sandi ke email (respons netral `200`, rate-limit ketat) dan menyetel ulang kata sandi memakai token SHA-256 hash sekali pakai (kedaluwarsa 30 menit). |
 | `POST /api/users/google` | Login atau registrasi otomatis akun pembeli menggunakan Google ID Token (`{"id_token": "...", "accept_terms": bool, "client_id": "..."}`, berlaku untuk Web GIS & Android APK). Mengembalikan JWT (`role="user"`) dan profil user. |
 | `GET /api/users/oauth-config` | Konfigurasi publik otentikasi klien (`google_enabled`, `google_client_id`, `google_android_client_id`, `terms_version`). |
-| `GET /api/users/me` | Profil akun pembeli yang sedang login (`id`, `name`, `email`, `role`, `auth_provider`, `avatar_url`, `terms_version_accepted`, `terms_accepted_at`, `needs_terms_reconsent`, `plan`). |
+| `GET /api/users/me`, `POST /api/users/logout-all` | Mengambil profil akun pembeli login (`id`, `name`, `email`, `role`, `auth_provider`, `avatar_url`, `terms_version_accepted`, `terms_accepted_at`, `needs_terms_reconsent`, `plan`), serta mencabut seluruh token JWT aktif user di semua perangkat dengan menaikkan `token_version`. |
+| `POST /api/users/change-password` | Mengubah kata sandi akun (atau menambah sandi lokal bagi pengguna Google), sekaligus menaikkan `token_version` untuk mencabut sesi lama dan mengembalikan `token` baru. |
 | `POST /api/users/terms-consent` | Menyimpan/memperbarui persetujuan Syarat & Ketentuan + Privasi pengguna login ke `users` & `terms_consents`. |
 | `GET /api/users/upgrade-request`, `POST /api/users/upgrade-request` | Melihat riwayat pengajuan upgrade user aktif dan membuat tagihan upgrade ke paket berbayar aktif (`plan_slug` opsional default `pro`, `billing_cycle`: `monthly` \| `yearly`, `discount_code`, `payment_method_id` & `user_note` opsional). |
 | `POST /api/users/apply-discount` | Validasi kode promo/kupon terhadap paket & siklus terpilih serta menghitung pratinjau rincian potongan promo + voucher (`base_amount_rp`, `promo_discount_rp`, `voucher_discount_rp`, `final_amount_rp`). |
 | `POST /api/users/upgrade-requests/{id}/confirm-payment`, `POST /api/users/upgrade-requests/{id}/cancel`, `GET /api/users/upgrade-requests/{id}/proof` | Mengirim konfirmasi bayar beserta unggahan bukti transfer (`proof_base64` gambar JPG/PNG/WebP, berstatus `verifying`), membatalkan tagihan yang belum diverifikasi (`cancelled`), dan mengunduh pratinjau bukti bayar milik sendiri. |
 | `GET /api/public/plans`, `GET /api/public/payment-methods`, `GET /api/payment-methods/{id}/qris` | Daftar paket langganan aktif beserta harga promo, daftar metode pembayaran manual aktif (QRIS, Bank, E-Wallet), dan gambar QRIS terkait. |
 | `POST /api/admin/login` | Login portal Admin terpisah (`/admin`, `{"password": "..."}`). Mengembalikan JWT khusus Admin (`role="admin"`). |
-| `GET /api/devices` | Daftar perangkat dan status dinamis (`online`/`offline`). Token `user` hanya melihat perangkat dengan `owner_user_id = user.id`; token `admin` melihat semua. Parameter opsional `include_latest=true`. |
+| `GET /api/devices` | Daftar perangkat dan status dinamis (`online`/`offline`). Token `user` hanya melihat perangkat dengan `owner_user_id = user.id` beserta indikator `quota_exceeded`; token `admin` melihat semua. Parameter opsional `include_latest=true`, `limit`, `offset`. |
 | `POST /api/devices` | Daftarkan atau klaim perangkat (`id`, `name`, `location` opsional, `mcb_watt` 100..25000, `claim` opsional default `false`). Untuk token `user`, mengklaim unit tak bertuan (`owner_user_id = NULL`) ke akun user; menolak (`409`) bila sudah dimiliki akun lain, serta menolak (`403`) bila kuota panel paket user (`max_devices`) terpenuhi saat `freemium_enabled = true`. |
 | `PATCH /api/devices/{id}` | Perbarui metadata perangkat (`name`, `location`, `mcb_watt`). Token `user` dibatasi hanya pada perangkat miliknya (`403` bila bukan pemilik). |
 | `DELETE /api/devices/{id}` | Hapus perangkat beserta data telemetri dan anomali terkait (khusus pemilik atau admin). Mengembalikan `200` `{"deleted": true, "id": "..."}` atau `404` jika tidak ada. |
@@ -41,34 +42,35 @@ Payload telemetry:
 | `GET /api/devices/{id}/summary?range=today\|week\|month&from=&to=` | Rangkuman periode (`from`, `to`, `kwh`, `cost_rp`, `avg_power_w`, `peak_w`, `peak_ts`, `tariff_sen`, `cost_estimated: bool`). Mendukung parameter `range=today\|week\|month` (WIB, minggu mulai Senin) ATAU `from`/`to` (epoch UTC). Parameter `range` bersama `from`/`to` menghasilkan HTTP 422. Validasi `from > to` atau rentang > 366 hari menghasilkan HTTP 422. Biaya pas batas hari memakai akumulasi `daily_stats.cost_rp` (tarif beku, `cost_estimated: false`); sub-hari memakai kWh per jam x tarif hari itu (`cost_estimated: true`). |
 | `GET /api/devices/{id}/forecast` | Proyeksi kWh dan biaya akhir bulan berdasarkan rata-rata 7 hari penuh terakhir (`samples >= 90% x 8640`). Mengembalikan HTTP `403` untuk akun `user` paket `free` bila `free_forecast_enabled = false`. Respons: `available: bool`, `basis_days`, `low_confidence: bool`, `avg_daily_kwh`, `month_so_far_kwh`, `month_so_far_cost_rp`, `projected_kwh`, `projected_cost_rp`. |
 | `GET /api/devices/{id}/export?days=30` | Mengunduh laporan konsumsi harian perangkat berformat CSV (`text/csv`). Memerlukan fitur ekspor aktif (`pro` atau `free_export_enabled = true` atau `role="admin"`). |
-| `GET /api/anomalies?device_id=&from=` | Daftar anomali (token `user` hanya melihat anomali dari perangkat miliknya). |
+| `GET /api/anomalies?device_id=&from=` | Daftar anomali (token `user` hanya melihat anomali perangkat miliknya; tipe lanjutan `l2_spike` & `l3_baseload` disaring bila `anomaly_advanced = false`). |
 | `POST /api/chat`, `GET /api/chat/history` | Asisten AI Chat (`{"question": "..."}`) dengan tool deterministik, rate limit 20 pesan/jam/user, audit `chat_log`, dan riwayat pertanyaan. Wajib Bearer JWT. |
 | `POST /api/users/push-token`, `DELETE /api/users/push-token` | Registrasi atau penonaktifan token push notifikasi (`android`, `ios`, `web`) untuk pengguna login (FCM HTTP v1). |
 | `GET /api/users/notifications`, `POST /api/users/notifications/read` | Mengambil inbox notifikasi tenant (mendukung sinkronisasi inkremental `since_id` oleh worker APK) dan menandai notifikasi sudah dibaca. |
 | `GET /api/settings` | Pengambilan pengaturan aktif (untuk `user`, memadukan preferensi `user_settings` dengan default global). |
-| `PATCH /api/settings` | Pembaruan pengaturan (`tariff_rp`, `power_limit_w`, `alert_cooldown_min`, `extra_percent`, `report_hour`). Untuk `user`, disimpan per tenant di `user_settings`. |
+| `PATCH /api/settings` | Pembaruan pengaturan (`tariff_rp`, `power_limit_w`, `alert_cooldown_min`, `extra_percent`, `report_hour`, `report_timezone`, `report_enabled`). Untuk `user`, disimpan per tenant di `user_settings` dan dipakai penjadwal rekap per zona waktu (WIB/WITA/WIT). |
+| `GET /api/public/sync-state`, `GET /api/users/sync-state`, `GET /api/admin/sync-state` | Snapshot revisi ringan untuk sinkronisasi real-time paket, metode bayar, profil, notifikasi, & transaksi antara Publik, User, dan Admin. |
 | `GET /api/public/access` | Status publik `{"public_read_enabled": bool}` untuk mode Tanpa Login. |
 | `GET /api/public/app-config` | Konfigurasi aplikasi publik non-rahasia (identitas brand, format navbar, pengumuman, tema default, langkah panduan, status auth & Google Sign-In, dokumen Syarat & Ketentuan + Privasi, konfigurasi tampilan paket Freemium, serta kontak dukungan). |
 | `POST /api/public/terms-consent` | Mencatat persetujuan Syarat & Ketentuan + Kebijakan Privasi sesi pengunjung/instalasi aplikasi ke `terms_consents`. |
 | `GET /api/public/*` | Endpoint pantau *read-only* tanpa login hanya untuk perangkat bertanda `is_public_demo = 1` (`/devices`, `/devices/{id}/latest`, `/series`, `/summary`, `/forecast`, `/anomalies`, `/settings`) saat `public_read_enabled = true`; mengembalikan `401` bila dinonaktifkan Admin atau `404` untuk perangkat privat. |
 | `GET /api/admin/overview` | Ringkasan sistem Panel Admin (total/online/offline unit, tenant/user aktif, anomali 7 hari, status MQTT/worker/scheduler/bot, flag akses publik). Wajib `role="admin"`. |
-| `GET/POST /api/admin/users`, `PATCH/DELETE /api/admin/users/{id}` | Manajemen akun tenant/pembeli dari Panel Admin (`role="admin"`), termasuk pengaturan paket (`plan_tier`, `plan_expires_at` / masa aktif hari). |
+| `GET/POST /api/admin/users`, `PATCH/DELETE /api/admin/users/{id}` | Manajemen akun tenant/pembeli dari Panel Admin (`role="admin"`, mendukung paginasi `limit` & `offset`), termasuk pengaturan paket (`plan_tier`, `plan_expires_at` / masa aktif hari). |
 | `GET /api/admin/upgrade-requests`, `PATCH /api/admin/upgrade-requests/{id}`, `GET /api/admin/upgrade-requests/{id}/proof` | Daftar tagihan & bukti pembayaran upgrade pengguna, pratinjau foto bukti transfer, serta konfirmasi persetujuan/penolakan oleh Admin (`approve` otomatis mengaktifkan paket target pada user dan menghitung `plan_expires_at`). |
 | `GET/POST /api/admin/plans`, `PATCH/DELETE /api/admin/plans/{id}` | Manajemen CRUD paket langganan dinamis (harga dasar, kuota panel/hari, hak fitur, promo harga coret berbatas waktu, urutan, status aktif) oleh Admin (`role="admin"`). |
 | `GET/POST /api/admin/discounts`, `PATCH/DELETE /api/admin/discounts/{id}` | Manajemen CRUD kode promo/voucher diskon (`percent` atau `fixed_rp`, batas maksimal potongan, minimal pembelian, kuota pakai, target paket/durasi, periode berlaku) oleh Admin (`role="admin"`). |
 | `GET/POST /api/admin/payment-methods`, `PATCH/DELETE /api/admin/payment-methods/{id}`, `POST /api/admin/payment-methods/{id}/qris` | Manajemen metode pembayaran manual (QRIS + unggah gambar QRIS, Transfer Bank, E-Wallet) dari Panel Admin (`role="admin"`). |
-| `GET /api/admin/devices`, `PATCH /api/admin/devices/{id}` | Inventaris semua perangkat beserta pemilik, toggle `is_public_demo`, dan pengalihan `owner_user_id`. Wajib `role="admin"`. |
+| `GET /api/admin/devices`, `PATCH /api/admin/devices/{id}` | Inventaris perangkat (mendukung paginasi `limit` & `offset`) beserta pemilik, toggle `is_public_demo`, dan pengalihan `owner_user_id`. Wajib `role="admin"`. |
 | `GET /api/admin/anomalies` | Log anomali lintas semua perangkat dengan filter `device_id`, `severity`, `from`, `limit`. Wajib `role="admin"`. |
 | `GET /api/admin/access`, `PATCH /api/admin/access` | Membaca dan mengubah kebijakan `public_read_enabled`. Wajib `role="admin"`. |
 | `GET /api/admin/app-settings`, `PATCH /api/admin/app-settings` | Membaca dan menyimpan seluruh pengaturan aplikasi (identitas, branding navbar, panduan, autentikasi/Google Client ID, teks/versi Syarat & Ketentuan + Privasi, paket & kuota Freemium, operasional default, kontak dukungan). Wajib `role="admin"`. |
-| `GET /api/admin/consents` | Audit riwayat persetujuan Syarat & Ketentuan dan Kebijakan Privasi seluruh pengguna & sesi tamu. Wajib `role="admin"`. |
+| `GET /api/admin/consents` | Audit riwayat persetujuan Syarat & Ketentuan dan Kebijakan Privasi seluruh pengguna & sesi tamu (mendukung `limit` & `offset`). Wajib `role="admin"`. |
 | `GET /healthz` | Health check (publik) |
 
 Format error: objek `error` berisi `code` dan `message`. Seluruh endpoint `/api/admin/*` (kecuali `/api/admin/login`) wajib Bearer JWT `role="admin"` (`403` untuk token `user`). Seluruh mutasi (`POST`, `PATCH`, `DELETE`) dan rute `/api/devices*`, `/api/anomalies`, `/api/settings` wajib Bearer JWT. Rute `/api/public/*` hanya mengizinkan `GET` pada unit `is_public_demo = 1` saat `public_read_enabled = true`.
 
 ## 3. Model data
 ```
-users(id PK, email UNIQUE, name, password_hash, auth_provider, google_sub UNIQUE NULL, avatar_url NULL, terms_version_accepted NULL, terms_accepted_at NULL, plan_tier DEFAULT 'free', plan_id NULL FK->subscription_plans.id, plan_expires_at NULL, plan_updated_at NULL, is_active, created_at, last_login_at)
+users(id PK, email UNIQUE, name, password_hash, auth_provider, google_sub UNIQUE NULL, avatar_url NULL, terms_version_accepted NULL, terms_accepted_at NULL, plan_tier DEFAULT 'free', plan_id NULL FK->subscription_plans.id, plan_expires_at NULL, plan_updated_at NULL, is_active, token_version DEFAULT 0, created_at, last_login_at)
 subscription_plans(id PK, slug UNIQUE, name, description NULL, badge_text NULL, price_monthly_rp DEFAULT 0, price_yearly_rp DEFAULT 0, promo_discount_type NULL, promo_discount_value DEFAULT 0, promo_label NULL, promo_starts_at NULL, promo_expires_at NULL, max_devices DEFAULT 1, history_days DEFAULT 3, forecast_enabled DEFAULT 0, export_enabled DEFAULT 0, anomaly_advanced DEFAULT 0, features_json NULL, is_default_free DEFAULT 0, is_recommended DEFAULT 0, is_active DEFAULT 1, sort_order DEFAULT 0, created_at, updated_at)
 discount_codes(id PK, code UNIQUE, label NULL, discount_type, discount_value, max_discount_rp NULL, min_purchase_rp DEFAULT 0, target_plan_slug NULL, target_cycle NULL, max_uses NULL, used_count DEFAULT 0, starts_at NULL, expires_at NULL, is_active DEFAULT 1, created_at, updated_at)
 password_reset_tokens(id PK, user_id FK->users.id, token_hash UNIQUE, expires_at, used_at NULL, created_at)
@@ -84,7 +86,7 @@ daily_stats(device_id, day, kwh, cost_rp, tariff_sen, p_max, p_base)      PK (de
 anomalies(id PK, device_id, ts, type, severity, details_json, message, notified)
 alert_state(device_id, alert_type, state, since, last_notified_at, details_json)   PK (device_id, alert_type)
 scheduled_reports_log(report_type, report_date, sent_at)   PK (report_type, report_date)
-settings(key PK, value)   -- tariff_sen_per_kwh, extra_percent, power_limit_w, alert_cooldown_min, report_hour, report_enabled
+settings(key PK, value)   -- tariff_sen_per_kwh, extra_percent, power_limit_w, alert_cooldown_min, report_hour, report_timezone, report_enabled
 app_config(key PK, value TEXT, updated_at)   -- branding, panduan, legal/terms, auth toggles, paket freemium, kontak dukungan
 telegram_users(chat_id PK, name)
 chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
@@ -98,14 +100,14 @@ user_notifications(id PK, user_id FK->users.id, device_id NULL, title, body, cat
 - `p_base`: `REAL`, bernilai `NULL` sebelum pukul 05.00 WIB.
 - `alert_state`:
   - `device_id`: `VARCHAR(64)`
-  - `alert_type`: `VARCHAR(32)` (`power_limit`, `voltage_low`, `voltage_high`, `offline`, `spike_vs_baseline`, `night_baseload`)
+  - `alert_type`: `VARCHAR(32)` (`power_limit`, `voltage_low`, `voltage_high`, `offline`, `anomaly_l2`, `anomaly_l3`)
   - `state`: `VARCHAR(16)` (`active`, `cleared`)
   - `since`, `last_notified_at`: `INTEGER` (epoch detik UTC)
   - `details_json`: `TEXT` (metadata pemicu)
   - Diperbarui hanya setelah pengiriman notifikasi berhasil.
 - `scheduled_reports_log`:
-  - `report_type`: `VARCHAR(16)` (`daily`, `weekly`)
-  - `report_date`: `VARCHAR(10)` (`YYYY-MM-DD` WIB)
+  - `report_type`: `VARCHAR(16)` (`daily`, `weekly`, atau per tenant `u{id}:d`, `u{id}:w`)
+  - `report_date`: `VARCHAR(10)` (`YYYY-MM-DD` sesuai zona waktu aktif)
   - `sent_at`: `INTEGER` (epoch detik UTC)
   - Ditulis HANYA setelah pengiriman laporan sukses untuk menjamin idempotensi jadwal.
 - Ambang batas tegangan ($200\text{ V}$ dan $240\text{ V}$, histeresis pemulihan $205\text{ V} - 235\text{ V}$) adalah konstanta konfigurasi aplikasi (`VOLTAGE_MIN_V`, `VOLTAGE_MAX_V`), bukan entri tabel `settings`.
