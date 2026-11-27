@@ -88,3 +88,4 @@ export function MeterPulseIcon({ size = 14, className = '' }) {
     </svg>
   )
 }
+

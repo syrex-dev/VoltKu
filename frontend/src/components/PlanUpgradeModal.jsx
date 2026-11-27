@@ -169,8 +169,8 @@ export function PlanUpgradeModal({
     Boolean(selectedPlan?.promo_active) && baseMonthlyPrice > effMonthlyPrice
   const hasYearlyPromo =
     Boolean(selectedPlan?.promo_active) && baseYearlyPrice > effYearlyPrice
-  const instructions = plans.upgrade_instructions || proCfg.upgrade_instructions || ''
-  const waRaw = (appConfig?.support_whatsapp || '').replace(/[^0-9]/g, '')
+  const instructions = appConfig?.plans?.upgrade_instructions || proCfg.upgrade_instructions || ''
+  const waRaw = String(appConfig?.support_whatsapp || '').replace(/[^0-9]/g, '')
 
   const userPlan = currentUser?.plan || {}
   const isPro = Boolean(userPlan.is_pro)

@@ -27,3 +27,4 @@ describe('VoltKu formatters & timezone utilities', () => {
     expect(TIMEZONE_SHORT_MAP['Asia/Singapore']).toBe('SGT')
   })
 })
+

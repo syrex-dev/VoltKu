@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 
+import { apiRequest } from '../api/client'
+
 const PREFS_STORAGE_KEY = 'voltku_user_prefs_v1'
 const APP_LOCK_KEY = 'voltku_app_lock_v2'
 const LEGACY_PATTERN_LOCK_KEY = 'voltku_pattern_lock_v1'
@@ -310,8 +312,8 @@ export function triggerHaptic(durationMs = 12) {
   }
 }
 
-export async function hashPinCode(pin = '') {
-  const payload = `voltku:pin:v2:${String(pin || '').trim()}`
+export async function hashPinCode(pin = '', scope = 'v2') {
+  const payload = `voltku:pin:${scope}:${String(pin || '').trim()}`
   try {
     if (typeof window !== 'undefined' && window.crypto?.subtle) {
       const encoded = new TextEncoder().encode(payload)
@@ -333,7 +335,22 @@ export async function hashPinCode(pin = '') {
   return `${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`
 }
 
-export function getAppLockConfig() {
+function generateLocalSaltHex() {
+  try {
+    if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+      const bytes = new Uint8Array(12)
+      window.crypto.getRandomValues(bytes)
+      return Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+    }
+  } catch {
+    // fallback
+  }
+  return `${Date.now().toString(16)}${Math.random().toString(16).slice(2, 10)}`
+}
+
+export function getAppLockConfig(currentUser = null) {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       window.localStorage.removeItem(LEGACY_PATTERN_LOCK_KEY)
@@ -342,30 +359,72 @@ export function getAppLockConfig() {
     // ignore
   }
   const saved = readStorageJson(APP_LOCK_KEY, null)
-  if (!saved || !saved.pinHash) {
-    return {
-      enabled: false,
-      pinHash: '',
-      biometricEnabled: false,
-      biometricCredentialId: '',
-      updatedAt: 0,
-    }
-  }
+  const uid = currentUser?.id ? Number(currentUser.id) : null
+  const savedUid = saved?.userId ? Number(saved.userId) : null
+  const sameOwner = !uid || !savedUid || uid === savedUid
+  const scopedSaved = sameOwner ? saved : null
+
+  const hasServerLockMeta = Boolean(currentUser && currentUser.app_lock !== undefined)
+  const serverPinEnabled = hasServerLockMeta ? Boolean(currentUser.app_lock?.pin_enabled) : null
+  const enabled =
+    serverPinEnabled !== null
+      ? serverPinEnabled
+      : Boolean(scopedSaved?.enabled && (scopedSaved?.pinHash || scopedSaved?.offlineVerifier))
+
   return {
-    enabled: Boolean(saved.enabled),
-    pinHash: String(saved.pinHash),
-    biometricEnabled: Boolean(saved.biometricEnabled),
-    biometricCredentialId: String(saved.biometricCredentialId || ''),
-    updatedAt: Number(saved.updatedAt || 0),
+    userId: uid || savedUid || null,
+    enabled,
+    syncedWithAccount: hasServerLockMeta,
+    pinHash: enabled && sameOwner ? String(scopedSaved?.pinHash || '') : '',
+    offlineVerifier: enabled && sameOwner ? String(scopedSaved?.offlineVerifier || '') : '',
+    offlineSalt: enabled && sameOwner ? String(scopedSaved?.offlineSalt || '') : '',
+    biometricEnabled: Boolean(enabled && scopedSaved?.biometricEnabled),
+    biometricCredentialId: enabled
+      ? String(scopedSaved?.biometricCredentialId || '')
+      : '',
+    lockedUntil: currentUser?.app_lock?.locked_until || null,
+    updatedAt: Number(currentUser?.app_lock?.pin_updated_at || scopedSaved?.updatedAt || 0),
   }
+}
+
+export function syncAccountPinMetadata({ userId = null, appLock = null } = {}) {
+  if (!appLock) return getAppLockConfig(userId ? { id: userId } : null)
+  const uid = userId ? Number(userId) : null
+  if (!appLock.pin_enabled) {
+    return clearAppLock()
+  }
+  const prev = readStorageJson(APP_LOCK_KEY, null)
+  const sameOwner = !uid || !prev?.userId || Number(prev.userId) === uid
+  const serverUpdatedAt = Number(appLock.pin_updated_at || 0)
+  const prevUpdatedAt = Number(prev?.updatedAt || 0)
+  const keepOfflineVerifier =
+    Boolean(sameOwner && prev?.offlineVerifier && serverUpdatedAt > 0 && prevUpdatedAt === serverUpdatedAt)
+
+  const record = {
+    userId: uid || prev?.userId || null,
+    enabled: true,
+    pinHash: '',
+    offlineVerifier: keepOfflineVerifier ? String(prev.offlineVerifier) : '',
+    offlineSalt: keepOfflineVerifier ? String(prev.offlineSalt || '') : '',
+    biometricEnabled: sameOwner ? Boolean(prev?.biometricEnabled) : false,
+    biometricCredentialId: sameOwner ? String(prev?.biometricCredentialId || '') : '',
+    updatedAt: serverUpdatedAt || Math.floor(Date.now() / 1000),
+  }
+  writeStorageJson(APP_LOCK_KEY, record)
+  return getAppLockConfig({ id: uid, app_lock: appLock })
 }
 
 export async function savePinLock(pin = '', biometricOpts = null) {
   const prev = getAppLockConfig()
-  const pinHash = await hashPinCode(pin)
+  const uid = biometricOpts?.userId ? Number(biometricOpts.userId) : prev.userId
+  const salt = generateLocalSaltHex()
+  const offlineVerifier = await hashPinCode(pin, `v3:${uid || 'local'}:${salt}`)
   const record = {
+    userId: uid || null,
     enabled: true,
-    pinHash,
+    pinHash: '',
+    offlineVerifier,
+    offlineSalt: salt,
     biometricEnabled:
       biometricOpts && typeof biometricOpts.biometricEnabled === 'boolean'
         ? biometricOpts.biometricEnabled
@@ -374,23 +433,43 @@ export async function savePinLock(pin = '', biometricOpts = null) {
       biometricOpts?.credentialId !== undefined
         ? biometricOpts.credentialId
         : prev.biometricCredentialId,
-    updatedAt: Math.floor(Date.now() / 1000),
+    updatedAt: Number(biometricOpts?.updatedAt || Math.floor(Date.now() / 1000)),
   }
   writeStorageJson(APP_LOCK_KEY, record)
-  return record
+  return getAppLockConfig(
+    uid
+      ? { id: uid, app_lock: { pin_enabled: true, pin_updated_at: record.updatedAt } }
+      : null
+  )
 }
 
-export function updateAppLockBiometric({ biometricEnabled = false, biometricCredentialId = '' }) {
-  const prev = getAppLockConfig()
-  if (!prev.enabled || !prev.pinHash) return prev
+export function updateAppLockBiometric({
+  userId = null,
+  biometricEnabled = false,
+  biometricCredentialId = '',
+  appLock = null,
+}) {
+  const prev = getAppLockConfig(userId || appLock ? { id: userId, app_lock: appLock } : null)
+  if (!prev.enabled) return prev
   const next = {
-    ...prev,
+    userId: userId || prev.userId || null,
+    enabled: true,
+    pinHash: prev.pinHash || '',
+    offlineVerifier: prev.offlineVerifier || '',
+    offlineSalt: prev.offlineSalt || '',
     biometricEnabled: Boolean(biometricEnabled),
-    biometricCredentialId: biometricEnabled ? String(biometricCredentialId || prev.biometricCredentialId || '') : '',
-    updatedAt: Math.floor(Date.now() / 1000),
+    biometricCredentialId: biometricEnabled
+      ? String(biometricCredentialId || prev.biometricCredentialId || '')
+      : '',
+    updatedAt: prev.updatedAt || Math.floor(Date.now() / 1000),
   }
   writeStorageJson(APP_LOCK_KEY, next)
-  return next
+  return {
+    ...prev,
+    ...next,
+    syncedWithAccount: prev.syncedWithAccount,
+    lockedUntil: prev.lockedUntil,
+  }
 }
 
 export function clearAppLock() {
@@ -403,19 +482,96 @@ export function clearAppLock() {
     // ignore
   }
   return {
+    userId: null,
     enabled: false,
+    syncedWithAccount: false,
     pinHash: '',
+    offlineVerifier: '',
+    offlineSalt: '',
     biometricEnabled: false,
     biometricCredentialId: '',
+    lockedUntil: null,
     updatedAt: 0,
   }
 }
 
-export async function verifyPinCode(pin = '') {
-  const cfg = getAppLockConfig()
-  if (!cfg.enabled || !cfg.pinHash) return true
-  const candidate = await hashPinCode(pin)
-  return candidate === cfg.pinHash
+async function verifyLocalOfflinePin(cfg, pin) {
+  if (!cfg.enabled) return true
+  if (cfg.offlineVerifier && cfg.offlineSalt) {
+    const candidate = await hashPinCode(pin, `v3:${cfg.userId || 'local'}:${cfg.offlineSalt}`)
+    return candidate === cfg.offlineVerifier
+  }
+  if (cfg.pinHash) {
+    const legacy = await hashPinCode(pin)
+    return legacy === cfg.pinHash
+  }
+  return false
+}
+
+export async function verifyPinCode(pin = '', opts = null) {
+  const { token = '', currentUser = null, onUnauthorized = null } = opts || {}
+  const cfg = getAppLockConfig(currentUser)
+  if (!cfg.enabled) return { verified: true, source: 'disabled' }
+
+  if (token) {
+    try {
+      const res = await apiRequest(
+        '/api/users/pin/verify',
+        { method: 'POST', body: { pin: String(pin || '').trim() } },
+        token,
+        onUnauthorized
+      )
+      if (res?.verified) {
+        await savePinLock(pin, {
+          userId: currentUser?.id || cfg.userId,
+          updatedAt: cfg.updatedAt,
+          biometricEnabled: cfg.biometricEnabled,
+          credentialId: cfg.biometricCredentialId,
+        })
+        return { verified: true, source: 'server' }
+      }
+      const retryAfter = Number(res?.retry_after || 0)
+      const rem = Number(res?.remaining_attempts ?? 0)
+      const errText =
+        retryAfter > 0
+          ? `Terlalu banyak percobaan salah. Tunggu ${retryAfter} detik.`
+          : rem > 0
+            ? `PIN tidak cocok (sisa ${rem} percobaan sebelum jeda pengaman)`
+            : 'PIN tidak cocok'
+      return {
+        verified: false,
+        source: 'server',
+        attempts: Number(res?.attempts || 1),
+        remainingAttempts: rem,
+        retryAfter,
+        lockedUntil: res?.locked_until || null,
+        error: errText,
+      }
+    } catch (err) {
+      if (err?.status && err.status >= 400 && err.status < 500) {
+        return {
+          verified: false,
+          source: 'server',
+          locked: err.status === 429,
+          error: err.message || 'Verifikasi PIN ditolak oleh server.',
+        }
+      }
+      // Network offline / server unreachable -> lanjut fallback verifikator lokal tersalt
+    }
+  }
+
+  const localOk = await verifyLocalOfflinePin(cfg, pin)
+  if (localOk) {
+    return { verified: true, source: 'offline' }
+  }
+  if (!cfg.offlineVerifier && !cfg.pinHash && token) {
+    return {
+      verified: false,
+      source: 'offline',
+      error: 'Koneksi internet diperlukan untuk verifikasi PIN akun di perangkat baru ini.',
+    }
+  }
+  return { verified: false, source: 'offline', error: 'PIN tidak cocok' }
 }
 
 export function saveUserFeedbackEntry(entry) {

@@ -278,14 +278,62 @@ export function SettingsView({
   appConfig = {},
 }) {
   const { prefs, updatePrefs } = useUserPrefs()
-  const [tariff, setTariff] = useState('1444.70')
+  const initialTzRef = useRef(prefs.timezone || 'Asia/Jakarta')
+
+  const rawSen = settings?.tariff_sen ?? settings?.tariff_sen_per_kwh
+  const rawTariffRp = settings?.tariff_rp
+  const rawPowerLimit = settings?.power_limit_w
+  const rawCooldown = settings?.alert_cooldown_min
+  const rawExtra = settings?.extra_percent
+  const rawReportHour = settings?.report_hour
+  const rawReportTz = settings?.report_timezone
+  const rawReportEnabled = settings?.report_enabled
+  const hasServerSettings = Boolean(settings)
+
+  const syncedSnapshot = useMemo(() => {
+    if (!hasServerSettings) {
+      return {
+        tariff: '1444.70',
+        powerLimit: 2200,
+        cooldown: 30,
+        extraPercent: 0,
+        reportHour: 21,
+        reportTimezone: initialTzRef.current,
+        reportEnabled: true,
+      }
+    }
+    const nextTariff =
+      rawTariffRp ??
+      (Number.isFinite(Number(rawSen)) ? (Number(rawSen) / 100).toFixed(2) : '1444.70')
+    return {
+      tariff: String(nextTariff),
+      powerLimit: rawPowerLimit ?? 2200,
+      cooldown: rawCooldown ?? 30,
+      extraPercent: rawExtra ?? 0,
+      reportHour: rawReportHour ?? 21,
+      reportTimezone: rawReportTz || initialTzRef.current || 'Asia/Jakarta',
+      reportEnabled: rawReportEnabled !== false,
+    }
+  }, [
+    hasServerSettings,
+    rawTariffRp,
+    rawSen,
+    rawPowerLimit,
+    rawCooldown,
+    rawExtra,
+    rawReportHour,
+    rawReportTz,
+    rawReportEnabled,
+  ])
+
+  const [tariff, setTariff] = useState(() => syncedSnapshot.tariff)
   const [selectedPresetId, setSelectedPresetId] = useState('')
-  const [powerLimit, setPowerLimit] = useState(2200)
-  const [cooldown, setCooldown] = useState(30)
-  const [extraPercent, setExtraPercent] = useState(0)
-  const [reportHour, setReportHour] = useState(21)
-  const [reportTimezone, setReportTimezone] = useState(() => prefs.timezone || 'Asia/Jakarta')
-  const [reportEnabled, setReportEnabled] = useState(true)
+  const [powerLimit, setPowerLimit] = useState(() => syncedSnapshot.powerLimit)
+  const [cooldown, setCooldown] = useState(() => syncedSnapshot.cooldown)
+  const [extraPercent, setExtraPercent] = useState(() => syncedSnapshot.extraPercent)
+  const [reportHour, setReportHour] = useState(() => syncedSnapshot.reportHour)
+  const [reportTimezone, setReportTimezone] = useState(() => syncedSnapshot.reportTimezone)
+  const [reportEnabled, setReportEnabled] = useState(() => syncedSnapshot.reportEnabled)
   const [sysMsg, setSysMsg] = useState(null)
   const [sysErr, setSysErr] = useState(false)
   const [savingSys, setSavingSys] = useState(false)
@@ -298,34 +346,18 @@ export function SettingsView({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  const syncedSnapshot = useMemo(() => {
-    if (!settings) {
-      return {
-        tariff: '1444.70',
-        powerLimit: 2200,
-        cooldown: 30,
-        extraPercent: 0,
-        reportHour: 21,
-        reportTimezone: prefs.timezone || 'Asia/Jakarta',
-        reportEnabled: true,
-      }
-    }
-    const rawSen = settings.tariff_sen ?? settings.tariff_sen_per_kwh
-    const nextTariff =
-      settings.tariff_rp ??
-      (Number.isFinite(Number(rawSen)) ? (Number(rawSen) / 100).toFixed(2) : '1444.70')
-    return {
-      tariff: String(nextTariff),
-      powerLimit: settings.power_limit_w ?? 2200,
-      cooldown: settings.alert_cooldown_min ?? 30,
-      extraPercent: settings.extra_percent ?? 0,
-      reportHour: settings.report_hour ?? 21,
-      reportTimezone: settings.report_timezone || prefs.timezone || 'Asia/Jakarta',
-      reportEnabled: settings.report_enabled !== false,
-    }
-  }, [settings, prefs.timezone])
+  const snapshotKey = `${hasServerSettings ? 'srv' : 'def'}|${syncedSnapshot.tariff}|${syncedSnapshot.powerLimit}|${syncedSnapshot.cooldown}|${syncedSnapshot.extraPercent}|${syncedSnapshot.reportHour}|${syncedSnapshot.reportTimezone}|${syncedSnapshot.reportEnabled}`
+  const lastAppliedKeyRef = useRef(snapshotKey)
+  const isDirtyRef = useRef(false)
+  const forceSyncNextRef = useRef(false)
 
   useEffect(() => {
+    if (!forceSyncNextRef.current) {
+      if (lastAppliedKeyRef.current === snapshotKey) return
+      if (isDirtyRef.current) return
+    }
+    forceSyncNextRef.current = false
+    lastAppliedKeyRef.current = snapshotKey
     setTariff(syncedSnapshot.tariff)
     setPowerLimit(syncedSnapshot.powerLimit)
     setCooldown(syncedSnapshot.cooldown)
@@ -333,7 +365,7 @@ export function SettingsView({
     setReportHour(syncedSnapshot.reportHour)
     setReportTimezone(syncedSnapshot.reportTimezone)
     setReportEnabled(syncedSnapshot.reportEnabled)
-  }, [syncedSnapshot])
+  }, [snapshotKey, syncedSnapshot])
 
   useEffect(() => {
     if (activeDevice) {
@@ -360,8 +392,11 @@ export function SettingsView({
       Number(reportHour) !== Number(syncedSnapshot.reportHour) ||
       String(reportTimezone) !== String(syncedSnapshot.reportTimezone) ||
       Boolean(reportEnabled) !== Boolean(syncedSnapshot.reportEnabled))
+  isDirtyRef.current = isDirty
 
   const handleResetSystem = () => {
+    lastAppliedKeyRef.current = snapshotKey
+    isDirtyRef.current = false
     setTariff(syncedSnapshot.tariff)
     setPowerLimit(syncedSnapshot.powerLimit)
     setCooldown(syncedSnapshot.cooldown)
@@ -437,12 +472,16 @@ export function SettingsView({
     }
 
     try {
+      forceSyncNextRef.current = true
       await onSave(payload)
+      isDirtyRef.current = false
+      lastAppliedKeyRef.current = ''
       updatePrefs({ timezone: payload.report_timezone })
       setSysErr(false)
       setSysMsg('Pengaturan tarif & peringatan berhasil disimpan.')
       setTimeout(() => setSysMsg(null), 3000)
     } catch (err) {
+      forceSyncNextRef.current = false
       setSysErr(true)
       setSysMsg(err.message || 'Gagal menyimpan pengaturan.')
     } finally {
@@ -861,10 +900,7 @@ export function SettingsView({
                         type="button"
                         disabled={!isAuthenticated}
                         className={`settings-tz-pill ${activeZone ? 'selected' : ''}`}
-                        onClick={() => {
-                          setReportTimezone(z.id)
-                          updatePrefs({ timezone: z.id })
-                        }}
+                        onClick={() => setReportTimezone(z.id)}
                       >
                         <Globe size={12} />
                         <strong>{z.short}</strong>

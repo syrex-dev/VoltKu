@@ -121,6 +121,7 @@ export function PinKeypad({
 
 export function AppLockOverlay({
   isOpen,
+  currentUser = null,
   userName = 'Pengguna VoltKu',
   userEmail = '',
   onUnlock,
@@ -134,6 +135,7 @@ export function AppLockOverlay({
   const [status, setStatus] = useState('idle')
   const [message, setMessage] = useState('Masukkan PIN 6 digit untuk membuka aplikasi')
   const [attempts, setAttempts] = useState(0)
+  const [verifying, setVerifying] = useState(false)
   const [biometricBusy, setBiometricBusy] = useState(false)
   const [biometricReady, setBiometricReady] = useState(false)
   const [credentialId, setCredentialId] = useState('')
@@ -179,9 +181,10 @@ export function AppLockOverlay({
     }
 
     let cancelled = false
-    const cfg = getAppLockConfig()
+    const cfg = getAppLockConfig(currentUser)
     setPinValue('')
     setStatus('idle')
+    setVerifying(false)
     setCredentialId(cfg.biometricCredentialId || '')
 
     checkBiometricCapability().then((cap) => {
@@ -199,39 +202,54 @@ export function AppLockOverlay({
           }, 180)
         }
       } else {
-        setMessage('Masukkan PIN 6 digit untuk membuka aplikasi')
+        setMessage('Masukkan PIN 6 digit akun untuk membuka aplikasi')
       }
     })
 
     return () => {
       cancelled = true
     }
-  }, [isOpen, runBiometricUnlock])
+  }, [isOpen, currentUser, runBiometricUnlock])
 
   if (!isOpen) return null
 
   const handlePinComplete = async (digits) => {
-    const ok = await verifyPinFn(digits)
-    if (ok) {
-      triggerHaptic(20)
-      setStatus('success')
-      setMessage('PIN terverifikasi')
-      window.setTimeout(() => {
-        setPinValue('')
-        setStatus('idle')
-        setAttempts(0)
-        onUnlock?.()
-      }, 240)
-    } else {
-      triggerHaptic(32)
-      const nextAttempts = attempts + 1
-      setAttempts(nextAttempts)
+    if (verifying) return
+    setVerifying(true)
+    try {
+      const res = await verifyPinFn(digits)
+      const ok = typeof res === 'boolean' ? res : Boolean(res?.verified)
+      if (ok) {
+        triggerHaptic(20)
+        setStatus('success')
+        setMessage('PIN terverifikasi')
+        window.setTimeout(() => {
+          setPinValue('')
+          setStatus('idle')
+          setAttempts(0)
+          setVerifying(false)
+          onUnlock?.()
+        }, 240)
+      } else {
+        triggerHaptic(32)
+        const nextAttempts = Number(res?.attempts || attempts + 1)
+        setAttempts(nextAttempts)
+        setStatus('error')
+        setMessage(res?.error || `PIN tidak cocok (percobaan ke-${nextAttempts})`)
+        window.setTimeout(() => {
+          setPinValue('')
+          setStatus('idle')
+          setVerifying(false)
+        }, 650)
+      }
+    } catch (err) {
       setStatus('error')
-      setMessage(`PIN tidak cocok (percobaan ke-${nextAttempts})`)
+      setMessage(err?.message || 'Gagal memverifikasi PIN.')
       window.setTimeout(() => {
         setPinValue('')
         setStatus('idle')
-      }, 600)
+        setVerifying(false)
+      }, 650)
     }
   }
 
@@ -298,7 +316,7 @@ export function AppLockOverlay({
           onChange={setPinValue}
           onComplete={handlePinComplete}
           status={status}
-          disabled={status === 'success'}
+          disabled={status === 'success' || verifying}
           showBiometricBtn={biometricReady}
           biometricBusy={biometricBusy}
           onTriggerBiometric={() => runBiometricUnlock()}
@@ -306,7 +324,7 @@ export function AppLockOverlay({
 
         {onResetAndLogout && (
           <button type="button" className="app-lock-forgot-btn" onClick={onResetAndLogout}>
-            Lupa PIN? Keluar &amp; reset kunci lokal
+            Lupa PIN? Keluar &amp; masuk ulang untuk pulihkan
           </button>
         )}
       </div>

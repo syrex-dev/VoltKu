@@ -37,6 +37,8 @@ import {
 import { BrandLogo } from './BrandLogo'
 import { PinKeypad } from './AppLockSecurity'
 import { EnergyAssistantIcon, TierShieldIcon } from './VoltKuIcons'
+import { apiRequest } from '../api/client'
+import { emitSyncSignal } from '../utils/liveSync'
 import {
   formatNum,
   formatRp,
@@ -44,7 +46,6 @@ import {
   getPreferredTimeZoneTag,
 } from '../utils/formatters'
 import {
-  authenticateWithBiometric,
   checkBiometricCapability,
   enrollBiometricUnlock,
 } from '../utils/biometricAuth'
@@ -205,20 +206,36 @@ export function PasswordSubView({
   )
 }
 
-export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen }) {
-  const [lockCfg, setLockCfg] = useState(() => getAppLockConfig())
+export function AppLockSubView({
+  currentUser,
+  token = '',
+  onLogout,
+  onUserUpdated,
+  onLockChanged,
+  onTestLockScreen,
+}) {
+  const [lockCfg, setLockCfg] = useState(() => getAppLockConfig(currentUser))
   const [bioCap, setBioCap] = useState({ available: false, status: 'checking', reason: 'Memeriksa dukungan sensor perangkat...' })
-  // 'overview' | 'create_step1' | 'create_step2' | 'verify_disable'
+  // 'overview' | 'verify_current_for_change' | 'create_step1' | 'create_step2' | 'verify_disable'
   const [mode, setMode] = useState(() => (lockCfg.enabled ? 'overview' : 'create_step1'))
   const [pinInput, setPinInput] = useState('')
+  const [verifiedCurrentPin, setVerifiedCurrentPin] = useState('')
   const [draftPin, setDraftPin] = useState('')
   const [padStatus, setPadStatus] = useState('idle')
+  const [pinBusy, setPinBusy] = useState(false)
   const [bioBusy, setBioBusy] = useState(false)
+  const [showDisableByPassword, setShowDisableByPassword] = useState(false)
+  const [disableAccountPassword, setDisableAccountPassword] = useState('')
   const [hintText, setHintText] = useState(() =>
     lockCfg.enabled
-      ? 'PIN keamanan 6 digit aktif melindungi sesi di perangkat ini.'
-      : 'Buat PIN 6 digit sebagai kunci pengaman aplikasi.'
+      ? 'PIN keamanan 6 digit aktif & tersinkron ke seluruh perangkat akun Anda.'
+      : 'Buat PIN 6 digit sebagai kunci pengaman akun di APK maupun Web.'
   )
+
+  useEffect(() => {
+    const synced = getAppLockConfig(currentUser)
+    setLockCfg(synced)
+  }, [currentUser])
 
   useEffect(() => {
     let cancelled = false
@@ -230,7 +247,66 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
     }
   }, [])
 
+  const applyServerAppLock = async (appLockMeta, rawPin = '') => {
+    let nextCfg
+    if (appLockMeta?.pin_enabled && rawPin) {
+      nextCfg = await savePinLock(rawPin, {
+        userId: currentUser?.id,
+        updatedAt: appLockMeta.pin_updated_at,
+      })
+    } else if (!appLockMeta?.pin_enabled) {
+      nextCfg = clearAppLock()
+    } else {
+      nextCfg = getAppLockConfig({ ...currentUser, app_lock: appLockMeta })
+    }
+    setLockCfg(nextCfg)
+    if (currentUser && onUserUpdated) {
+      onUserUpdated({ ...currentUser, app_lock: appLockMeta })
+    }
+    onLockChanged?.(nextCfg)
+    emitSyncSignal('user', { source: 'app-pin-updated' })
+    return nextCfg
+  }
+
   const handlePinComplete = async (digits) => {
+    if (pinBusy) return
+
+    if (mode === 'verify_current_for_change') {
+      setPinBusy(true)
+      try {
+        const res = await verifyPinCode(digits, { token, currentUser, onUnauthorized: onLogout })
+        const ok = typeof res === 'boolean' ? res : Boolean(res?.verified)
+        if (!ok) {
+          setPadStatus('error')
+          setHintText(res?.error || 'PIN aktif tidak cocok. Masukkan PIN saat ini.')
+          window.setTimeout(() => {
+            setPadStatus('idle')
+            setPinInput('')
+            setPinBusy(false)
+          }, 650)
+          return
+        }
+        setVerifiedCurrentPin(digits)
+        setPinInput('')
+        setMode('create_step1')
+        setPadStatus('success')
+        setHintText('PIN lama terverifikasi. Sekarang masukkan PIN 6 digit baru.')
+        window.setTimeout(() => {
+          setPadStatus('idle')
+          setPinBusy(false)
+        }, 350)
+      } catch (err) {
+        setPadStatus('error')
+        setHintText(err?.message || 'Gagal memverifikasi PIN saat ini.')
+        window.setTimeout(() => {
+          setPadStatus('idle')
+          setPinInput('')
+          setPinBusy(false)
+        }, 650)
+      }
+      return
+    }
+
     if (mode === 'create_step1') {
       setDraftPin(digits)
       setPinInput('')
@@ -250,56 +326,135 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
           setPinInput('')
           setDraftPin('')
           setMode('create_step1')
-          setHintText('Masukkan PIN 6 digit baru untuk keamanan aplikasi.')
+          setHintText('Masukkan PIN 6 digit baru untuk keamanan akun.')
         }, 650)
         return
       }
-      const nextCfg = await savePinLock(digits)
-      triggerHaptic(22)
-      setLockCfg(nextCfg)
-      setPinInput('')
-      setDraftPin('')
-      setMode('overview')
-      setPadStatus('success')
-      setHintText(
-        bioCap.available
-          ? 'PIN 6 digit aktif! Anda dapat menyalakan Sidik Jari di bawah.'
-          : 'PIN 6 digit berhasil diaktifkan!'
-      )
-      onLockChanged?.(nextCfg)
-      window.setTimeout(() => setPadStatus('idle'), 450)
+      setPinBusy(true)
+      try {
+        let savedMeta = { pin_enabled: true, pin_updated_at: Math.floor(Date.now() / 1000) }
+        if (token) {
+          const res = await apiRequest(
+            '/api/users/pin',
+            {
+              method: 'POST',
+              body: {
+                new_pin: digits,
+                current_pin: verifiedCurrentPin || null,
+              },
+            },
+            token,
+            onLogout
+          )
+          if (res?.app_lock) savedMeta = res.app_lock
+        }
+        await applyServerAppLock(savedMeta, digits)
+        triggerHaptic(22)
+        setPinInput('')
+        setDraftPin('')
+        setVerifiedCurrentPin('')
+        setMode('overview')
+        setPadStatus('success')
+        setHintText(
+          bioCap.available
+            ? 'PIN 6 digit aktif & tersinkron! Anda dapat menyalakan Sidik Jari di bawah.'
+            : 'PIN 6 digit aktif & otomatis tersinkron ke seluruh perangkat akun Anda!'
+        )
+        window.setTimeout(() => {
+          setPadStatus('idle')
+          setPinBusy(false)
+        }, 450)
+      } catch (err) {
+        setPadStatus('error')
+        setHintText(err?.message || 'PIN gagal disimpan. Hindari pola angka lemah seperti 123456.')
+        window.setTimeout(() => {
+          setPadStatus('idle')
+          setPinInput('')
+          setDraftPin('')
+          setMode('create_step1')
+          setPinBusy(false)
+        }, 900)
+      }
       return
     }
 
     if (mode === 'verify_disable') {
-      const ok = await verifyPinCode(digits)
-      if (!ok) {
+      setPinBusy(true)
+      try {
+        if (token) {
+          const res = await apiRequest(
+            '/api/users/pin/disable',
+            { method: 'POST', body: { current_pin: digits } },
+            token,
+            onLogout
+          )
+          await applyServerAppLock(res?.app_lock || { pin_enabled: false, pin_updated_at: 0 })
+        } else {
+          const res = await verifyPinCode(digits, { currentUser })
+          const ok = typeof res === 'boolean' ? res : Boolean(res?.verified)
+          if (!ok) throw new Error('PIN salah.')
+          await applyServerAppLock({ pin_enabled: false, pin_updated_at: 0 })
+        }
+        triggerHaptic(18)
+        setPinInput('')
+        setDraftPin('')
+        setVerifiedCurrentPin('')
+        setShowDisableByPassword(false)
+        setDisableAccountPassword('')
+        setMode('create_step1')
+        setHintText('Kunci keamanan dinonaktifkan di semua perangkat. Buat PIN kapan saja untuk mengaktifkan.')
+      } catch (err) {
         setPadStatus('error')
-        setHintText('PIN salah. Masukkan PIN aktif untuk menonaktifkan kunci.')
+        setHintText(err?.message || 'PIN salah. Masukkan PIN aktif untuk menonaktifkan kunci.')
         window.setTimeout(() => {
           setPadStatus('idle')
           setPinInput('')
         }, 650)
-        return
+      } finally {
+        setPinBusy(false)
       }
-      const cleared = clearAppLock()
+    }
+  }
+
+  const handleDisableWithPassword = async (e) => {
+    e.preventDefault()
+    if (!token || !disableAccountPassword || pinBusy) return
+    setPinBusy(true)
+    try {
+      const res = await apiRequest(
+        '/api/users/pin/disable',
+        { method: 'POST', body: { account_password: disableAccountPassword } },
+        token,
+        onLogout
+      )
+      await applyServerAppLock(res?.app_lock || { pin_enabled: false, pin_updated_at: 0 })
       triggerHaptic(18)
-      setLockCfg(cleared)
       setPinInput('')
       setDraftPin('')
+      setShowDisableByPassword(false)
+      setDisableAccountPassword('')
       setMode('create_step1')
-      setHintText('Kunci keamanan dinonaktifkan. Buat PIN 6 digit kapan saja untuk mengaktifkan.')
-      onLockChanged?.(cleared)
+      setHintText('PIN berhasil dinonaktifkan memakai kata sandi akun.')
+    } catch (err) {
+      setPadStatus('error')
+      setHintText(err?.message || 'Kata sandi akun salah.')
+    } finally {
+      setPinBusy(false)
     }
   }
 
   const handleToggleBiometric = async () => {
     if (!lockCfg.enabled) return
     if (lockCfg.biometricEnabled) {
-      const next = updateAppLockBiometric({ biometricEnabled: false, biometricCredentialId: '' })
+      const next = updateAppLockBiometric({
+        userId: currentUser?.id,
+        biometricEnabled: false,
+        biometricCredentialId: '',
+        appLock: currentUser?.app_lock,
+      })
       triggerHaptic(12)
       setLockCfg(next)
-      setHintText('Kunci sidik jari dimatikan; perangkat tetap aman dengan PIN 6 digit.')
+      setHintText('Kunci sidik jari dimatikan; akun tetap aman dengan PIN 6 digit tersinkron.')
       onLockChanged?.(next)
       return
     }
@@ -314,36 +469,17 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
       const res = await enrollBiometricUnlock(currentUser?.email || currentUser?.name || 'VoltKu')
       if (res.ok) {
         const next = updateAppLockBiometric({
+          userId: currentUser?.id,
           biometricEnabled: true,
           biometricCredentialId: res.credentialId,
+          appLock: currentUser?.app_lock,
         })
         triggerHaptic(20)
         setLockCfg(next)
-        setHintText('Sidik jari / biometrik aktif mendampingi PIN 6 digit!')
+        setHintText('Sidik jari perangkat ini aktif mendampingi PIN 6 digit!')
         onLockChanged?.(next)
       } else {
         setHintText(res.message || 'Sidik jari tidak jadi diaktifkan.')
-      }
-    } finally {
-      setBioBusy(false)
-    }
-  }
-
-  const handleBiometricDisable = async () => {
-    if (!lockCfg.biometricEnabled || !bioCap.available) return
-    setBioBusy(true)
-    try {
-      const res = await authenticateWithBiometric(lockCfg.biometricCredentialId)
-      if (res.verified) {
-        const cleared = clearAppLock()
-        triggerHaptic(18)
-        setLockCfg(cleared)
-        setPinInput('')
-        setMode('create_step1')
-        setHintText('Kunci aplikasi dinonaktifkan lewat verifikasi sidik jari.')
-        onLockChanged?.(cleared)
-      } else {
-        setHintText(res.error || 'Sidik jari gagal, gunakan PIN aktif Anda.')
       }
     } finally {
       setBioBusy(false)
@@ -362,9 +498,9 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
             <div className="profile-ref-row-sub">
               {lockCfg.enabled
                 ? lockCfg.biometricEnabled && bioCap.available
-                  ? 'Aktif · Sidik Jari + PIN 6 Digit (terhash SHA-256)'
-                  : 'Aktif · PIN 6 Digit terenkripsi lokal'
-                : 'Nonaktif · Lindungi akses aplikasi di perangkat ini'}
+                  ? 'Aktif · PIN tersinkron akun + Sidik Jari (perangkat ini)'
+                  : 'Aktif · PIN 6 Digit tersinkron ke semua perangkat (PBKDF2)'
+                : 'Nonaktif · Lindungi akses akun di APK & Web'}
             </div>
           </div>
           <span className={`profile-ref-badge ${lockCfg.enabled ? 'is-emerald' : 'is-neutral'}`}>
@@ -376,9 +512,11 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
           {bioCap.available ? <Fingerprint size={15} /> : <ShieldCheck size={15} />}
           <span>
             {bioCap.available
-              ? bioCap.reason
+              ? lockCfg.enabled && !lockCfg.biometricEnabled
+                ? 'PIN Anda sudah tersinkron dari akun. Aktifkan sakelar Sidik Jari di bawah khusus untuk perangkat ini.'
+                : bioCap.reason
               : bioCap.reason ||
-                'Sensor sidik jari tidak tersedia di perangkat ini — menggunakan PIN 6 digit.'}
+                'Sensor sidik jari tidak tersedia di perangkat ini — otomatis menggunakan PIN 6 digit tersinkron.'}
           </span>
         </div>
       </div>
@@ -397,13 +535,13 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
               <Fingerprint size={17} />
             </span>
             <span className="profile-ref-row-text">
-              <span className="profile-ref-row-title">Buka dengan Sidik Jari / Biometrik</span>
+              <span className="profile-ref-row-title">Buka dengan Sidik Jari (Perangkat Ini)</span>
               <span className="profile-ref-row-sub">
                 {bioCap.available
                   ? bioBusy
                     ? 'Memverifikasi sensor sidik jari...'
-                    : 'Gunakan sidik jari agar cepat terbuka (PIN tetap siap sebagai cadangan)'
-                  : 'Perangkat belum mendukung sidik jari — otomatis memakai PIN'}
+                    : 'Sidik jari diaktifkan per perangkat; PIN tetap tersinkron di semua perangkat'
+                  : 'Perangkat belum mendukung sidik jari — otomatis memakai PIN tersinkron'}
               </span>
             </span>
             <span
@@ -422,8 +560,9 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
             onClick={() => {
               setPinInput('')
               setDraftPin('')
-              setMode('create_step1')
-              setHintText('Masukkan 6 digit PIN keamanan baru.')
+              setVerifiedCurrentPin('')
+              setMode('verify_current_for_change')
+              setHintText('Masukkan PIN 6 digit yang sedang aktif saat ini.')
             }}
           >
             <span className="profile-ref-row-icon is-blue">
@@ -431,7 +570,7 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
             </span>
             <span className="profile-ref-row-text">
               <span className="profile-ref-row-title">Ubah PIN 6 Digit</span>
-              <span className="profile-ref-row-sub">Perbarui kode angka rahasia perangkat</span>
+              <span className="profile-ref-row-sub">Perbarui PIN rahasia (tersinkron ke semua perangkat)</span>
             </span>
             <ChevronRight size={16} className="profile-ref-chevron" />
           </button>
@@ -458,8 +597,10 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
             className="profile-ref-row"
             onClick={() => {
               setPinInput('')
+              setShowDisableByPassword(false)
+              setDisableAccountPassword('')
               setMode('verify_disable')
-              setHintText('Verifikasi PIN aktif untuk menonaktifkan kunci aplikasi.')
+              setHintText('Masukkan PIN aktif untuk menonaktifkan kunci keamanan akun.')
             }}
           >
             <span className="profile-ref-row-icon is-amber">
@@ -467,7 +608,7 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
             </span>
             <span className="profile-ref-row-text">
               <span className="profile-ref-row-title">Nonaktifkan Kunci Keamanan</span>
-              <span className="profile-ref-row-sub">Memerlukan verifikasi PIN atau sidik jari</span>
+              <span className="profile-ref-row-sub">Memerlukan verifikasi PIN atau kata sandi akun</span>
             </span>
             <ChevronRight size={16} className="profile-ref-chevron" />
           </button>
@@ -476,30 +617,66 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
         <div className="profile-ref-card-group profile-pattern-board-card">
           <h4 className="profile-pattern-stage-title">
             {mode === 'verify_disable'
-              ? 'Verifikasi Kunci Aktif'
-              : mode === 'create_step2'
-                ? 'Konfirmasi PIN 6 Digit'
-                : 'Buat PIN 6 Digit'}
+              ? 'Verifikasi Nonaktifkan PIN'
+              : mode === 'verify_current_for_change'
+                ? 'Verifikasi PIN Saat Ini'
+                : mode === 'create_step2'
+                  ? 'Konfirmasi PIN 6 Digit'
+                  : 'Buat PIN 6 Digit'}
           </h4>
           <p className={`profile-pattern-stage-sub ${padStatus === 'error' ? 'is-error' : ''}`}>
             {hintText}
           </p>
 
-          <PinKeypad
-            pinLength={6}
-            value={pinInput}
-            onChange={setPinInput}
-            onComplete={handlePinComplete}
-            status={padStatus}
-            disabled={padStatus === 'success'}
-            showBiometricBtn={
-              mode === 'verify_disable' && Boolean(lockCfg.biometricEnabled && bioCap.available)
-            }
-            biometricBusy={bioBusy}
-            onTriggerBiometric={handleBiometricDisable}
-          />
+          {!showDisableByPassword ? (
+            <PinKeypad
+              pinLength={6}
+              value={pinInput}
+              onChange={setPinInput}
+              onComplete={handlePinComplete}
+              status={padStatus}
+              disabled={padStatus === 'success' || pinBusy}
+              showBiometricBtn={false}
+            />
+          ) : (
+            <form onSubmit={handleDisableWithPassword} style={{ width: '100%', maxWidth: 300 }}>
+              <input
+                type="password"
+                className="modern-input"
+                placeholder="Masukkan kata sandi akun..."
+                value={disableAccountPassword}
+                onChange={(e) => setDisableAccountPassword(e.target.value)}
+                required
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={pinBusy || !disableAccountPassword}
+                style={{ width: '100%', marginTop: 10 }}
+              >
+                {pinBusy ? 'Memverifikasi...' : 'Matikan PIN'}
+              </button>
+            </form>
+          )}
 
           <div className="profile-pattern-board-actions">
+            {mode === 'verify_disable' && currentUser?.has_local_password !== false && token && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-compact"
+                onClick={() => {
+                  setShowDisableByPassword((p) => !p)
+                  setPadStatus('idle')
+                  setHintText(
+                    !showDisableByPassword
+                      ? 'Masukkan kata sandi login akun untuk mematikan PIN.'
+                      : 'Masukkan PIN aktif untuk menonaktifkan kunci keamanan akun.'
+                  )
+                }}
+              >
+                <span>{showDisableByPassword ? 'Pakai PIN' : 'Lupa PIN? Pakai Kata Sandi'}</span>
+              </button>
+            )}
             {(mode === 'create_step2' || (lockCfg.enabled && mode !== 'overview')) && (
               <button
                 type="button"
@@ -507,13 +684,16 @@ export function AppLockSubView({ currentUser, onLockChanged, onTestLockScreen })
                 onClick={() => {
                   setPinInput('')
                   setDraftPin('')
+                  setVerifiedCurrentPin('')
+                  setShowDisableByPassword(false)
+                  setDisableAccountPassword('')
                   setPadStatus('idle')
                   if (lockCfg.enabled) {
                     setMode('overview')
-                    setHintText('PIN keamanan 6 digit aktif melindungi sesi di perangkat ini.')
+                    setHintText('PIN keamanan 6 digit aktif & tersinkron ke seluruh perangkat akun Anda.')
                   } else {
                     setMode('create_step1')
-                    setHintText('Buat PIN 6 digit sebagai kunci pengaman aplikasi.')
+                    setHintText('Buat PIN 6 digit sebagai kunci pengaman akun di APK maupun Web.')
                   }
                 }}
               >

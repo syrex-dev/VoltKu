@@ -24,13 +24,15 @@ export function HeroBannerCarousel({
   onOpenAlerts,
   onOpenLogin,
 }) {
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [trackIdx, setTrackIdx] = useState(1)
+  const [disableTransition, setDisableTransition] = useState(false)
   const [paused, setPaused] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffsetPx, setDragOffsetPx] = useState(0)
   const [dragViewportWidth, setDragViewportWidth] = useState(340)
 
   const viewportRef = useRef(null)
+  const trackIdxRef = useRef(1)
   const gestureRef = useRef({
     active: false,
     axis: null, // null | 'x' | 'y'
@@ -41,6 +43,7 @@ export function HeroBannerCarousel({
     lastDx: 0,
   })
   const suppressClickRef = useRef(false)
+  const rafResetRef = useRef(0)
 
   const slides = useMemo(() => {
     const planItems = Array.isArray(appConfig.plans?.items) ? appConfig.plans.items : []
@@ -185,32 +188,89 @@ export function HeroBannerCarousel({
   ])
 
   const slideCount = slides.length
-  const safeActiveIndex = slideCount > 0 ? activeIndex % slideCount : 0
+  const hasLoop = slideCount > 1
+  const safeTrackIdx = !hasLoop
+    ? 0
+    : Math.max(0, Math.min(slideCount + 1, trackIdx))
+  trackIdxRef.current = safeTrackIdx
+
+  const safeActiveIndex =
+    slideCount > 0
+      ? (((hasLoop ? safeTrackIdx - 1 : 0) % slideCount) + slideCount) % slideCount
+      : 0
+
+  const trackSlides = useMemo(() => {
+    if (!hasLoop) return slides
+    return [
+      { ...slides[slideCount - 1], _renderKey: `${slides[slideCount - 1].id}__clone_head`, isClone: true },
+      ...slides.map((s) => ({ ...s, _renderKey: s.id, isClone: false })),
+      { ...slides[0], _renderKey: `${slides[0].id}__clone_tail`, isClone: true },
+    ]
+  }, [hasLoop, slides, slideCount])
+
+  const snapLoopBoundaryIfNeeded = useCallback(
+    (curIdx) => {
+      if (!hasLoop) return curIdx
+      if (curIdx !== 0 && curIdx !== slideCount + 1) return curIdx
+      const snapped = curIdx === 0 ? slideCount : 1
+      window.cancelAnimationFrame(rafResetRef.current)
+      setDisableTransition(true)
+      setTrackIdx(snapped)
+      trackIdxRef.current = snapped
+      rafResetRef.current = window.requestAnimationFrame(() => {
+        rafResetRef.current = window.requestAnimationFrame(() => {
+          setDisableTransition(false)
+        })
+      })
+      return snapped
+    },
+    [hasLoop, slideCount]
+  )
+
+  useEffect(() => () => window.cancelAnimationFrame(rafResetRef.current), [])
+
+  // Jika sedang berada di clone ujung, pastikan tetap snap aman meski transitionend tak terpanggil
+  useEffect(() => {
+    if (!hasLoop || isDragging) return undefined
+    if (safeTrackIdx !== 0 && safeTrackIdx !== slideCount + 1) return undefined
+    const id = window.setTimeout(() => {
+      snapLoopBoundaryIfNeeded(safeTrackIdx)
+    }, 280)
+    return () => window.clearTimeout(id)
+  }, [hasLoop, isDragging, safeTrackIdx, slideCount, snapLoopBoundaryIfNeeded])
 
   useEffect(() => {
-    if (paused || isDragging || slideCount <= 1) return undefined
+    if (paused || isDragging || !hasLoop) return undefined
     const timer = window.setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % slideCount)
+      setDisableTransition(false)
+      setTrackIdx((prev) => {
+        const cur = prev <= 0 ? slideCount : prev >= slideCount + 1 ? 1 : prev
+        return Math.min(slideCount + 1, cur + 1)
+      })
     }, AUTO_SCROLL_MS)
     return () => window.clearInterval(timer)
-  }, [paused, isDragging, slideCount])
+  }, [paused, isDragging, hasLoop, slideCount])
 
-  const startGesture = useCallback((clientX, clientY) => {
-    if (slideCount <= 1) return
-    const width = viewportRef.current?.clientWidth || 340
-    setDragViewportWidth(width)
-    gestureRef.current = {
-      active: true,
-      axis: null,
-      startX: clientX,
-      startY: clientY,
-      startTime: performance.now(),
-      width,
-      lastDx: 0,
-    }
-    suppressClickRef.current = false
-    setPaused(true)
-  }, [slideCount])
+  const startGesture = useCallback(
+    (clientX, clientY) => {
+      if (!hasLoop) return
+      snapLoopBoundaryIfNeeded(trackIdxRef.current)
+      const width = viewportRef.current?.clientWidth || 340
+      setDragViewportWidth(width)
+      gestureRef.current = {
+        active: true,
+        axis: null,
+        startX: clientX,
+        startY: clientY,
+        startTime: performance.now(),
+        width,
+        lastDx: 0,
+      }
+      suppressClickRef.current = false
+      setPaused(true)
+    },
+    [hasLoop, snapLoopBoundaryIfNeeded]
+  )
 
   const moveGesture = useCallback(
     (clientX, clientY) => {
@@ -234,15 +294,13 @@ export function HeroBannerCarousel({
       }
 
       if (g.axis === 'x') {
-        let clampedDx = dx
-        if ((safeActiveIndex === 0 && dx > 0) || (safeActiveIndex === slideCount - 1 && dx < 0)) {
-          clampedDx = dx * 0.28
-        }
+        const limit = Math.max(240, g.width)
+        const clampedDx = Math.max(-limit, Math.min(limit, dx))
         g.lastDx = clampedDx
         setDragOffsetPx(clampedDx)
       }
     },
-    [safeActiveIndex, slideCount]
+    []
   )
 
   const endGesture = useCallback(() => {
@@ -263,27 +321,25 @@ export function HeroBannerCarousel({
     setDragOffsetPx(0)
     setPaused(false)
 
-    let nextIdx = safeActiveIndex
-    if (dx <= -width * 0.22 || velocity <= -0.28) {
-      nextIdx = Math.min(slideCount - 1, safeActiveIndex + 1)
-    } else if (dx >= width * 0.22 || velocity >= 0.28) {
-      nextIdx = Math.max(0, safeActiveIndex - 1)
+    const curIdx = trackIdxRef.current
+    let nextTrackIdx = curIdx
+    if (dx <= -width * 0.18 || velocity <= -0.25) {
+      nextTrackIdx = hasLoop ? Math.min(slideCount + 1, curIdx + 1) : 0
+    } else if (dx >= width * 0.18 || velocity >= 0.25) {
+      nextTrackIdx = hasLoop ? Math.max(0, curIdx - 1) : 0
     }
 
-    setActiveIndex(nextIdx)
-  }, [isDragging, safeActiveIndex, slideCount])
+    setDisableTransition(false)
+    setTrackIdx(nextTrackIdx)
+  }, [hasLoop, isDragging, slideCount])
 
   if (slideCount === 0) return null
 
-  // Hitung indikator dot secara sinkron 0ms langsung dari pergeseran jari
-  const displayDotIndex = isDragging
-    ? Math.max(
-        0,
-        Math.min(
-          slideCount - 1,
-          Math.round(safeActiveIndex - dragOffsetPx / Math.max(1, dragViewportWidth))
-        )
-      )
+  // Hitung indikator dot secara sinkron 0ms langsung dari pergeseran jari (melingkar mulus)
+  const displayDotIndex = isDragging && hasLoop
+    ? ((Math.round(safeTrackIdx - 1 - dragOffsetPx / Math.max(1, dragViewportWidth)) % slideCount) +
+        slideCount) %
+      slideCount
     : safeActiveIndex
 
   return (
@@ -321,17 +377,23 @@ export function HeroBannerCarousel({
         onMouseUp={endGesture}
       >
         <div
-          className={`ewl-hero-track-gpu ${isDragging ? 'is-dragging' : ''}`}
+          className={`ewl-hero-track-gpu ${isDragging || disableTransition ? 'is-dragging' : ''}`}
           style={{
-            transform: `translate3d(calc(${-safeActiveIndex * 100}% + ${dragOffsetPx}px), 0, 0)`,
+            transform: `translate3d(calc(${-safeTrackIdx * 100}% + ${dragOffsetPx}px), 0, 0)`,
+          }}
+          onTransitionEnd={(e) => {
+            if (e.target !== e.currentTarget) return
+            snapLoopBoundaryIfNeeded(trackIdxRef.current)
           }}
         >
-          {slides.map((slide) => {
+          {trackSlides.map((slide) => {
             const Icon = slide.Icon
             return (
               <button
-                key={slide.id}
+                key={slide._renderKey || slide.id}
                 type="button"
+                tabIndex={slide.isClone ? -1 : undefined}
+                aria-hidden={slide.isClone ? 'true' : undefined}
                 className={`ewl-hero-slide ${slide.tone}`}
                 onClick={(e) => {
                   if (suppressClickRef.current) {
@@ -377,7 +439,10 @@ export function HeroBannerCarousel({
               aria-selected={idx === displayDotIndex}
               aria-label={`Slide ${idx + 1}: ${slide.title}`}
               className={`ewl-hero-dot ${idx === displayDotIndex ? 'active' : ''}`}
-              onClick={() => setActiveIndex(idx)}
+              onClick={() => {
+                setDisableTransition(false)
+                setTrackIdx(hasLoop ? idx + 1 : idx)
+              }}
             />
           ))}
         </div>

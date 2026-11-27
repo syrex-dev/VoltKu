@@ -92,7 +92,7 @@ export function ProfileModal({
 }) {
   const { prefs, updatePrefs } = useUserPrefs()
   const [viewStack, setViewStack] = useState(['main'])
-  const [lockCfg, setLockCfg] = useState(() => getAppLockConfig())
+  const [lockCfg, setLockCfg] = useState(() => getAppLockConfig(currentUser))
   const [showRateModal, setShowRateModal] = useState(false)
 
   // Account edit states
@@ -115,9 +115,9 @@ export function ProfileModal({
       setConfirmPassword('')
       setAccountMsg(null)
       setShowRateModal(false)
-      setLockCfg(getAppLockConfig())
+      setLockCfg(getAppLockConfig(currentUser))
     }
-  }, [isOpen, currentUser?.name])
+  }, [isOpen, currentUser?.name, currentUser])
 
   if (!isOpen) return null
 
@@ -783,6 +783,9 @@ export function ProfileModal({
               {activeView === 'app-lock' && (
                 <AppLockSubView
                   currentUser={currentUser}
+                  token={token}
+                  onLogout={onLogout}
+                  onUserUpdated={onUserUpdated}
                   onLockChanged={(nextCfg) => setLockCfg(nextCfg)}
                   onTestLockScreen={() => {
                     onClose()

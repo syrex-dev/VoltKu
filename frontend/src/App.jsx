@@ -33,6 +33,7 @@ import { ResetPasswordScreen } from './components/ResetPasswordScreen'
 import { AiChatWidget } from './components/AiChatWidget'
 import { BrandLogo } from './components/BrandLogo'
 import { AppLockOverlay } from './components/AppLockSecurity'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 const AdminLoginScreen = lazy(() =>
   import('./components/AdminLoginScreen').then((m) => ({ default: m.AdminLoginScreen }))
@@ -58,6 +59,7 @@ const ProfileModal = lazy(() =>
 import {
   clearAppLock,
   getAppLockConfig,
+  syncAccountPinMetadata,
   useUserPrefs,
   verifyPinCode,
 } from './utils/userPrefs'
@@ -251,6 +253,7 @@ function CustomerPortalRoot() {
   const [publicAppConfig, setPublicAppConfig] = useState(DEFAULT_APP_CONFIG)
   const { theme, toggleTheme } = useThemePreference(publicAppConfig.default_theme)
   const { prefs } = useUserPrefs()
+  const pinUnlockedSessionRef = useRef(false)
   const [isAppLocked, setIsAppLocked] = useState(() =>
     Boolean(getStoredUserToken() && getAppLockConfig().enabled)
   )
@@ -408,6 +411,8 @@ function CustomerPortalRoot() {
       setWelcomeSeen(true)
       setShowLoginModal(false)
       setLoginModalSubtitle('')
+      pinUnlockedSessionRef.current = true
+      syncAccountPinMetadata({ userId: userObj?.id, appLock: userObj?.app_lock })
       setIsAppLocked(false)
       setActiveDeviceId('')
       setActiveTab('home')
@@ -421,6 +426,7 @@ function CustomerPortalRoot() {
     setUserToken('')
     setCurrentUser(null)
     setStoredUserToken('')
+    pinUnlockedSessionRef.current = false
     setIsAppLocked(false)
     setUserNotifications([])
     setUnreadNotificationCount(0)
@@ -451,6 +457,17 @@ function CustomerPortalRoot() {
           return
         }
         setCurrentUser(profile)
+        if (profile?.app_lock !== undefined) {
+          syncAccountPinMetadata({ userId: profile.id, appLock: profile.app_lock })
+          if (profile.app_lock?.pin_enabled) {
+            if (!pinUnlockedSessionRef.current) {
+              setIsAppLocked(true)
+            }
+          } else {
+            pinUnlockedSessionRef.current = false
+            setIsAppLocked(false)
+          }
+        }
         if (profile?.terms_version_accepted) {
           localStorage.setItem(TERMS_STORAGE_KEY, profile.terms_version_accepted)
           setAcceptedTermsVersion(profile.terms_version_accepted)
@@ -1691,27 +1708,76 @@ function CustomerPortalRoot() {
       )}
 
       {isAuthenticated && isPlanModalOpen && (
-        <Suspense fallback={null}>
-          <PlanUpgradeModal
-            isOpen={isPlanModalOpen}
-            onClose={() => {
-              setIsPlanModalOpen(false)
-              setPlanModalReason('')
-            }}
-            currentUser={currentUser}
-            appConfig={publicAppConfig}
-            token={userToken}
-            onLogout={handleLogout}
-            onUpgradeSubmitted={() => refreshCurrentUser({ silent: true })}
-            lockedReason={planModalReason}
-            syncTick={paymentMethodsTick}
-          />
-        </Suspense>
+        <ErrorBoundary
+          onClose={() => {
+            setIsPlanModalOpen(false)
+            setPlanModalReason('')
+          }}
+          fallback={({ errorMessage, reset }) => (
+            <div className="modal-overlay pwa-guide-overlay" onClick={reset}>
+              <div
+                className="modal-dialog-modern pwa-guide-sheet"
+                onClick={(e) => e.stopPropagation()}
+                style={{ padding: 24, textAlign: 'center' }}
+              >
+                <h3 style={{ marginTop: 0 }}>Gagal Memuat Menu Paket</h3>
+                <p style={{ fontSize: 13, opacity: 0.8 }}>{errorMessage}</p>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
+                  <button type="button" className="btn btn-secondary" onClick={reset}>
+                    Tutup
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => window.location.reload()}
+                  >
+                    Muat Ulang
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        >
+          <Suspense fallback={null}>
+            <PlanUpgradeModal
+              isOpen={isPlanModalOpen}
+              onClose={() => {
+                setIsPlanModalOpen(false)
+                setPlanModalReason('')
+              }}
+              currentUser={currentUser}
+              appConfig={publicAppConfig}
+              token={userToken}
+              onLogout={handleLogout}
+              onUpgradeSubmitted={() => refreshCurrentUser({ silent: true })}
+              lockedReason={planModalReason}
+              syncTick={paymentMethodsTick}
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       {isAuthenticated && isProfileModalOpen && (
-        <Suspense fallback={null}>
-          <ProfileModal
+        <ErrorBoundary
+          onClose={() => setIsProfileModalOpen(false)}
+          fallback={({ errorMessage, reset }) => (
+            <div className="modal-overlay pwa-guide-overlay" onClick={reset}>
+              <div
+                className="modal-dialog-modern pwa-guide-sheet"
+                onClick={(e) => e.stopPropagation()}
+                style={{ padding: 24, textAlign: 'center' }}
+              >
+                <h3 style={{ marginTop: 0 }}>Gagal Memuat Profil</h3>
+                <p style={{ fontSize: 13, opacity: 0.8 }}>{errorMessage}</p>
+                <button type="button" className="btn btn-primary" onClick={reset}>
+                  Tutup
+                </button>
+              </div>
+            </div>
+          )}
+        >
+          <Suspense fallback={null}>
+            <ProfileModal
             isOpen={isProfileModalOpen}
             onClose={() => setIsProfileModalOpen(false)}
             currentUser={currentUser}
@@ -1739,10 +1805,14 @@ function CustomerPortalRoot() {
             settings={settings}
             onSaveSettings={handleSaveSettings}
             isDeviceOnlineFn={(d) => isDeviceOnlineHelper(d)}
-            onTriggerAppLock={() => setIsAppLocked(true)}
+            onTriggerAppLock={() => {
+              pinUnlockedSessionRef.current = false
+              setIsAppLocked(true)
+            }}
             appConfig={publicAppConfig}
           />
         </Suspense>
+        </ErrorBoundary>
       )}
 
       {showLoginModal && !userToken && (
@@ -1813,14 +1883,25 @@ function CustomerPortalRoot() {
 
       <AppLockOverlay
         isOpen={Boolean(isAuthenticated && isAppLocked)}
+        currentUser={currentUser}
         userName={currentUser?.name || `Pengguna ${appName}`}
         userEmail={currentUser?.email || ''}
         appName={appName}
         theme={theme}
         BrandLogoComponent={BrandLogo}
-        verifyPinFn={verifyPinCode}
-        onUnlock={() => setIsAppLocked(false)}
+        verifyPinFn={(digits) =>
+          verifyPinCode(digits, {
+            token: userToken,
+            currentUser,
+            onUnauthorized: handleUnauthorized,
+          })
+        }
+        onUnlock={() => {
+          pinUnlockedSessionRef.current = true
+          setIsAppLocked(false)
+        }}
         onResetAndLogout={() => {
+          pinUnlockedSessionRef.current = false
           clearAppLock()
           setIsAppLocked(false)
           handleLogout()
