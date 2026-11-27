@@ -245,6 +245,12 @@ export function Header({
 
   const desktopTabs = isDeviceScope ? deviceNav : homeNav
   const showAnnouncement = Boolean(appConfig.announcement_active && appConfig.announcement_text)
+  const handleBrandHome = () => {
+    onTabChange?.('home')
+    if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }
 
   return (
     <div className="app-header-wrap clean-header-bar">
@@ -274,12 +280,20 @@ export function Header({
             {/* Brand / Context Left */}
             <div className="header-home-title-wrap">
               <div className="desktop-brand-row">
-                <BrandLogo
-                  theme={theme}
-                  displayMode={brandDisplay}
-                  appName={appName}
-                  variant="navbar"
-                />
+                <button
+                  type="button"
+                  className="header-brand-btn"
+                  onClick={handleBrandHome}
+                  aria-label="Kembali ke Beranda"
+                  title="Beranda"
+                >
+                  <BrandLogo
+                    theme={theme}
+                    displayMode={brandDisplay}
+                    appName={appName}
+                    variant="navbar"
+                  />
+                </button>
                 {isDeviceScope && activeDevice && (
                   <PanelSwitcherDropdown
                     variant="desktop"
@@ -304,12 +318,20 @@ export function Header({
                     onOpenAddDevice={onOpenAddDevice}
                   />
                 ) : activeTab === 'home' ? (
-                  <BrandLogo
-                    theme={theme}
-                    displayMode={brandDisplay}
-                    appName={appName}
-                    variant="compact"
-                  />
+                  <button
+                    type="button"
+                    className="header-brand-btn"
+                    onClick={handleBrandHome}
+                    aria-label="Kembali ke Beranda"
+                    title="Beranda"
+                  >
+                    <BrandLogo
+                      theme={theme}
+                      displayMode={brandDisplay}
+                      appName={appName}
+                      variant="compact"
+                    />
+                  </button>
                 ) : (
                   <>
                     <h1 className="header-home-title" title={mobileTitle}>

@@ -380,12 +380,25 @@ export function AdminPanel({
           <header className="app-header clean-header-inner admin-header-inner">
             <div className="header-main-row admin-topbar-row">
               <div className="admin-head-left">
-                <BrandLogo
-                  theme={theme}
-                  displayMode="logo_only"
-                  appName={appSettings?.app_name || 'VoltKu'}
-                  variant="compact"
-                />
+                <button
+                  type="button"
+                  className="header-brand-btn"
+                  onClick={() => {
+                    setAdminTab('overview')
+                    if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+                      window.scrollTo({ top: 0, behavior: 'smooth' })
+                    }
+                  }}
+                  aria-label="Kembali ke Ringkasan Admin"
+                  title="Ringkasan Admin"
+                >
+                  <BrandLogo
+                    theme={theme}
+                    displayMode="logo_only"
+                    appName={appSettings?.app_name || 'VoltKu'}
+                    variant="compact"
+                  />
+                </button>
                 <span className="admin-brand-divider" aria-hidden="true" />
                 <span className="admin-title-badge">Admin</span>
               </div>

@@ -328,6 +328,8 @@ describe('VoltKu Paket & Profil modal render guards', () => {
     )
     expect(html).toContain('lucide-shield-alert')
     expect(html).toContain('lucide-bell')
+    expect(html).toContain('header-brand-btn')
+    expect(html).toContain('Kembali ke Beranda')
   })
 })
 

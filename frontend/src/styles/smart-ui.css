@@ -165,6 +165,27 @@ html {
   min-width: 0;
 }
 
+.header-brand-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.header-brand-btn:hover {
+  opacity: 0.86;
+}
+
+.header-brand-btn:active {
+  transform: scale(0.97);
+}
+
 .desktop-brand-mark {
   width: 32px;
   height: 32px;
