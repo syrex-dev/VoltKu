@@ -51,6 +51,7 @@ import {
   registerDeviceNotifications,
   unregisterDeviceNotifications,
 } from './utils/notifications'
+import { emitSyncSignal, subscribeSyncSignal } from './utils/liveSync'
 
 const DEFAULT_LOGIN_SUBTITLE = 'Pantau listrik rumah lebih tenang dan akurat'
 const DEFAULT_TERMS_VERSION = '2026-11-v1'
@@ -215,7 +216,10 @@ function AdminPortalRoot() {
         token={adminToken}
         existingDevices={[]}
         onLogout={handleAdminLogout}
-        onDeviceAdded={() => setRefreshKey((k) => k + 1)}
+        onDeviceAdded={() => {
+          emitSyncSignal('public', { source: 'admin-add-device' })
+          setRefreshKey((k) => k + 1)
+        }}
       />
     </>
   )
@@ -298,10 +302,26 @@ function CustomerPortalRoot() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [userNotifications, setUserNotifications] = useState([])
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
+  const [paymentMethodsTick, setPaymentMethodsTick] = useState(0)
+  const [customerSyncBanner, setCustomerSyncBanner] = useState(null)
 
   const homePollRef = useRef(null)
   const pollTimerRef = useRef(null)
   const chartTimerRef = useRef(null)
+  const publicRevRef = useRef('')
+  const userRevRef = useRef('')
+  const inboxRevRef = useRef('')
+  const lastUpgradeSnapRef = useRef(null)
+  const syncInFlightRef = useRef(false)
+  const bannerTimerRef = useRef(null)
+
+  const showCustomerBanner = useCallback((type, text) => {
+    if (bannerTimerRef.current) window.clearTimeout(bannerTimerRef.current)
+    setCustomerSyncBanner({ type, text })
+    bannerTimerRef.current = window.setTimeout(() => {
+      setCustomerSyncBanner(null)
+    }, 9000)
+  }, [])
 
   const activeTermsVersion = publicAppConfig.terms_version || DEFAULT_TERMS_VERSION
   const consentRequired = publicAppConfig.require_terms_consent !== false
@@ -372,6 +392,7 @@ function CustomerPortalRoot() {
       setIsAppLocked(false)
       setActiveDeviceId('')
       setActiveTab('home')
+      emitSyncSignal('admin', { source: 'customer-auth' })
     },
     []
   )
@@ -401,23 +422,26 @@ function CustomerPortalRoot() {
     }
   }, [userToken, handleLogout])
 
-  const refreshCurrentUser = useCallback(async () => {
-    if (!userToken) return
-    try {
-      const profile = await apiRequest('/api/users/me', {}, userToken, handleUnauthorized)
-      if (profile?.role === 'admin') {
-        handleLogout()
-        return
+  const refreshCurrentUser = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!userToken) return
+      try {
+        const profile = await apiRequest('/api/users/me', {}, userToken, handleUnauthorized)
+        if (profile?.role === 'admin') {
+          handleLogout()
+          return
+        }
+        setCurrentUser(profile)
+        if (profile?.terms_version_accepted) {
+          localStorage.setItem(TERMS_STORAGE_KEY, profile.terms_version_accepted)
+          setAcceptedTermsVersion(profile.terms_version_accepted)
+        }
+      } catch {
+        if (!silent) setCurrentUser(null)
       }
-      setCurrentUser(profile)
-      if (profile?.terms_version_accepted) {
-        localStorage.setItem(TERMS_STORAGE_KEY, profile.terms_version_accepted)
-        setAcceptedTermsVersion(profile.terms_version_accepted)
-      }
-    } catch {
-      setCurrentUser(null)
-    }
-  }, [userToken, handleUnauthorized, handleLogout])
+    },
+    [userToken, handleUnauthorized, handleLogout]
+  )
 
   useEffect(() => {
     if (!userToken) {
@@ -563,24 +587,30 @@ function CustomerPortalRoot() {
     }
   }, [handleGoogleLogin])
 
-  useEffect(() => {
-    if (!userToken) {
-      setUserNotifications([])
-      setUnreadNotificationCount(0)
-      return undefined
-    }
-    let cancelled = false
-
-    const loadInbox = async (notifyNew) => {
+  const loadInbox = useCallback(
+    async (notifyNew = false) => {
+      if (!userToken) return
       try {
         const res = await fetchAndNotifyNewInboxItems(userToken, { notifyNew })
-        if (!cancelled && res) {
+        if (res) {
           setUserNotifications(Array.isArray(res.items) ? res.items : [])
           setUnreadNotificationCount(Number(res.unread_count || 0))
         }
       } catch {
         // Abaikan error sementara saat polling
       }
+    },
+    [userToken]
+  )
+
+  useEffect(() => {
+    if (!userToken) {
+      setUserNotifications([])
+      setUnreadNotificationCount(0)
+      userRevRef.current = ''
+      inboxRevRef.current = ''
+      lastUpgradeSnapRef.current = null
+      return undefined
     }
 
     registerDeviceNotifications(userToken, {
@@ -596,19 +626,10 @@ function CustomerPortalRoot() {
 
     loadInbox(false)
     const timer = setInterval(() => loadInbox(true), 30000)
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        loadInbox(true)
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-
     return () => {
-      cancelled = true
       clearInterval(timer)
-      document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [userToken])
+  }, [userToken, loadInbox])
 
   const handleMarkNotificationRead = useCallback(
     async (notificationId = null) => {
@@ -689,6 +710,7 @@ function CustomerPortalRoot() {
       setAcceptedTermsVersion(activeTermsVersion)
       setTermsDeclined(false)
       setTermsReaderDoc(null)
+      emitSyncSignal('admin', { source: 'terms-consent' })
     } finally {
       setSubmittingConsent(false)
     }
@@ -922,6 +944,127 @@ function CustomerPortalRoot() {
     return () => clearInterval(homePollRef.current)
   }, [canReadDashboard, loadSettings, loadDevicesAndAlerts])
 
+  const runPortalSync = useCallback(async () => {
+    if (syncInFlightRef.current) return
+    syncInFlightRef.current = true
+    try {
+      if (userToken) {
+        const state = await apiRequest('/api/users/sync-state', {}, userToken, handleUnauthorized)
+        if (!state) return
+
+        const prevPub = publicRevRef.current
+        publicRevRef.current = state.public_rev || ''
+        if (prevPub && state.public_rev && state.public_rev !== prevPub) {
+          await checkPublicAccess()
+          setPaymentMethodsTick((t) => t + 1)
+        }
+
+        const prevUserRev = userRevRef.current
+        userRevRef.current = state.user_rev || ''
+        const nextUpg = state.latest_upgrade || null
+        const prevUpg = lastUpgradeSnapRef.current
+        lastUpgradeSnapRef.current = nextUpg
+
+        if (prevUserRev && state.user_rev && state.user_rev !== prevUserRev) {
+          await refreshCurrentUser({ silent: true })
+          await loadDevicesAndAlerts()
+          await loadSettings()
+          if (activeDeviceId) loadPeriodicData()
+
+          if (
+            nextUpg &&
+            prevUpg &&
+            prevUpg.id === nextUpg.id &&
+            prevUpg.status !== nextUpg.status
+          ) {
+            if (nextUpg.status === 'approved') {
+              showCustomerBanner(
+                'success',
+                `Pembayaran dikonfirmasi! Paket ${nextUpg.plan_name || 'Pro'} Anda kini aktif.`
+              )
+            } else if (nextUpg.status === 'rejected') {
+              showCustomerBanner(
+                'warn',
+                `Pengajuan paket ${nextUpg.order_code || ''} ditolak Admin. Buka menu Paket untuk detail.`
+              )
+            }
+          }
+        }
+
+        const prevInbox = inboxRevRef.current
+        inboxRevRef.current = state.inbox_rev || ''
+        if (prevInbox && state.inbox_rev && state.inbox_rev !== prevInbox) {
+          await loadInbox(true)
+        }
+      } else {
+        const state = await apiRequest('/api/public/sync-state')
+        if (!state) return
+        const prevPub = publicRevRef.current
+        publicRevRef.current = state.rev || ''
+        if (prevPub && state.rev && state.rev !== prevPub) {
+          await checkPublicAccess()
+          await loadDevicesAndAlerts()
+        }
+      }
+    } catch {
+      // Abaikan gangguan jaringan sementara saat auto-sync latar belakang
+    } finally {
+      syncInFlightRef.current = false
+    }
+  }, [
+    userToken,
+    handleUnauthorized,
+    checkPublicAccess,
+    refreshCurrentUser,
+    loadDevicesAndAlerts,
+    loadSettings,
+    activeDeviceId,
+    loadPeriodicData,
+    loadInbox,
+    showCustomerBanner,
+  ])
+
+  useEffect(() => {
+    let timerId = null
+    const intervalMs = isPlanModalOpen ? 2500 : userToken ? 4000 : 6000
+
+    const startSyncLoop = () => {
+      if (timerId) window.clearInterval(timerId)
+      runPortalSync()
+      timerId = window.setInterval(runPortalSync, intervalMs)
+    }
+    const stopSyncLoop = () => {
+      if (timerId) {
+        window.clearInterval(timerId)
+        timerId = null
+      }
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') stopSyncLoop()
+      else startSyncLoop()
+    }
+    const handleFocus = () => runPortalSync()
+
+    if (document.visibilityState !== 'hidden') {
+      startSyncLoop()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', handleFocus)
+    const unsubscribeSync = subscribeSyncSignal((sig) => {
+      if (sig?.scope === 'public' || sig?.scope === 'user' || sig?.scope === 'all') {
+        runPortalSync()
+      }
+    })
+
+    return () => {
+      stopSyncLoop()
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleFocus)
+      unsubscribeSync()
+      if (bannerTimerRef.current) window.clearTimeout(bannerTimerRef.current)
+    }
+  }, [runPortalSync, isPlanModalOpen, userToken])
+
   useEffect(() => {
     if (!canReadDashboard || !activeDeviceId) {
       clearInterval(pollTimerRef.current)
@@ -984,6 +1127,7 @@ function CustomerPortalRoot() {
     )
     setSettings(updated)
     if (activeDeviceId) loadPeriodicData()
+    emitSyncSignal('admin', { source: 'customer-settings' })
   }
 
   const handleOpenDeviceDetail = (deviceId) => {
@@ -1328,6 +1472,24 @@ function CustomerPortalRoot() {
       />
 
       <main className="container main-content-wrap has-bottom-nav">
+        {customerSyncBanner && (
+          <div
+            className={`customer-sync-toast ${
+              customerSyncBanner.type === 'warn' ? 'is-warn' : ''
+            }`}
+            role="status"
+          >
+            <span>{customerSyncBanner.text}</span>
+            <button
+              type="button"
+              className="btn-icon-close"
+              onClick={() => setCustomerSyncBanner(null)}
+              aria-label="Tutup"
+            >
+              ×
+            </button>
+          </div>
+        )}
         {!isDeviceScope && activeTab === 'home' && (
           <HomeDevicesView
             devices={devices}
@@ -1495,7 +1657,8 @@ function CustomerPortalRoot() {
           onPlanLimitReached={(msg) => openPlanModal(msg)}
           onDeviceAdded={async (newId) => {
             await loadDevicesAndAlerts()
-            await refreshCurrentUser()
+            await refreshCurrentUser({ silent: true })
+            emitSyncSignal('admin', { source: 'customer-device-added' })
             if (newId) {
               setActiveDeviceId(newId)
               setActiveTab('live')
@@ -1515,8 +1678,9 @@ function CustomerPortalRoot() {
           appConfig={publicAppConfig}
           token={userToken}
           onLogout={handleLogout}
-          onUpgradeSubmitted={refreshCurrentUser}
+          onUpgradeSubmitted={() => refreshCurrentUser({ silent: true })}
           lockedReason={planModalReason}
+          syncTick={paymentMethodsTick}
         />
       )}
 

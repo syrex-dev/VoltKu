@@ -21,6 +21,7 @@ import { apiRequest, buildApiUrl } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
 import { compressImageToDataUrl } from '../utils/imageCompress'
 import { useAuthImage } from '../utils/authImage'
+import { emitSyncSignal } from '../utils/liveSync'
 import { InAppSelect } from './InAppSelect'
 
 const ACTIVE_UPGRADE_STATUSES = ['verifying', 'awaiting_payment', 'pending']
@@ -303,6 +304,7 @@ export function AdminUpgradeRequestsCard({
               : 'Tagihan ditolak beserta catatan ke pembeli.',
         })
       }
+      emitSyncSignal('all', { source: 'admin-upgrade-resolve', reqId, action })
       if (onResolved) await onResolved()
     } catch (err) {
       if (onNotice) {
@@ -572,29 +574,36 @@ export function AdminPaymentMethodsCard({
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
   const [zoomQrisSrc, setZoomQrisSrc] = useState('')
+  const initialLoadedRef = React.useRef(false)
 
-  const loadMethods = useCallback(async () => {
-    if (!token) return
-    setLoading(true)
-    try {
-      const list = await apiRequest('/api/admin/payment-methods', {}, token, onLogout)
-      const items = Array.isArray(list) ? list : []
-      setMethods(items)
-      if (onMethodsLoaded) {
-        onMethodsLoaded({
-          total: items.length,
-          active: items.filter((m) => m.is_active).length,
-        })
+  const loadMethods = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!token) return
+      if (!silent && !initialLoadedRef.current) {
+        setLoading(true)
       }
-    } catch {
-      setMethods([])
-    } finally {
-      setLoading(false)
-    }
-  }, [token, onLogout, onMethodsLoaded])
+      try {
+        const list = await apiRequest('/api/admin/payment-methods', {}, token, onLogout)
+        const items = Array.isArray(list) ? list : []
+        setMethods(items)
+        initialLoadedRef.current = true
+        if (onMethodsLoaded) {
+          onMethodsLoaded({
+            total: items.length,
+            active: items.filter((m) => m.is_active).length,
+          })
+        }
+      } catch {
+        if (!initialLoadedRef.current) setMethods([])
+      } finally {
+        setLoading(false)
+      }
+    },
+    [token, onLogout, onMethodsLoaded]
+  )
 
   useEffect(() => {
-    loadMethods()
+    loadMethods({ silent: refreshSignal > 0 })
   }, [loadMethods, refreshSignal])
 
   const openCreate = () => {
@@ -696,7 +705,8 @@ export function AdminPaymentMethodsCard({
           text: editingId ? 'Metode pembayaran diperbarui.' : 'Metode pembayaran ditambahkan.',
         })
       }
-      await loadMethods()
+      emitSyncSignal('public', { source: 'admin-payment-methods' })
+      await loadMethods({ silent: true })
     } catch (err) {
       if (onNotice) {
         onNotice({ type: 'error', text: err.message || 'Gagal menyimpan metode pembayaran.' })
@@ -714,7 +724,8 @@ export function AdminPaymentMethodsCard({
         token,
         onLogout
       )
-      await loadMethods()
+      emitSyncSignal('public', { source: 'admin-payment-methods' })
+      await loadMethods({ silent: true })
     } catch (err) {
       if (onNotice) onNotice({ type: 'error', text: err.message || 'Gagal mengubah status.' })
     }
@@ -725,7 +736,8 @@ export function AdminPaymentMethodsCard({
       await apiRequest(`/api/admin/payment-methods/${id}`, { method: 'DELETE' }, token, onLogout)
       setConfirmDeleteId(null)
       if (onNotice) onNotice({ type: 'success', text: 'Metode pembayaran dihapus.' })
-      await loadMethods()
+      emitSyncSignal('public', { source: 'admin-payment-methods' })
+      await loadMethods({ silent: true })
     } catch (err) {
       if (onNotice) onNotice({ type: 'error', text: err.message || 'Gagal menghapus metode.' })
     }

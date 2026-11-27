@@ -205,6 +205,7 @@ def test_route_audit_security_lockdown():
         "/api/users/reset-password/status",
         "/api/public/access",
         "/api/public/app-config",
+        "/api/public/sync-state",
         "/api/public/devices",
         "/api/public/devices/{device_id}/latest",
         "/api/public/devices/{device_id}/series",

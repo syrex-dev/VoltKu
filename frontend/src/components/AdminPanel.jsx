@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -16,9 +16,11 @@ import {
   Crown,
   MoreHorizontal,
   Check,
+  BellRing,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatTimeWIB } from '../utils/formatters'
+import { emitSyncSignal, subscribeSyncSignal } from '../utils/liveSync'
 import { BrandLogo } from './BrandLogo'
 import { InAppSelect } from './InAppSelect'
 import { AdminAppSettingsTab } from './AdminAppSettingsTab'
@@ -73,41 +75,170 @@ export function AdminPanel({
 
   const [togglingAccess, setTogglingAccess] = useState(false)
   const [pmSummaryCounts, setPmSummaryCounts] = useState(null)
+  const [pmSyncKey, setPmSyncKey] = useState(0)
+  const [syncStatus, setSyncStatus] = useState('live')
+  const [liveToast, setLiveToast] = useState(null)
 
-  const loadAdminData = useCallback(async () => {
-    if (!token) return
+  const syncSnapshotRef = useRef(null)
+  const loadInFlightRef = useRef(false)
+  const toastTimerRef = useRef(null)
+
+  const showAutoResponseToast = useCallback((toastPayload) => {
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    setLiveToast(toastPayload)
+    toastTimerRef.current = window.setTimeout(() => {
+      setLiveToast(null)
+    }, 9000)
+  }, [])
+
+  const loadAdminData = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!token || loadInFlightRef.current) return
+      loadInFlightRef.current = true
+      if (!silent) {
+        setSyncStatus('syncing')
+      }
+      try {
+        const [ov, usrs, devs, anoms, appCfg, consents, upgReqs, admPlans, admDiscounts] =
+          await Promise.all([
+            apiRequest('/api/admin/overview', {}, token, onLogout),
+            apiRequest('/api/admin/users', {}, token, onLogout),
+            apiRequest('/api/admin/devices', {}, token, onLogout),
+            apiRequest('/api/admin/anomalies?limit=100', {}, token, onLogout),
+            apiRequest('/api/admin/app-settings', {}, token, onLogout).catch(() => null),
+            apiRequest('/api/admin/consents?limit=100', {}, token, onLogout).catch(() => null),
+            apiRequest('/api/admin/upgrade-requests?limit=100', {}, token, onLogout).catch(() => []),
+            apiRequest('/api/admin/plans', {}, token, onLogout).catch(() => []),
+            apiRequest('/api/admin/discounts', {}, token, onLogout).catch(() => []),
+          ])
+        setOverview(ov)
+        setUsers(usrs || [])
+        setDevices(devs || [])
+        setAnomalies(anoms || [])
+        if (appCfg) setAppSettings(appCfg)
+        if (consents) setConsentsData(consents)
+        setUpgradeRequests(Array.isArray(upgReqs) ? upgReqs : [])
+        setPlans(Array.isArray(admPlans) ? admPlans : [])
+        setDiscounts(Array.isArray(admDiscounts) ? admDiscounts : [])
+        setSyncStatus('live')
+      } catch (err) {
+        if (!silent) {
+          setNotice({ type: 'error', text: err.message || 'Gagal memuat data Panel Admin.' })
+        }
+        setSyncStatus('paused')
+      } finally {
+        loadInFlightRef.current = false
+        setLoading(false)
+      }
+    },
+    [token, onLogout]
+  )
+
+  const handleAdminMutated = useCallback(
+    async ({ reload = true, scope = 'all' } = {}) => {
+      emitSyncSignal(scope, { source: 'admin' })
+      if (reload) {
+        await loadAdminData({ silent: true })
+        setPmSyncKey((k) => k + 1)
+      }
+    },
+    [loadAdminData]
+  )
+
+  const checkAdminSyncState = useCallback(async () => {
+    if (!token || loadInFlightRef.current) return
     try {
-      const [ov, usrs, devs, anoms, appCfg, consents, upgReqs, admPlans, admDiscounts] =
-        await Promise.all([
-          apiRequest('/api/admin/overview', {}, token, onLogout),
-          apiRequest('/api/admin/users', {}, token, onLogout),
-          apiRequest('/api/admin/devices', {}, token, onLogout),
-          apiRequest('/api/admin/anomalies?limit=100', {}, token, onLogout),
-          apiRequest('/api/admin/app-settings', {}, token, onLogout).catch(() => null),
-          apiRequest('/api/admin/consents?limit=100', {}, token, onLogout).catch(() => null),
-          apiRequest('/api/admin/upgrade-requests?limit=100', {}, token, onLogout).catch(() => []),
-          apiRequest('/api/admin/plans', {}, token, onLogout).catch(() => []),
-          apiRequest('/api/admin/discounts', {}, token, onLogout).catch(() => []),
-        ])
-      setOverview(ov)
-      setUsers(usrs || [])
-      setDevices(devs || [])
-      setAnomalies(anoms || [])
-      if (appCfg) setAppSettings(appCfg)
-      if (consents) setConsentsData(consents)
-      setUpgradeRequests(Array.isArray(upgReqs) ? upgReqs : [])
-      setPlans(Array.isArray(admPlans) ? admPlans : [])
-      setDiscounts(Array.isArray(admDiscounts) ? admDiscounts : [])
-    } catch (err) {
-      setNotice({ type: 'error', text: err.message || 'Gagal memuat data Panel Admin.' })
-    } finally {
-      setLoading(false)
+      const state = await apiRequest('/api/admin/sync-state', {}, token, onLogout)
+      if (!state?.rev) return
+      setSyncStatus('live')
+      const prev = syncSnapshotRef.current
+      syncSnapshotRef.current = state
+      if (!prev) return
+      if (state.rev !== prev.rev) {
+        const prevVerId = prev.latest_verifying?.id ?? null
+        const nextVer = state.latest_verifying
+        const prevAwaitId = prev.latest_awaiting?.id ?? null
+        const nextAwait = state.latest_awaiting
+
+        if (
+          nextVer &&
+          (nextVer.id !== prevVerId || (state.counts?.verifying ?? 0) > (prev.counts?.verifying ?? 0))
+        ) {
+          showAutoResponseToast({
+            id: `ver-${nextVer.id}-${Date.now()}`,
+            kind: 'verifying',
+            title: 'Bukti Pembayaran Baru Masuk',
+            sub: `${nextVer.user_name} mengunggah bukti untuk ${nextVer.plan_name} (${nextVer.order_code || `#${nextVer.id}`}).`,
+            targetTab: 'payments',
+          })
+        } else if (
+          nextAwait &&
+          (nextAwait.id !== prevAwaitId || (state.counts?.awaiting ?? 0) > (prev.counts?.awaiting ?? 0))
+        ) {
+          showAutoResponseToast({
+            id: `await-${nextAwait.id}-${Date.now()}`,
+            kind: 'awaiting',
+            title: 'Tagihan Upgrade Baru Dibuat',
+            sub: `${nextAwait.user_name} membuat order ${nextAwait.plan_name} (${nextAwait.order_code || `#${nextAwait.id}`}).`,
+            targetTab: 'payments',
+          })
+        }
+
+        await loadAdminData({ silent: true })
+        if (state.payment_methods_rev !== prev.payment_methods_rev) {
+          setPmSyncKey((k) => k + 1)
+        }
+      }
+    } catch {
+      setSyncStatus('paused')
     }
-  }, [token, onLogout])
+  }, [token, onLogout, loadAdminData, showAutoResponseToast])
 
   useEffect(() => {
     loadAdminData()
-  }, [loadAdminData, refreshSignal])
+    checkAdminSyncState()
+  }, [loadAdminData, checkAdminSyncState, refreshSignal])
+
+  useEffect(() => {
+    if (!token) return undefined
+    let intervalId = null
+
+    const startSync = () => {
+      if (intervalId) window.clearInterval(intervalId)
+      checkAdminSyncState()
+      intervalId = window.setInterval(checkAdminSyncState, 4000)
+    }
+    const stopSync = () => {
+      if (intervalId) {
+        window.clearInterval(intervalId)
+        intervalId = null
+      }
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') stopSync()
+      else startSync()
+    }
+    const handleFocus = () => checkAdminSyncState()
+
+    if (document.visibilityState !== 'hidden') {
+      startSync()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', handleFocus)
+    const unsubscribeSync = subscribeSyncSignal((sig) => {
+      if (sig?.scope === 'admin' || sig?.scope === 'all') {
+        checkAdminSyncState()
+      }
+    })
+
+    return () => {
+      stopSync()
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleFocus)
+      unsubscribeSync()
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    }
+  }, [token, checkAdminSyncState])
 
   const handleTogglePublicAccess = async () => {
     if (!overview || togglingAccess) return
@@ -122,6 +253,7 @@ export function AdminPanel({
         onLogout
       )
       setOverview((prev) => (prev ? { ...prev, public_read_enabled: res.public_read_enabled } : prev))
+      emitSyncSignal('public', { source: 'admin-access' })
       setNotice({
         type: 'success',
         text: res.public_read_enabled
@@ -168,7 +300,7 @@ export function AdminPanel({
       )
       setEditingDevice(null)
       setNotice({ type: 'success', text: 'Perangkat diperbarui.' })
-      await loadAdminData()
+      await handleAdminMutated()
     } catch (err) {
       setNotice({ type: 'error', text: err.message || 'Gagal menyimpan perangkat.' })
     } finally {
@@ -181,7 +313,7 @@ export function AdminPanel({
     try {
       await apiRequest(`/api/devices/${devId}`, { method: 'DELETE' }, token, onLogout)
       setNotice({ type: 'success', text: `Perangkat ${devId} dihapus.` })
-      await loadAdminData()
+      await handleAdminMutated()
     } catch (err) {
       setNotice({ type: 'error', text: err.message || 'Gagal menghapus perangkat.' })
     }
@@ -203,7 +335,7 @@ export function AdminPanel({
     try {
       await apiRequest(`/api/admin/users/${uid}`, { method: 'DELETE' }, token, onLogout)
       setNotice({ type: 'success', text: 'Akun pengguna dihapus dan unitnya dilepas ke stok.' })
-      await loadAdminData()
+      await handleAdminMutated()
     } catch (err) {
       setNotice({ type: 'error', text: err.message || 'Gagal menghapus akun pengguna.' })
     }
@@ -288,10 +420,23 @@ export function AdminPanel({
               </nav>
 
               <div className="header-actions">
+                <span
+                  className={`admin-live-pill is-${syncStatus}`}
+                  title="Sinkronisasi otomatis 2 arah dengan publik aktif"
+                >
+                  <span className="admin-live-dot" aria-hidden="true" />
+                  <span>
+                    {syncStatus === 'syncing'
+                      ? 'Sync'
+                      : syncStatus === 'paused'
+                      ? 'Jeda'
+                      : 'Live'}
+                  </span>
+                </span>
                 <button
                   type="button"
                   className="header-icon-btn"
-                  onClick={loadAdminData}
+                  onClick={() => loadAdminData({ silent: false })}
                   aria-label="Muat Ulang Data Admin"
                   title="Muat ulang data"
                 >
@@ -321,6 +466,41 @@ export function AdminPanel({
       </div>
 
       <main className="container main-content-wrap has-bottom-nav">
+        {liveToast && (
+          <div className={`admin-live-toast is-${liveToast.kind}`} role="status">
+            <span className="admin-live-toast-ico">
+              <BellRing size={16} />
+            </span>
+            <div className="admin-live-toast-copy">
+              <strong>{liveToast.title}</strong>
+              <span>{liveToast.sub}</span>
+            </div>
+            <div className="admin-live-toast-actions">
+              {liveToast.targetTab && adminTab !== liveToast.targetTab && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-compact"
+                  onClick={() => {
+                    setAdminTab(liveToast.targetTab)
+                    setMobileMoreOpen(false)
+                    setLiveToast(null)
+                  }}
+                >
+                  Tinjau
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-icon-close"
+                onClick={() => setLiveToast(null)}
+                aria-label="Tutup pemberitahuan"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {notice && (
           <div className={`feedback-msg ${notice.type === 'error' ? 'error' : 'success'}`}>
             {notice.text}
@@ -447,7 +627,7 @@ export function AdminPanel({
                 token={token}
                 onLogout={onLogout}
                 onNotice={setNotice}
-                onReload={loadAdminData}
+                onReload={handleAdminMutated}
                 onOpenCreateUser={openCreateUser}
                 onOpenEditUser={openEditUser}
                 onDeleteUser={handleDeleteUser}
@@ -460,7 +640,7 @@ export function AdminPanel({
                 token={token}
                 onLogout={onLogout}
                 onNotice={setNotice}
-                onReload={loadAdminData}
+                onReload={handleAdminMutated}
                 onOpenAddDevice={onOpenAddDevice}
                 onEditDevice={openEditDeviceModal}
                 onDeleteDevice={handleDeleteDevice}
@@ -557,7 +737,7 @@ export function AdminPanel({
                   token={token}
                   onLogout={onLogout}
                   onNotice={setNotice}
-                  refreshSignal={refreshSignal}
+                  refreshSignal={refreshSignal + pmSyncKey}
                   onMethodsLoaded={setPmSummaryCounts}
                 />
 
@@ -565,7 +745,7 @@ export function AdminPanel({
                   upgradeRequests={upgradeRequests}
                   token={token}
                   onLogout={onLogout}
-                  onResolved={loadAdminData}
+                  onResolved={handleAdminMutated}
                   onNotice={setNotice}
                 />
               </div>
@@ -577,7 +757,7 @@ export function AdminPanel({
                 discounts={discounts}
                 token={token}
                 onLogout={onLogout}
-                onReload={loadAdminData}
+                onReload={handleAdminMutated}
                 onNotice={setNotice}
               />
             )}
@@ -591,9 +771,7 @@ export function AdminPanel({
                 onOpenPlansTab={() => setAdminTab('plans')}
                 onLogout={onLogout}
                 onNotice={setNotice}
-                onSettingsUpdated={async () => {
-                  await loadAdminData()
-                }}
+                onSettingsUpdated={handleAdminMutated}
               />
             )}
           </>
@@ -836,7 +1014,7 @@ export function AdminPanel({
         token={token}
         onLogout={onLogout}
         onClose={() => setUserModalMode(null)}
-        onSaved={loadAdminData}
+        onSaved={handleAdminMutated}
         onNotice={setNotice}
       />
     </div>

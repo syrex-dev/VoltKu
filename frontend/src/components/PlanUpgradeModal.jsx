@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   X,
   Check,
@@ -28,6 +28,7 @@ import { apiRequest, buildApiUrl } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
 import { compressImageToDataUrl } from '../utils/imageCompress'
 import { useAuthImage } from '../utils/authImage'
+import { emitSyncSignal, subscribeSyncSignal } from '../utils/liveSync'
 
 const TYPE_META = {
   qris: { label: 'QRIS', icon: QrCode },
@@ -53,6 +54,7 @@ export function PlanUpgradeModal({
   onLogout,
   onUpgradeSubmitted,
   lockedReason = '',
+  syncTick = 0,
 }) {
   // 'tier' (Pilih Paket) -> 'cycle' (Bulanan / Tahunan) -> 'method' (Pilih Pembayaran & Kupon)
   const [browseStage, setBrowseStage] = useState('tier')
@@ -193,9 +195,29 @@ export function PlanUpgradeModal({
     return 1
   }, [isPro, activeStepStatus, browseStage])
 
+  const prevProRef = useRef(isPro)
+
+  const loadPaymentMethods = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setMethodsLoading(true)
+    try {
+      const list = await apiRequest('/api/public/payment-methods')
+      const items = Array.isArray(list) ? list : []
+      setPaymentMethods(items)
+      setSelectedMethodId((prev) => {
+        if (prev && items.some((m) => m.id === prev)) return prev
+        return items[0]?.id ?? null
+      })
+    } catch {
+      if (!silent) setPaymentMethods([])
+    } finally {
+      if (!silent) setMethodsLoading(false)
+    }
+  }, [])
+
   // Reset saat modal dibuka/ditutup dan muat daftar metode pembayaran aktif
   useEffect(() => {
     if (!isOpen) {
+      prevProRef.current = isPro
       setBrowseStage('tier')
       setFeedback(null)
       setCouponInput('')
@@ -205,36 +227,39 @@ export function PlanUpgradeModal({
       setProofName('')
       setZoomImageSrc('')
       setLocalPending(undefined)
-      return
+      return undefined
     }
+    prevProRef.current = isPro
     setBrowseStage('tier')
     setSelectedPlanSlug(defaultPaidPlan.slug || 'pro')
     setCouponInput('')
     setAppliedDiscount(null)
     setCouponFeedback(null)
     setLocalPending(undefined)
-    let cancelled = false
-    setMethodsLoading(true)
-    apiRequest('/api/public/payment-methods')
-      .then((list) => {
-        if (cancelled) return
-        const items = Array.isArray(list) ? list : []
-        setPaymentMethods(items)
-        setSelectedMethodId((prev) => {
-          if (prev && items.some((m) => m.id === prev)) return prev
-          return items[0]?.id ?? null
-        })
+    loadPaymentMethods({ silent: false })
+    return subscribeSyncSignal((sig) => {
+      if (sig?.scope === 'public' || sig?.scope === 'all') {
+        loadPaymentMethods({ silent: true })
+      }
+    })
+  }, [isOpen, loadPaymentMethods]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sinkronkan metode bayar secara senyap jika Admin mengubah saat modal terbuka
+  useEffect(() => {
+    if (!isOpen || syncTick <= 0) return
+    loadPaymentMethods({ silent: true })
+  }, [isOpen, syncTick, loadPaymentMethods])
+
+  // Tampilkan feedback otomatis jika Admin menyetujui saat modal checkout terbuka
+  useEffect(() => {
+    if (isOpen && !prevProRef.current && isPro) {
+      setFeedback({
+        type: 'success',
+        text: `Pembayaran dikonfirmasi! Paket ${userPlan.plan_name || selectedPlanName} Anda kini aktif.`,
       })
-      .catch(() => {
-        if (!cancelled) setPaymentMethods([])
-      })
-      .finally(() => {
-        if (!cancelled) setMethodsLoading(false)
-      })
-    return () => {
-      cancelled = true
     }
-  }, [isOpen])
+    prevProRef.current = isPro
+  }, [isOpen, isPro, userPlan.plan_name, selectedPlanName])
 
   // Sinkronkan timer hitung mundur saat tagihan menunggu pembayaran
   useEffect(() => {
@@ -412,6 +437,7 @@ export function PlanUpgradeModal({
             ? `Tagihan ${created.order_code} dibuat. Silakan selesaikan pembayaran & unggah bukti transfer.`
             : 'Permintaan upgrade dikirim ke admin.',
       })
+      emitSyncSignal('admin', { source: 'customer-order-created', orderId: created.id })
       if (onUpgradeSubmitted) await onUpgradeSubmitted()
     } catch (err) {
       setFeedback({ type: 'error', text: err.message || 'Gagal membuat tagihan upgrade.' })
@@ -448,6 +474,7 @@ export function PlanUpgradeModal({
         type: 'success',
         text: 'Bukti pembayaran dikirim! Menunggu pengecekan & konfirmasi Admin.',
       })
+      emitSyncSignal('admin', { source: 'customer-proof-uploaded', orderId: pending.id })
       if (onUpgradeSubmitted) await onUpgradeSubmitted()
     } catch (err) {
       setFeedback({ type: 'error', text: err.message || 'Gagal mengirim bukti pembayaran.' })
@@ -475,6 +502,7 @@ export function PlanUpgradeModal({
         type: 'success',
         text: feedbackText || 'Transaksi dibatalkan.',
       })
+      emitSyncSignal('admin', { source: 'customer-order-cancelled', orderId: pending.id })
       if (onUpgradeSubmitted) await onUpgradeSubmitted()
     } catch (err) {
       setFeedback({ type: 'error', text: err.message || 'Gagal membatalkan tagihan.' })

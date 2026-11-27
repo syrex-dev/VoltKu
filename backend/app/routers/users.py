@@ -53,6 +53,7 @@ from app.services.plans import (
     resolve_user_plan,
     serialize_upgrade_request,
 )
+from app.services.sync_state import compute_user_sync_state
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -1118,5 +1119,17 @@ def reset_password_with_token(
         "reset": True,
         "message": "Kata sandi berhasil diperbarui. Silakan masuk dengan kata sandi baru Anda.",
     }
+
+
+@router.get("/sync-state", response_model=dict[str, Any])
+def get_user_sync_state(
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Status revisi ringan untuk sinkronisasi real-time paket, notif, & perangkat pengguna."""
+    uid = current.get("user_id")
+    if current.get("role") != "user" or uid is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+    return compute_user_sync_state(session, user_id=int(uid))
 
 

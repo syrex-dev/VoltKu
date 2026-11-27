@@ -22,6 +22,7 @@ from app.services.app_config import get_app_config_map, get_public_app_config, r
 from app.services.payments import resolve_private_image_path, serialize_payment_method
 from app.services.plans import build_public_plans_payload
 from app.services.reports import calculate_device_forecast, calculate_device_summary
+from app.services.sync_state import compute_public_sync_state
 
 PUBLIC_ACCESS_KEY = "public_dashboard_enabled"
 
@@ -70,6 +71,12 @@ def _ensure_public_demo_device(session: Session, device_id: str) -> Device:
 def get_public_access_status(session: Session = Depends(get_db)):
     """Status apakah pengunjung dapat memantau unit demo tanpa login."""
     return {"public_read_enabled": is_public_dashboard_enabled(session)}
+
+
+@router.get("/sync-state", response_model=dict[str, Any])
+def get_public_sync_state(session: Session = Depends(get_db)):
+    """Fingerprint ringan untuk sinkronisasi otomatis perubahan admin ke halaman publik."""
+    return compute_public_sync_state(session)
 
 
 @router.get("/app-config", response_model=dict[str, Any])

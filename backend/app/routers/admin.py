@@ -75,6 +75,7 @@ from app.services.plans import (
     serialize_plan,
     serialize_upgrade_request,
 )
+from app.services.sync_state import compute_admin_sync_state
 
 auth_router = APIRouter(prefix="/api/admin", tags=["Admin Auth"])
 router = APIRouter(
@@ -305,6 +306,12 @@ def admin_login(req: AdminLoginRequest, request: Request):
     login_limiter.record_success(client_ip)
     token = create_access_token(subject="dashboard_admin", role="admin")
     return {"token": token, "token_type": "bearer"}
+
+
+@router.get("/sync-state", response_model=dict[str, Any])
+def get_admin_sync_state(session: Session = Depends(get_db)):
+    """Status sinkronisasi & jumlah antrean real-time untuk auto-refresh Panel Admin."""
+    return compute_admin_sync_state(session)
 
 
 @router.get("/overview", response_model=dict[str, Any])
