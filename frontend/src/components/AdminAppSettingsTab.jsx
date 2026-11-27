@@ -19,10 +19,11 @@ import {
 import { apiRequest } from '../api/client'
 import { formatTimeWIB, formatRp } from '../utils/formatters'
 import { InAppSelect } from './InAppSelect'
+import { AdminHeroBannersCard } from './AdminHeroBannersCard'
 
 const SUB_TABS = [
   { id: 'identitas', label: '1. Identitas & Brand', icon: Store },
-  { id: 'tampilan', label: '2. Tampilan & Panduan', icon: Palette },
+  { id: 'tampilan', label: '2. Hero Banner & Tampilan', icon: Palette },
   { id: 'akses', label: '3. Akses & Login', icon: Lock },
   { id: 'legal', label: '4. Legal & Audit', icon: ShieldCheck },
   { id: 'operasional', label: '5. Operasional & Dukungan', icon: Sliders },
@@ -79,6 +80,32 @@ export function AdminAppSettingsTab({
 
   const updateField = (key, val) => {
     setForm((prev) => ({ ...prev, [key]: val }))
+  }
+
+  const persistHeroBanners = async (nextBanners, successText) => {
+    setSaving(true)
+    if (onNotice) onNotice(null)
+    try {
+      const updated = await apiRequest(
+        '/api/admin/app-settings',
+        { method: 'PATCH', body: { hero_banners: nextBanners } },
+        token,
+        onLogout
+      )
+      setForm(updated)
+      if (onNotice) {
+        onNotice({ type: 'success', text: successText || 'Hero banner berhasil diperbarui.' })
+      }
+      if (onSettingsUpdated) await onSettingsUpdated(updated)
+      return true
+    } catch (err) {
+      if (onNotice) {
+        onNotice({ type: 'error', text: err.message || 'Gagal memperbarui hero banner.' })
+      }
+      return false
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleSave = async (e) => {
@@ -139,6 +166,7 @@ export function AdminAppSettingsTab({
         report_hour: parseInt(form.report_hour, 10) || 21,
         report_timezone: form.report_timezone || 'Asia/Jakarta',
         report_enabled: Boolean(form.report_enabled),
+        ...(Array.isArray(form.hero_banners) ? { hero_banners: form.hero_banners } : {}),
       }
       const updated = await apiRequest(
         '/api/admin/app-settings',
@@ -338,75 +366,84 @@ export function AdminAppSettingsTab({
         )}
 
         {subTab === 'tampilan' && (
-          <section className="clean-sheet admin-card-block">
-            <div className="admin-card-head">
-              <h3>Tampilan Default &amp; Panduan Awal Pengguna</h3>
-            </div>
+          <>
+            <AdminHeroBannersCard
+              banners={form.hero_banners || []}
+              defaultBanners={form.default_hero_banners}
+              busy={saving}
+              onPersistBanners={persistHeroBanners}
+            />
 
-            <div className="form-field-group" style={{ maxWidth: 340 }}>
-              <label className="field-label" htmlFor="cfg-default-theme">
-                Tema Bawaan Pengunjung Baru
-              </label>
-              <InAppSelect
-                id="cfg-default-theme"
-                value={form.default_theme || 'light'}
-                onChange={(v) => updateField('default_theme', v)}
-                options={[
-                  { value: 'light', label: 'Mode Terang (Light)' },
-                  { value: 'dark', label: 'Mode Gelap (Dark)' },
-                  { value: 'system', label: 'Ikuti Tema Perangkat (System)' },
-                ]}
-              />
-            </div>
-
-            <div className="admin-toggle-row" style={{ margin: '16px 0' }}>
-              <div>
-                <div className="admin-row-title">Aktifkan Panduan Awal Aplikasi</div>
-                <div className="admin-row-sub">
-                  Menampilkan lembar pengenalan 3 langkah yang bersih untuk pengguna baru.
-                </div>
+            <section className="clean-sheet admin-card-block">
+              <div className="admin-card-head">
+                <h3>Tampilan Default &amp; Panduan Awal Pengguna</h3>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={Boolean(form.onboarding_enabled)}
-                className={`admin-switch ${form.onboarding_enabled ? 'on' : ''}`}
-                onClick={() => updateField('onboarding_enabled', !form.onboarding_enabled)}
-              >
-                <span className="admin-switch-thumb" />
-              </button>
-            </div>
 
-            {[1, 2, 3].map((step) => (
-              <div key={step} className="admin-step-editor-box">
-                <div className="admin-step-editor-label">Langkah Panduan {step}</div>
-                <div className="form-field-group">
-                  <label className="field-label" htmlFor={`cfg-step${step}-title`}>
-                    Judul Langkah {step}
-                  </label>
-                  <input
-                    id={`cfg-step${step}-title`}
-                    type="text"
-                    className="modern-input"
-                    value={form[`onboarding_step${step}_title`] || ''}
-                    onChange={(e) => updateField(`onboarding_step${step}_title`, e.target.value)}
-                  />
-                </div>
-                <div className="form-field-group" style={{ marginBottom: 0 }}>
-                  <label className="field-label" htmlFor={`cfg-step${step}-desc`}>
-                    Deskripsi Langkah {step}
-                  </label>
-                  <textarea
-                    id={`cfg-step${step}-desc`}
-                    rows={2}
-                    className="modern-input admin-textarea"
-                    value={form[`onboarding_step${step}_desc`] || ''}
-                    onChange={(e) => updateField(`onboarding_step${step}_desc`, e.target.value)}
-                  />
-                </div>
+              <div className="form-field-group" style={{ maxWidth: 340 }}>
+                <label className="field-label" htmlFor="cfg-default-theme">
+                  Tema Bawaan Pengunjung Baru
+                </label>
+                <InAppSelect
+                  id="cfg-default-theme"
+                  value={form.default_theme || 'light'}
+                  onChange={(v) => updateField('default_theme', v)}
+                  options={[
+                    { value: 'light', label: 'Mode Terang (Light)' },
+                    { value: 'dark', label: 'Mode Gelap (Dark)' },
+                    { value: 'system', label: 'Ikuti Tema Perangkat (System)' },
+                  ]}
+                />
               </div>
-            ))}
-          </section>
+
+              <div className="admin-toggle-row" style={{ margin: '16px 0' }}>
+                <div>
+                  <div className="admin-row-title">Aktifkan Panduan Awal Aplikasi</div>
+                  <div className="admin-row-sub">
+                    Menampilkan lembar pengenalan 3 langkah yang bersih untuk pengguna baru.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(form.onboarding_enabled)}
+                  className={`admin-switch ${form.onboarding_enabled ? 'on' : ''}`}
+                  onClick={() => updateField('onboarding_enabled', !form.onboarding_enabled)}
+                >
+                  <span className="admin-switch-thumb" />
+                </button>
+              </div>
+
+              {[1, 2, 3].map((step) => (
+                <div key={step} className="admin-step-editor-box">
+                  <div className="admin-step-editor-label">Langkah Panduan {step}</div>
+                  <div className="form-field-group">
+                    <label className="field-label" htmlFor={`cfg-step${step}-title`}>
+                      Judul Langkah {step}
+                    </label>
+                    <input
+                      id={`cfg-step${step}-title`}
+                      type="text"
+                      className="modern-input"
+                      value={form[`onboarding_step${step}_title`] || ''}
+                      onChange={(e) => updateField(`onboarding_step${step}_title`, e.target.value)}
+                    />
+                  </div>
+                  <div className="form-field-group" style={{ marginBottom: 0 }}>
+                    <label className="field-label" htmlFor={`cfg-step${step}-desc`}>
+                      Deskripsi Langkah {step}
+                    </label>
+                    <textarea
+                      id={`cfg-step${step}-desc`}
+                      rows={2}
+                      className="modern-input admin-textarea"
+                      value={form[`onboarding_step${step}_desc`] || ''}
+                      onChange={(e) => updateField(`onboarding_step${step}_desc`, e.target.value)}
+                    />
+                  </div>
+                </div>
+              ))}
+            </section>
+          </>
         )}
 
         {subTab === 'akses' && (

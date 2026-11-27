@@ -274,6 +274,7 @@ class AdminAppSettingsUpdateRequest(BaseModel):
     report_hour: Optional[int] = None
     report_timezone: Optional[str] = None
     report_enabled: Optional[bool] = None
+    hero_banners: Optional[list[dict[str, Any]]] = None
 
 
 def _admin_err(code: int, message: str) -> HTTPException:

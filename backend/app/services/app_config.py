@@ -1,3 +1,6 @@
+import copy
+import json
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -20,6 +23,128 @@ from app.services.plans import (
 )
 
 PUBLIC_ACCESS_KEY = "public_dashboard_enabled"
+
+HERO_BANNER_TONES = (
+    "is-teal-guide",
+    "is-cobalt",
+    "is-gold-dark",
+    "is-emerald",
+    "is-cyan",
+    "is-indigo",
+    "is-announcement",
+)
+HERO_BANNER_ICONS = (
+    "book-open",
+    "assistant",
+    "crown",
+    "qr-code",
+    "sliders",
+    "bell-ring",
+    "megaphone",
+    "zap",
+    "sparkles",
+    "external-link",
+)
+HERO_BANNER_ACTIONS = (
+    "usage_guide",
+    "ai_chat",
+    "upgrade_plan",
+    "add_device",
+    "open_settings",
+    "open_alerts",
+    "open_url",
+    "none",
+)
+HERO_BANNER_AUDIENCES = (
+    "all",
+    "free_only",
+    "pro_only",
+    "authenticated_only",
+    "guest_only",
+)
+_BANNER_ID_RE = re.compile(r"[^a-z0-9_-]+")
+MAX_HERO_BANNERS = 12
+
+DEFAULT_HERO_BANNERS: list[dict[str, Any]] = [
+    {
+        "id": "usage-guide",
+        "badge": "CARA PEMAKAIAN",
+        "title": "Panduan Pasang & Pakai VoltKu",
+        "subtitle": "Langkah mudah konek Wi-Fi 2.4 GHz, scan QR & pantau tagihan PLN",
+        "cta": "Lihat Panduan",
+        "tone": "is-teal-guide",
+        "icon": "book-open",
+        "action_type": "usage_guide",
+        "action_url": "",
+        "audience": "all",
+        "enabled": True,
+    },
+    {
+        "id": "ai-assistant",
+        "badge": "ANALISA TAGIHAN",
+        "title": "Cek Jam Boros & Estimasi Biaya",
+        "subtitle": "Tanya ringkasan kWh harian & proyeksi bulan ini berbasis data meteran",
+        "cta": "Buka Asisten",
+        "tone": "is-cobalt",
+        "icon": "assistant",
+        "action_type": "ai_chat",
+        "action_url": "",
+        "audience": "all",
+        "enabled": True,
+    },
+    {
+        "id": "pro-active",
+        "badge": "VOLTKU PRO AKTIF",
+        "title": "Proteksi & Riwayat Panjang Aktif",
+        "subtitle": "Pantau catatan anomali & tegangan panel secara real-time",
+        "cta": "Cek Peringatan",
+        "tone": "is-emerald",
+        "icon": "bell-ring",
+        "action_type": "open_alerts",
+        "action_url": "",
+        "audience": "pro_only",
+        "enabled": True,
+    },
+    {
+        "id": "upgrade-pro",
+        "badge": "VOLTKU PRO",
+        "title": "Pantau Banyak Panel dengan VoltKu Pro",
+        "subtitle": "Riwayat lebih panjang, ekspor CSV, dan dukungan multi-panel",
+        "cta": "Lihat Paket",
+        "tone": "is-gold-dark",
+        "icon": "crown",
+        "action_type": "upgrade_plan",
+        "action_url": "",
+        "audience": "free_only",
+        "enabled": True,
+    },
+    {
+        "id": "quick-pairing",
+        "badge": "PASANG MUDAH",
+        "title": "Tautkan Panel Dalam 1 Menit",
+        "subtitle": "Scan barcode stiker bodi alat atau ikuti panduan Wi-Fi 2.4 GHz",
+        "cta": "Tambah Panel",
+        "tone": "is-cyan",
+        "icon": "qr-code",
+        "action_type": "add_device",
+        "action_url": "",
+        "audience": "all",
+        "enabled": True,
+    },
+    {
+        "id": "tariff-pln",
+        "badge": "TARIF PLN",
+        "title": "Sesuaikan Tarif & Batas Daya MCB",
+        "subtitle": "Hitung estimasi tagihan Rp sesuai golongan R-1 hingga Bisnis",
+        "cta": "Atur Tarif",
+        "tone": "is-indigo",
+        "icon": "sliders",
+        "action_type": "open_settings",
+        "action_url": "",
+        "audience": "all",
+        "enabled": True,
+    },
+]
 
 DEFAULT_TERMS_CONTENT = (
     "1. Ruang Lingkup Layanan\n"
@@ -77,6 +202,7 @@ DEFAULT_APP_CONFIG: dict[str, str] = {
     "announcement_active": "false",
     "announcement_text": "",
     "announcement_url": "",
+    "hero_banners_json": "",
     "default_theme": "light",
     "onboarding_enabled": "true",
     "onboarding_step1_title": "Kenali Panel Listrik Anda",
@@ -142,6 +268,125 @@ def _to_bool(val: str, default: bool = False) -> bool:
     if not val:
         return default
     return val.strip().lower() in ("true", "1", "yes", "on")
+
+
+def _normalize_banner_id(raw_id: Any, fallback_idx: int, used: set[str]) -> str:
+    cleaned = _BANNER_ID_RE.sub("-", str(raw_id or "").strip().lower()).strip("-")[:48]
+    if not cleaned:
+        cleaned = f"banner-{fallback_idx + 1}"
+    candidate = cleaned
+    suffix = 2
+    while candidate in used:
+        base = cleaned[:40]
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    used.add(candidate)
+    return candidate
+
+
+def _sanitize_banner_item(
+    raw: Any,
+    idx: int,
+    used_ids: set[str],
+    *,
+    strict: bool,
+) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError(f"Format banner ke-{idx + 1} tidak valid")
+
+    title = str(raw.get("title") or "").strip()
+    if strict and not title:
+        raise ValueError(f"Judul hero banner ke-{idx + 1} wajib diisi")
+    if len(title) > 120:
+        if strict:
+            raise ValueError(f"Judul hero banner ke-{idx + 1} maksimal 120 karakter")
+        title = title[:120]
+
+    badge = str(raw.get("badge") or "").strip()[:40]
+    subtitle = str(raw.get("subtitle") or "").strip()[:200]
+    cta = str(raw.get("cta") or "").strip()[:32] or "Lihat"
+
+    tone = str(raw.get("tone") or "is-cobalt").strip()
+    if tone not in HERO_BANNER_TONES:
+        if strict:
+            raise ValueError(f"Tema warna banner '{tone}' tidak dikenal")
+        tone = "is-cobalt"
+
+    icon = str(raw.get("icon") or "zap").strip()
+    if icon not in HERO_BANNER_ICONS:
+        if strict:
+            raise ValueError(f"Ikon banner '{icon}' tidak dikenal")
+        icon = "zap"
+
+    action_type = str(raw.get("action_type") or "none").strip()
+    if action_type not in HERO_BANNER_ACTIONS:
+        if strict:
+            raise ValueError(f"Jenis aksi banner '{action_type}' tidak dikenal")
+        action_type = "none"
+
+    action_url = str(raw.get("action_url") or "").strip()[:500]
+    if action_type == "open_url":
+        if not action_url.startswith(("https://", "http://")):
+            raise ValueError(
+                f"URL tautan banner ke-{idx + 1} wajib diawali http:// atau https://"
+            )
+    elif action_url and not action_url.startswith(("https://", "http://")):
+        action_url = ""
+
+    audience = str(raw.get("audience") or "all").strip()
+    if audience not in HERO_BANNER_AUDIENCES:
+        if strict:
+            raise ValueError(f"Target audiens banner '{audience}' tidak dikenal")
+        audience = "all"
+
+    return {
+        "id": _normalize_banner_id(raw.get("id"), idx, used_ids),
+        "badge": badge,
+        "title": title or "Info VoltKu",
+        "subtitle": subtitle,
+        "cta": cta,
+        "tone": tone,
+        "icon": icon,
+        "action_type": action_type,
+        "action_url": action_url,
+        "audience": audience,
+        "enabled": bool(raw.get("enabled", True)),
+    }
+
+
+def parse_hero_banners(raw_json: str) -> list[dict[str, Any]]:
+    """Parse daftar hero banner dari DB; kembalikan default bila belum pernah diatur."""
+    if not raw_json or not raw_json.strip():
+        return copy.deepcopy(DEFAULT_HERO_BANNERS)
+    try:
+        parsed = json.loads(raw_json)
+    except (ValueError, TypeError):
+        return copy.deepcopy(DEFAULT_HERO_BANNERS)
+    if not isinstance(parsed, list):
+        return copy.deepcopy(DEFAULT_HERO_BANNERS)
+
+    used_ids: set[str] = set()
+    items: list[dict[str, Any]] = []
+    for idx, entry in enumerate(parsed[:MAX_HERO_BANNERS]):
+        try:
+            items.append(_sanitize_banner_item(entry, idx, used_ids, strict=False))
+        except ValueError:
+            continue
+    return items
+
+
+def validate_hero_banners(raw_list: Any) -> list[dict[str, Any]]:
+    """Validasi daftar hero banner yang dikirim dari Panel Admin sebelum disimpan."""
+    if not isinstance(raw_list, list):
+        raise ValueError("Format daftar hero banner harus berupa array")
+    if len(raw_list) > MAX_HERO_BANNERS:
+        raise ValueError(f"Maksimal {MAX_HERO_BANNERS} slide hero banner")
+
+    used_ids: set[str] = set()
+    return [
+        _sanitize_banner_item(entry, idx, used_ids, strict=True)
+        for idx, entry in enumerate(raw_list)
+    ]
 
 
 def get_app_config_map(session: Session) -> dict[str, str]:
@@ -267,6 +512,7 @@ def _build_public_config_payload(session: Session, data: dict[str, str]) -> dict
         "support_whatsapp": data["support_whatsapp"],
         "support_telegram": data["support_telegram"],
         "support_email": data["support_email"],
+        "hero_banners": parse_hero_banners(data.get("hero_banners_json", "")),
         "plans": build_public_plans_payload(data, session=session),
     }
 
@@ -323,6 +569,8 @@ def get_admin_app_settings(session: Session) -> dict[str, Any]:
         "report_hour": sys_settings["report_hour"],
         "report_timezone": sys_settings["report_timezone"],
         "report_enabled": sys_settings["report_enabled"],
+        "hero_banners": parse_hero_banners(data.get("hero_banners_json", "")),
+        "default_hero_banners": copy.deepcopy(DEFAULT_HERO_BANNERS),
         **get_freemium_config(data),
     }
 
@@ -376,8 +624,18 @@ def _validate_and_store_config_field(session: Session, key: str, value: Any) -> 
 def update_admin_app_settings(session: Session, payload: dict[str, Any]) -> dict[str, Any]:
     """Validasi & simpan pembaruan pengaturan aplikasi serta default operasional dari Admin."""
     for key in DEFAULT_APP_CONFIG:
+        if key == "hero_banners_json":
+            continue
         if key in payload and payload[key] is not None:
             _validate_and_store_config_field(session, key, payload[key])
+
+    if "hero_banners" in payload and payload["hero_banners"] is not None:
+        cleaned_banners = validate_hero_banners(payload["hero_banners"])
+        upsert_app_config(
+            session,
+            "hero_banners_json",
+            json.dumps(cleaned_banners, ensure_ascii=False),
+        )
 
     legacy_plan_keys = {
         "free_plan_name",

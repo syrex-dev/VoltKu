@@ -237,3 +237,89 @@ def test_admin_app_settings_controls_registration_google_and_operational():
         json={"id_token": "x" * 40, "accept_terms": True},
     )
     assert google_blocked.status_code == 503
+
+
+def test_admin_hero_banners_crud_validation_and_empty_delete():
+    open_clean_test_session()
+    admin_tok = create_access_token(subject="admin", role="admin")
+
+    init_pub = client.get("/api/public/app-config").json()
+    assert len(init_pub["hero_banners"]) == 6
+    rev_before = client.get("/api/public/sync-state").json()["config_rev"]
+
+    # Validasi ketat URL & judul wajib diisi
+    bad_url = client.patch(
+        "/api/admin/app-settings",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={
+            "hero_banners": [
+                {
+                    "id": "xss-test",
+                    "title": "Klik Bahaya",
+                    "action_type": "open_url",
+                    "action_url": "javascript:alert(1)",
+                }
+            ]
+        },
+    )
+    assert bad_url.status_code == 422
+
+    bad_title = client.patch(
+        "/api/admin/app-settings",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"hero_banners": [{"id": "no-title", "title": "   "}]},
+    )
+    assert bad_title.status_code == 422
+
+    # Admin mengubah & menonaktifkan salah satu banner
+    custom_banners = [
+        {
+            "id": "promo-november",
+            "badge": "PROMO AKHIR BULAN",
+            "title": "Diskon Pro 50% Hari Ini",
+            "subtitle": "Khusus pelanggan aktif hingga pukul 23:59 WIB",
+            "cta": "Klaim Promo",
+            "tone": "is-announcement",
+            "icon": "sparkles",
+            "action_type": "upgrade_plan",
+            "audience": "free_only",
+            "enabled": True,
+        },
+        {
+            "id": "hidden-slide",
+            "badge": "ARSIP",
+            "title": "Banner Nonaktif",
+            "subtitle": "Disembunyikan sementara",
+            "cta": "Lihat",
+            "tone": "is-cobalt",
+            "icon": "zap",
+            "action_type": "none",
+            "audience": "all",
+            "enabled": False,
+        },
+    ]
+    upd = client.patch(
+        "/api/admin/app-settings",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"hero_banners": custom_banners},
+    )
+    assert upd.status_code == 200
+    upd_body = upd.json()
+    assert len(upd_body["hero_banners"]) == 2
+    assert len(upd_body["default_hero_banners"]) == 6
+
+    pub_after = client.get("/api/public/app-config").json()
+    assert [b["id"] for b in pub_after["hero_banners"]] == ["promo-november", "hidden-slide"]
+    assert pub_after["hero_banners"][0]["tone"] == "is-announcement"
+    rev_after = client.get("/api/public/sync-state").json()["config_rev"]
+    assert rev_after != rev_before
+
+    # Menghapus seluruh banner ([]) tetap bertahan [] dan tidak balik ke 6 default
+    cleared = client.patch(
+        "/api/admin/app-settings",
+        headers={"Authorization": f"Bearer {admin_tok}"},
+        json={"hero_banners": []},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["hero_banners"] == []
+    assert client.get("/api/public/app-config").json()["hero_banners"] == []

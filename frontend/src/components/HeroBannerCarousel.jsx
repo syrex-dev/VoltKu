@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { Megaphone, ChevronRight } from 'lucide-react'
 import {
-  Crown,
-  QrCode,
-  SlidersHorizontal,
-  Megaphone,
-  ChevronRight,
-  BellRing,
-  BookOpen,
-} from 'lucide-react'
-import { EnergyAssistantIcon } from './VoltKuIcons'
-import { formatRp } from '../utils/formatters'
+  DEFAULT_HERO_BANNERS,
+  matchesHeroBannerAudience,
+  resolveHeroBannerIcon,
+} from '../utils/heroBanners'
 
 const AUTO_SCROLL_MS = 4500
 
@@ -46,30 +41,56 @@ export function HeroBannerCarousel({
   const rafResetRef = useRef(0)
 
   const slides = useMemo(() => {
-    const planItems = Array.isArray(appConfig.plans?.items) ? appConfig.plans.items : []
-    const paidPlans = planItems.filter((p) => !p.is_default_free && p.slug !== 'free')
-    const proCfg = paidPlans.find((p) => p.is_recommended) ||
-      paidPlans[0] ||
-      appConfig.plans?.pro || {
-        name: 'VoltKu Pro',
-        price_monthly_rp: 30000,
-        effective_monthly_price_rp: 30000,
-        max_devices: 10,
-        history_days: 90,
-        promo_active: false,
-      }
-    const effPrice = Number(proCfg.effective_monthly_price_rp ?? proCfg.price_monthly_rp ?? 30000)
-    const basePrice = Number(proCfg.price_monthly_rp ?? effPrice)
-    const hasPromo = Boolean(proCfg.promo_active) && basePrice > effPrice
     const isPro = Boolean(currentUser?.plan?.is_pro)
-    const activePlanName = currentUser?.plan?.plan_name || proCfg.name || 'VoltKu Pro'
-    const activeHistDays = currentUser?.plan?.limits?.history_days || proCfg.history_days || 90
-    const maxDevsText =
-      proCfg.max_devices < 0 ? 'panel tanpa batas' : `hingga ${proCfg.max_devices} panel`
+    const sourceBanners = Array.isArray(appConfig?.hero_banners)
+      ? appConfig.hero_banners
+      : DEFAULT_HERO_BANNERS
+
+    const triggerBannerAction = (banner) => {
+      switch (banner.action_type) {
+        case 'usage_guide':
+          onOpenUsageGuide?.()
+          break
+        case 'ai_chat':
+          if (isAuthenticated) {
+            window.dispatchEvent(new CustomEvent('voltku:open-ai-chat'))
+          } else {
+            onOpenLogin?.()
+          }
+          break
+        case 'upgrade_plan':
+          if (isAuthenticated && onOpenPlanModal) {
+            onOpenPlanModal('')
+          } else {
+            onOpenLogin?.()
+          }
+          break
+        case 'add_device':
+          onOpenAddDevice?.()
+          break
+        case 'open_settings':
+          onOpenSettings?.()
+          break
+        case 'open_alerts':
+          onOpenAlerts?.()
+          break
+        case 'open_url':
+          if (
+            typeof banner.action_url === 'string' &&
+            (banner.action_url.startsWith('https://') || banner.action_url.startsWith('http://'))
+          ) {
+            window.open(banner.action_url, '_blank', 'noopener,noreferrer')
+          }
+          break
+        case 'none':
+        default:
+          break
+      }
+    }
 
     const list = []
 
-    if (appConfig.announcement_active && appConfig.announcement_text) {
+    if (appConfig?.announcement_active && appConfig?.announcement_text) {
       list.push({
         id: 'announcement',
         tone: 'is-announcement',
@@ -81,103 +102,40 @@ export function HeroBannerCarousel({
         cta: appConfig.announcement_url ? 'Buka Info' : 'Lihat',
         Icon: Megaphone,
         onClick: () => {
-          if (appConfig.announcement_url) {
+          if (
+            typeof appConfig.announcement_url === 'string' &&
+            (appConfig.announcement_url.startsWith('https://') ||
+              appConfig.announcement_url.startsWith('http://'))
+          ) {
             window.open(appConfig.announcement_url, '_blank', 'noopener,noreferrer')
           }
         },
       })
     }
 
-    list.push({
-      id: 'usage-guide',
-      tone: 'is-teal-guide',
-      badge: 'CARA PEMAKAIAN',
-      title: 'Panduan Pasang & Pakai VoltKu',
-      subtitle: 'Langkah mudah konek Wi-Fi 2.4 GHz, scan QR & pantau tagihan PLN',
-      cta: 'Lihat Panduan',
-      Icon: BookOpen,
-      onClick: () => onOpenUsageGuide?.(),
-    })
-
-    list.push({
-      id: 'ai-assistant',
-      tone: 'is-cobalt',
-      badge: 'ANALISA TAGIHAN',
-      title: 'Cek Jam Boros & Estimasi Biaya',
-      subtitle: 'Tanya ringkasan kWh harian & proyeksi bulan ini berbasis data meteran',
-      cta: 'Buka Asisten',
-      Icon: EnergyAssistantIcon,
-      onClick: () => {
-        if (isAuthenticated) {
-          window.dispatchEvent(new CustomEvent('voltku:open-ai-chat'))
-        } else if (onOpenLogin) {
-          onOpenLogin()
-        }
-      },
-    })
-
-    if (isPro) {
+    for (const banner of sourceBanners) {
+      if (!banner || banner.enabled === false) continue
+      if (!matchesHeroBannerAudience(banner.audience, { isAuthenticated, isPro })) continue
+      const Icon = resolveHeroBannerIcon(banner.icon)
       list.push({
-        id: 'pro-active',
-        tone: 'is-emerald',
-        badge: `${activePlanName.toUpperCase()} AKTIF`,
-        title: `Proteksi & Riwayat ${activeHistDays} Hari Aktif`,
-        subtitle: 'Pantau catatan anomali & tegangan panel secara real-time',
-        cta: 'Cek Peringatan',
-        Icon: BellRing,
-        onClick: () => onOpenAlerts?.(),
-      })
-    } else {
-      list.push({
-        id: 'upgrade-pro',
-        tone: 'is-gold-dark',
-        badge: hasPromo
-          ? proCfg.promo_label?.toUpperCase() || 'PROMO SPESIAL'
-          : proCfg.name?.toUpperCase() || 'VOLTKU PRO',
-        title: `Pantau ${maxDevsText} dengan ${proCfg.name || 'Pro'}`,
-        subtitle: hasPromo
-          ? `Promo mulai ${formatRp(effPrice)}/bln (normal ${formatRp(basePrice)}) · Riwayat ${proCfg.history_days} hr`
-          : `Riwayat ${proCfg.history_days} hari · Mulai ${formatRp(effPrice)}/bulan`,
-        cta: 'Lihat Paket',
-        Icon: Crown,
-        onClick: () => {
-          if (isAuthenticated && onOpenPlanModal) {
-            onOpenPlanModal('')
-          } else if (onOpenLogin) {
-            onOpenLogin()
-          }
-        },
+        id: banner.id,
+        tone: banner.tone || 'is-cobalt',
+        badge: banner.badge || '',
+        title: banner.title || '',
+        subtitle: banner.subtitle || '',
+        cta: banner.cta || 'Lihat',
+        Icon,
+        onClick: () => triggerBannerAction(banner),
       })
     }
 
-    list.push({
-      id: 'quick-pairing',
-      tone: 'is-cyan',
-      badge: 'PASANG MUDAH',
-      title: 'Tautkan Panel Dalam 1 Menit',
-      subtitle: 'Scan barcode stiker bodi alat atau ikuti panduan Wi-Fi 2.4 GHz',
-      cta: 'Tambah Panel',
-      Icon: QrCode,
-      onClick: () => onOpenAddDevice?.(),
-    })
-
-    list.push({
-      id: 'tariff-pln',
-      tone: 'is-indigo',
-      badge: 'TARIF PLN',
-      title: 'Sesuaikan Tarif & Batas Daya MCB',
-      subtitle: 'Hitung estimasi tagihan Rp sesuai golongan R-1 hingga Bisnis',
-      cta: 'Atur Tarif',
-      Icon: SlidersHorizontal,
-      onClick: () => onOpenSettings?.(),
-    })
-
     return list
   }, [
-    appConfig,
+    appConfig?.hero_banners,
+    appConfig?.announcement_active,
+    appConfig?.announcement_text,
+    appConfig?.announcement_url,
     currentUser?.plan?.is_pro,
-    currentUser?.plan?.plan_name,
-    currentUser?.plan?.limits?.history_days,
     isAuthenticated,
     onOpenAddDevice,
     onOpenUsageGuide,
@@ -189,6 +147,11 @@ export function HeroBannerCarousel({
 
   const slideCount = slides.length
   const hasLoop = slideCount > 1
+
+  useEffect(() => {
+    setDisableTransition(true)
+    setTrackIdx(hasLoop ? 1 : 0)
+  }, [hasLoop, slideCount])
   const safeTrackIdx = !hasLoop
     ? 0
     : Math.max(0, Math.min(slideCount + 1, trackIdx))

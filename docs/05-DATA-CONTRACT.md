@@ -88,7 +88,7 @@ anomalies(id PK, device_id, ts, type, severity, details_json, message, notified)
 alert_state(device_id, alert_type, state, since, last_notified_at, details_json)   PK (device_id, alert_type)
 scheduled_reports_log(report_type, report_date, sent_at)   PK (report_type, report_date)
 settings(key PK, value)   -- tariff_sen_per_kwh, extra_percent, power_limit_w, alert_cooldown_min, report_hour, report_timezone, report_enabled
-app_config(key PK, value TEXT, updated_at)   -- branding, panduan, legal/terms, auth toggles, paket freemium, kontak dukungan
+app_config(key PK, value TEXT, updated_at)   -- branding, hero_banners, panduan, legal/terms, auth toggles, paket freemium, kontak dukungan
 telegram_users(chat_id PK, name)
 chat_log(id PK, chat_id, ts, question, tools_used, answer, tokens)
 push_tokens(id PK, user_id FK->users.id, token UNIQUE, platform, device_label NULL, is_active DEFAULT 1, created_at, updated_at)

@@ -5,6 +5,7 @@ import { PlanUpgradeModal } from '../PlanUpgradeModal'
 import { ProfileModal } from '../ProfileModal'
 import { SettingsView } from '../SettingsView'
 import { HeroBannerCarousel } from '../HeroBannerCarousel'
+import { AdminHeroBannersCard } from '../AdminHeroBannersCard'
 import { AppLockSubView } from '../ProfileSubViews'
 import { getAppLockConfig } from '../../utils/userPrefs'
 
@@ -163,6 +164,96 @@ describe('VoltKu Paket & Profil modal render guards', () => {
     )
     expect(html).toContain('Aktif · PIN 6 Digit tersinkron ke semua perangkat')
     expect(html).toContain('Ubah PIN 6 Digit')
+  })
+
+  it('respects Admin-configured hero_banners, filters hidden/audience slides, and hides carousel when empty', () => {
+    const customHtml = renderToStaticMarkup(
+      <HeroBannerCarousel
+        isAuthenticated
+        currentUser={{ id: 1, plan: { is_pro: false } }}
+        appConfig={{
+          hero_banners: [
+            {
+              id: 'promo-1',
+              badge: 'CUSTOM ADMIN',
+              title: 'Banner Kustom Pertama',
+              subtitle: 'Tampil untuk pengguna gratis',
+              cta: 'Buka',
+              tone: 'is-cobalt',
+              icon: 'sparkles',
+              action_type: 'upgrade_plan',
+              audience: 'free_only',
+              enabled: true,
+            },
+            {
+              id: 'pro-secret',
+              badge: 'PRO',
+              title: 'Khusus Pro Saja',
+              subtitle: 'Tidak tampil untuk gratis',
+              cta: 'Cek',
+              tone: 'is-emerald',
+              icon: 'crown',
+              action_type: 'open_alerts',
+              audience: 'pro_only',
+              enabled: true,
+            },
+            {
+              id: 'disabled-banner',
+              badge: 'MATI',
+              title: 'Disembunyikan Admin',
+              subtitle: 'Harus tersaring',
+              cta: 'Lihat',
+              tone: 'is-indigo',
+              icon: 'zap',
+              action_type: 'none',
+              audience: 'all',
+              enabled: false,
+            },
+          ],
+        }}
+      />
+    )
+    expect(customHtml).toContain('Banner Kustom Pertama')
+    expect(customHtml).not.toContain('Khusus Pro Saja')
+    expect(customHtml).not.toContain('Disembunyikan Admin')
+
+    const emptyHtml = renderToStaticMarkup(
+      <HeroBannerCarousel
+        isAuthenticated
+        currentUser={{ id: 1, plan: { is_pro: false } }}
+        appConfig={{ hero_banners: [] }}
+      />
+    )
+    expect(emptyHtml).toBe('')
+  })
+
+  it('renders AdminHeroBannersCard with edit/delete items and empty state', () => {
+    const populatedHtml = renderToStaticMarkup(
+      <AdminHeroBannersCard
+        banners={[
+          {
+            id: 'b1',
+            badge: 'INFO',
+            title: 'Banner Uji Admin',
+            subtitle: 'Subjudul uji',
+            cta: 'Buka',
+            tone: 'is-cobalt',
+            icon: 'sparkles',
+            action_type: 'usage_guide',
+            audience: 'all',
+            enabled: true,
+          },
+        ]}
+      />
+    )
+    expect(populatedHtml).toContain('Kontrol Hero Banner Beranda')
+    expect(populatedHtml).toContain('Banner Uji Admin')
+    expect(populatedHtml).toContain('Pulihkan Bawaan')
+    expect(populatedHtml).toContain('Tambah Banner')
+
+    const emptyAdminHtml = renderToStaticMarkup(<AdminHeroBannersCard banners={[]} />)
+    expect(emptyAdminHtml).toContain('Tidak ada hero banner aktif')
+    expect(emptyAdminHtml).toContain('Tambah Banner Pertama')
   })
 })
 
