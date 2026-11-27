@@ -1,5 +1,5 @@
 import React from 'react'
-import { Home, Zap, BarChart3, ShieldAlert, SlidersHorizontal, Bell, Settings2 } from 'lucide-react'
+import { Home, Zap, BarChart3, ShieldAlert, SlidersHorizontal, Settings2 } from 'lucide-react'
 import { getUiText, useUserPrefs } from '../utils/userPrefs'
 
 export function BottomNav({
@@ -13,7 +13,7 @@ export function BottomNav({
   const loc = prefs.locale
 
   const homeTabs = [
-    { id: 'alerts', label: getUiText(loc, 'navAlerts'), icon: Bell, badge: globalAnomalyCount },
+    { id: 'alerts', label: getUiText(loc, 'navAlerts'), icon: ShieldAlert, badge: globalAnomalyCount },
     { id: 'home', label: getUiText(loc, 'navHome'), icon: Home, isCenterHome: true },
     { id: 'settings', label: getUiText(loc, 'navSettings'), icon: SlidersHorizontal },
   ]

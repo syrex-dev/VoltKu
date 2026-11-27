@@ -10,6 +10,7 @@ import { AdminPanel } from '../AdminPanel'
 import { AiChatWidget } from '../AiChatWidget'
 import { AnomaliesList } from '../AnomaliesList'
 import { OnboardingTour } from '../OnboardingTour'
+import { Header } from '../Header'
 import { AppLockSubView } from '../ProfileSubViews'
 import { getAppLockConfig } from '../../utils/userPrefs'
 
@@ -287,6 +288,19 @@ describe('VoltKu Paket & Profil modal render guards', () => {
 
     const tourHtml = renderToStaticMarkup(<OnboardingTour isOpen />)
     expect(tourHtml).toContain('guide-illus-mascot')
+  })
+
+  it('uses distinct icons for Peringatan nav (ShieldAlert) and Kotak Masuk Notifikasi (Bell)', () => {
+    const html = renderToStaticMarkup(
+      <Header
+        activeTab="home"
+        onTabChange={() => {}}
+        isAuthenticated
+        currentUser={{ id: 1, name: 'Uji', email: 'u@example.com' }}
+      />
+    )
+    expect(html).toContain('lucide-shield-alert')
+    expect(html).toContain('lucide-bell')
   })
 })
 

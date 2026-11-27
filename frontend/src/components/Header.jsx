@@ -5,7 +5,6 @@ import {
   BarChart3,
   ShieldAlert,
   SlidersHorizontal,
-  Bell,
   Settings2,
   User,
   ChevronDown,
@@ -231,7 +230,7 @@ export function Header({
   const mobileSub = isDeviceScope && activeDevice ? activeDevice.location || '' : ''
 
   const homeNav = [
-    { id: 'alerts', label: getUiText(loc, 'navAlerts'), icon: Bell, badge: globalAnomalyCount },
+    { id: 'alerts', label: getUiText(loc, 'navAlerts'), icon: ShieldAlert, badge: globalAnomalyCount },
     { id: 'home', label: getUiText(loc, 'navHome'), icon: Home, isCenterHome: true },
     { id: 'settings', label: getUiText(loc, 'navSettings'), icon: SlidersHorizontal },
   ]
