@@ -18,7 +18,7 @@ const DEFAULT_GUIDE_STEPS = [
     id: 'profile-tariff',
     title: 'Atur Profil & Batas Aman Daya',
     description:
-      'Ketuk ikon profil di kanan atas untuk masuk atau daftar akun, lalu sesuaikan tarif listrik PLN dan batas daya MCB di Setelan.',
+      'Ketuk ikon profil di kanan atas untuk masuk atau daftar akun, lalu sesuaikan tarif listrik PLN dan batas daya MCB di Tarif & Daya.',
   },
 ]
 

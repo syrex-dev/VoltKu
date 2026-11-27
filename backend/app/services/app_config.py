@@ -92,7 +92,7 @@ DEFAULT_APP_CONFIG: dict[str, str] = {
     "onboarding_step3_title": "Kelola Profil & Preferensi Tarif",
     "onboarding_step3_desc": (
         "Ketuk ikon profil di pojok kanan atas untuk masuk ke akun Anda, lalu sesuaikan "
-        "tarif dasar PLN dan batas aman daya pada menu Setelan."
+        "tarif dasar PLN dan batas aman daya pada menu Tarif & Daya."
     ),
     "registration_enabled": "true",
     "google_auth_enabled": "true",
@@ -321,6 +321,7 @@ def get_admin_app_settings(session: Session) -> dict[str, Any]:
         "alert_cooldown_min": sys_settings["alert_cooldown_min"],
         "extra_percent": sys_settings["extra_percent"],
         "report_hour": sys_settings["report_hour"],
+        "report_timezone": sys_settings["report_timezone"],
         "report_enabled": sys_settings["report_enabled"],
         **get_freemium_config(data),
     }
@@ -409,6 +410,7 @@ def update_admin_app_settings(session: Session, payload: dict[str, Any]) -> dict
             "alert_cooldown_min",
             "extra_percent",
             "report_hour",
+            "report_timezone",
             "report_enabled",
         )
         if payload.get(k) is not None
@@ -421,6 +423,7 @@ def update_admin_app_settings(session: Session, payload: dict[str, Any]) -> dict
             alert_cooldown_min=op_fields.get("alert_cooldown_min"),
             extra_percent=op_fields.get("extra_percent"),
             report_hour=op_fields.get("report_hour"),
+            report_timezone=op_fields.get("report_timezone"),
             report_enabled=op_fields.get("report_enabled"),
             user_id=None,
         )

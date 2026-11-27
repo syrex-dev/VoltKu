@@ -9,9 +9,41 @@ const PREFS_EVENT = 'voltku:prefs-updated'
 export const APP_VERSION_TAG = 'v2.5.0'
 export const APP_PACKAGE_ID = 'com.voltku.energy'
 
+export const TIMEZONE_SHORT_MAP = {
+  'Asia/Jakarta': 'WIB',
+  'Asia/Makassar': 'WITA',
+  'Asia/Jayapura': 'WIT',
+  'Asia/Singapore': 'SGT',
+  UTC: 'UTC',
+}
+
+export const INDONESIAN_TIMEZONES = [
+  { id: 'Asia/Jakarta', short: 'WIB', name: 'Waktu Indonesia Barat', offset: 'UTC+7' },
+  { id: 'Asia/Makassar', short: 'WITA', name: 'Waktu Indonesia Tengah', offset: 'UTC+8' },
+  { id: 'Asia/Jayapura', short: 'WIT', name: 'Waktu Indonesia Timur', offset: 'UTC+9' },
+]
+
+export function detectDeviceTimeZone() {
+  try {
+    const sysTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    if (sysTz === 'Asia/Makassar' || sysTz === 'Asia/Ujung_Pandang') return 'Asia/Makassar'
+    if (sysTz === 'Asia/Jayapura') return 'Asia/Jayapura'
+    if (sysTz === 'Asia/Singapore' || sysTz === 'Asia/Kuala_Lumpur') return 'Asia/Singapore'
+    if (sysTz === 'Asia/Jakarta' || sysTz === 'Asia/Pontianak') return 'Asia/Jakarta'
+    if (sysTz === 'UTC' || sysTz === 'Etc/UTC') return 'UTC'
+  } catch {
+    // Abaikan jika browser tidak mengekspos resolvedOptions().timeZone
+  }
+  return 'Asia/Jakarta'
+}
+
+export function getTimeZoneShortLabel(tzId = 'Asia/Jakarta') {
+  return TIMEZONE_SHORT_MAP[tzId] || 'WIB'
+}
+
 export const DEFAULT_USER_PREFS = {
   locale: 'id',
-  timezone: 'Asia/Jakarta',
+  timezone: detectDeviceTimeZone(),
   vibration: true,
   monthlyBudgetRp: 0,
   budgetAlertEnabled: false,
@@ -117,7 +149,7 @@ const UI_STRINGS = {
   id: {
     navHome: 'Beranda',
     navAlerts: 'Peringatan',
-    navSettings: 'Setelan',
+    navSettings: 'Tarif & Daya',
     navLive: 'Live',
     navCharts: 'Konsumsi',
     navChartsDesktop: 'Konsumsi & Grafik',
@@ -147,7 +179,7 @@ const UI_STRINGS = {
   en: {
     navHome: 'Home',
     navAlerts: 'Alerts',
-    navSettings: 'Settings',
+    navSettings: 'Tariff & Power',
     navLive: 'Live',
     navCharts: 'Usage',
     navChartsDesktop: 'Usage & Charts',

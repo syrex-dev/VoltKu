@@ -38,7 +38,12 @@ import {
 } from 'lucide-react'
 import { BrandLogo } from './BrandLogo'
 import { PinKeypad } from './AppLockSecurity'
-import { formatNum, formatRp, formatDateTimeWIB } from '../utils/formatters'
+import {
+  formatNum,
+  formatRp,
+  formatDateTimeWIB,
+  getPreferredTimeZoneTag,
+} from '../utils/formatters'
 import {
   authenticateWithBiometric,
   checkBiometricCapability,
@@ -53,6 +58,8 @@ import {
   clearAppLock,
   getAppLockConfig,
   getLatestUserFeedback,
+  getPreferredTimeZone,
+  getTimeZoneShortLabel,
   savePinLock,
   saveUserFeedbackEntry,
   triggerHaptic,
@@ -592,7 +599,7 @@ export function LanguageSubView({ prefs, updatePrefs }) {
   )
 }
 
-export function TimeZoneSubView({ prefs, updatePrefs }) {
+export function TimeZoneSubView({ prefs, updatePrefs, onSyncServerTimezone }) {
   const [query, setQuery] = useState('')
   const [clockMs, setClockMs] = useState(() => Date.now())
 
@@ -669,6 +676,7 @@ export function TimeZoneSubView({ prefs, updatePrefs }) {
                 onClick={() => {
                   triggerHaptic(12)
                   updatePrefs({ timezone: zone.id })
+                  onSyncServerTimezone?.(zone.id)
                 }}
               >
                 <span className="profile-ref-row-icon is-sky">
@@ -691,8 +699,8 @@ export function TimeZoneSubView({ prefs, updatePrefs }) {
       </div>
 
       <p className="profile-subview-footnote">
-        Server selalu menyimpan data dalam standar UTC dan menampilkan laporan baku dalam Asia/Jakarta
-        (WIB). Pilihan di sini mengubah preferensi tampilan lokal pada perangkat Anda.
+        Server menyimpan data dalam standar UTC dan menampilkan laporan maupun jadwal rekap harian
+        sesuai zona waktu wilayah pilihan Anda (WIB / WITA / WIT).
       </p>
     </div>
   )
@@ -706,6 +714,8 @@ export function SchedulesBudgetSubView({
 }) {
   const [reportEnabled, setReportEnabled] = useState(() => settings?.report_enabled !== false)
   const [reportHour, setReportHour] = useState(() => Number(settings?.report_hour ?? 21))
+  const activeTzId = settings?.report_timezone || prefs.timezone || 'Asia/Jakarta'
+  const activeTzShort = getTimeZoneShortLabel(activeTzId)
   const [savingServer, setSavingServer] = useState(false)
   const [budgetRp, setBudgetRp] = useState(() => String(prefs.monthlyBudgetRp || ''))
   const [budgetEnabled, setBudgetEnabled] = useState(() => Boolean(prefs.budgetAlertEnabled))
@@ -720,9 +730,13 @@ export function SchedulesBudgetSubView({
       await onSaveSettings({
         report_enabled: Boolean(reportEnabled),
         report_hour: Number(reportHour),
+        report_timezone: prefs.timezone || activeTzId,
       })
       triggerHaptic(16)
-      setMsg({ type: 'success', text: 'Jadwal laporan harian berhasil disimpan ke akun Anda.' })
+      setMsg({
+        type: 'success',
+        text: `Jadwal laporan harian (${activeTzShort}) berhasil disimpan ke akun Anda.`,
+      })
     } catch (err) {
       setMsg({ type: 'error', text: err?.message || 'Gagal menyimpan jadwal laporan.' })
     } finally {
@@ -784,7 +798,7 @@ export function SchedulesBudgetSubView({
         </div>
 
         <label className="profile-subcard-label" style={{ display: 'block', marginBottom: 8 }}>
-          Jam Pengiriman (WIB)
+          Jam Pengiriman ({activeTzShort})
         </label>
         <div className="profile-hour-chip-grid">
           {[6, 8, 12, 18, 20, 21, 22, 23].map((hr) => (
@@ -1219,7 +1233,7 @@ export function EcosystemSubView({
             <span className="profile-ref-row-sub">
               {settings?.report_enabled === false
                 ? 'Laporan harian sedang dimatikan'
-                : `Dijadwalkan pukul ${String(settings?.report_hour ?? 21).padStart(2, '0')}:00 WIB`}
+                : `Dijadwalkan pukul ${String(settings?.report_hour ?? 21).padStart(2, '0')}:00 ${getPreferredTimeZoneTag()}`}
             </span>
           </span>
           <ChevronRight size={16} className="profile-ref-chevron" />
@@ -1695,7 +1709,9 @@ export function AboutDetailSubView({ appName, appTagline, theme, onOpenTerms }) 
           </div>
           <div className="profile-about-spec-item">
             <Clock size={13} />
-            <span>Standar Waktu: Asia/Jakarta (WIB)</span>
+            <span>
+              Zona Waktu: {getPreferredTimeZone()} ({getPreferredTimeZoneTag()})
+            </span>
           </div>
         </div>
 

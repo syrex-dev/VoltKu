@@ -204,7 +204,31 @@ async def test_scheduler_reschedule_daily_report():
     hour_field = next(str(f) for f in job.trigger.fields if f.name == "hour")
     assert hour_field == "22"
 
+    reschedule_daily_report(20, "Asia/Makassar")
+    job_wita = scheduler.get_job("daily_report_job")
+    hour_wita = next(str(f) for f in job_wita.trigger.fields if f.name == "hour")
+    assert hour_wita == "20"
+    assert str(job_wita.trigger.timezone) == "Asia/Makassar"
+
     scheduler.shutdown(wait=False)
+
+
+def test_daily_report_and_catchup_honor_wita_wit_timezone():
+    """Saat zona waktu diset ke WITA/WIT, jadwal & label laporan memakai zona tersebut."""
+    _, session = get_test_session()
+    sent_msgs = []
+    set_notification_sender(lambda m: sent_msgs.append(m) or True)
+
+    session.add(Setting(key="report_timezone", value="Asia/Makassar"))
+    session.add(Device(id="dev-wita", name="Panel Makassar", mcb_watt=2200, status="online"))
+    session.commit()
+
+    # 21:10 WITA (= 20:10 WIB) sudah melewati jam 21:00 WITA
+    dt_wita = datetime(2026, 11, 20, 21, 10, 0, tzinfo=ZoneInfo("Asia/Makassar"))
+    actions = check_and_send_catchup_reports(session, now_dt=dt_wita)
+    assert actions == ["catchup_daily_2026-11-20"]
+    assert len(sent_msgs) == 1
+    assert "WITA" in sent_msgs[0]
 
 
 def test_catchup_reports_restart_2230_sends_once_and_no_duplicate():

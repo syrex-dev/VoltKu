@@ -12,9 +12,20 @@ from app.db import SessionLocal
 from app.models import Device, ScheduledReportsLog, Setting
 from app.services.notifier import is_channel_configured, send_alert_notification
 from app.services.reports import calculate_device_forecast, calculate_device_summary
+from app.services.timezone_utils import (
+    DEFAULT_TIMEZONE_ID,
+    get_timezone_short_label,
+    normalize_timezone_name,
+    resolve_zoneinfo,
+)
 
 logger = logging.getLogger(__name__)
-TZ_WIB = ZoneInfo("Asia/Jakarta")
+TZ_WIB = ZoneInfo(DEFAULT_TIMEZONE_ID)
+
+
+def _get_report_timezone(session: Session) -> str:
+    val = session.scalar(select(Setting.value).where(Setting.key == "report_timezone"))
+    return normalize_timezone_name(val)
 
 
 def _format_id_number(val: float, decimals: int = 3) -> str:
@@ -57,10 +68,14 @@ def generate_and_send_daily_report(
         logger.info("Daily report skipped: report_enabled is False in settings.")
         return False
 
+    tz_name = _get_report_timezone(session)
+    report_tz = resolve_zoneinfo(tz_name)
+    tz_short = get_timezone_short_label(tz_name)
+
     now_dt = (
-        datetime.fromtimestamp(now_ts, tz=TZ_WIB)
+        datetime.fromtimestamp(now_ts, tz=report_tz)
         if now_ts is not None
-        else datetime.now(TZ_WIB)
+        else datetime.now(report_tz)
     )
     if target_date_str is None:
         target_date_str = now_dt.strftime("%Y-%m-%d")
@@ -95,7 +110,7 @@ def generate_and_send_daily_report(
 
     # Bangun pesan laporan harian
     reports_sent = 0
-    t_date = datetime.strptime(target_date_str, "%Y-%m-%d").replace(tzinfo=TZ_WIB)
+    t_date = datetime.strptime(target_date_str, "%Y-%m-%d").replace(tzinfo=report_tz)
     date_formatted = t_date.strftime("%d %b %Y")
 
     for dev in eligible_devices:
@@ -117,10 +132,10 @@ def generate_and_send_daily_report(
 
         peak_w_str = _format_id_number(summary["peak_w"], 1)
         if summary.get("peak_ts"):
-            peak_dt = datetime.fromtimestamp(summary["peak_ts"], tz=TZ_WIB)
-            peak_time_str = peak_dt.strftime("%H.%M WIB")
+            peak_dt = datetime.fromtimestamp(summary["peak_ts"], tz=report_tz)
+            peak_time_str = peak_dt.strftime(f"%H.%M {tz_short}")
         else:
-            peak_time_str = "- WIB"
+            peak_time_str = f"- {tz_short}"
 
         if forecast.get("available"):
             cost_proj = _format_rupiah(forecast["projected_cost_rp"])
@@ -177,10 +192,13 @@ def generate_and_send_weekly_report(
         logger.info("Weekly report skipped: report_enabled is False in settings.")
         return False
 
+    tz_name = _get_report_timezone(session)
+    report_tz = resolve_zoneinfo(tz_name)
+
     now_dt = (
-        datetime.fromtimestamp(now_ts, tz=TZ_WIB)
+        datetime.fromtimestamp(now_ts, tz=report_tz)
         if now_ts is not None
-        else datetime.now(TZ_WIB)
+        else datetime.now(report_tz)
     )
     if target_date_str is None:
         target_date_str = now_dt.strftime("%Y-%m-%d")
@@ -209,7 +227,7 @@ def generate_and_send_weekly_report(
         return False
 
     reports_sent = 0
-    t_date = datetime.strptime(target_date_str, "%Y-%m-%d").replace(tzinfo=TZ_WIB)
+    t_date = datetime.strptime(target_date_str, "%Y-%m-%d").replace(tzinfo=report_tz)
     # Rentang 7 hari terakhir (Senin s.d. Minggu)
     start_week = t_date - timedelta(days=6)
     range_label = f"{start_week.strftime('%d %b')} - {t_date.strftime('%d %b %Y')}"
@@ -304,16 +322,18 @@ def check_and_send_catchup_reports(
     if not is_report_enabled(session):
         return []
 
-    now_wib = now_dt if now_dt is not None else datetime.now(TZ_WIB)
-    today_str = now_wib.strftime("%Y-%m-%d")
-    now_ts = int(now_wib.timestamp())
+    tz_name = _get_report_timezone(session)
+    report_tz = resolve_zoneinfo(tz_name)
+    now_local = now_dt.astimezone(report_tz) if now_dt is not None else datetime.now(report_tz)
+    today_str = now_local.strftime("%Y-%m-%d")
+    now_ts = int(now_local.timestamp())
     actions: list[str] = []
 
     # 1. Catch-up harian
     report_hour_setting = session.scalar(select(Setting.value).where(Setting.key == "report_hour"))
     report_hour = int(report_hour_setting) if report_hour_setting else 21
 
-    if now_wib.hour >= report_hour:
+    if now_local.hour >= report_hour:
         sent_daily = session.scalar(
             select(ScheduledReportsLog).where(
                 ScheduledReportsLog.report_type == "daily",
@@ -328,7 +348,7 @@ def check_and_send_catchup_reports(
                 actions.append(f"catchup_daily_{today_str}")
 
     # 2. Catch-up mingguan: hanya di hari Minggu (weekday == 6) jam >= 20
-    if now_wib.weekday() == 6 and now_wib.hour >= 20:
+    if now_local.weekday() == 6 and now_local.hour >= 20:
         sent_weekly = session.scalar(
             select(ScheduledReportsLog).where(
                 ScheduledReportsLog.report_type == "weekly",

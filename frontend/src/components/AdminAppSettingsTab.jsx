@@ -137,6 +137,7 @@ export function AdminAppSettingsTab({
         alert_cooldown_min: parseInt(form.alert_cooldown_min, 10) || 30,
         extra_percent: parseFloat(form.extra_percent) || 0,
         report_hour: parseInt(form.report_hour, 10) || 21,
+        report_timezone: form.report_timezone || 'Asia/Jakarta',
         report_enabled: Boolean(form.report_enabled),
       }
       const updated = await apiRequest(
@@ -793,7 +794,7 @@ export function AdminAppSettingsTab({
                 </div>
                 <div className="form-field-group">
                   <label className="field-label" htmlFor="cfg-op-hour">
-                    Jam Rekap Laporan Harian (WIB)
+                    Jam Rekap Laporan Harian
                   </label>
                   <input
                     id="cfg-op-hour"
@@ -806,13 +807,29 @@ export function AdminAppSettingsTab({
                     required
                   />
                 </div>
+                <div className="form-field-group">
+                  <label className="field-label" htmlFor="cfg-op-timezone">
+                    Zona Waktu Rekap Default
+                  </label>
+                  <InAppSelect
+                    id="cfg-op-timezone"
+                    value={form.report_timezone || 'Asia/Jakarta'}
+                    onChange={(val) => updateField('report_timezone', val)}
+                    ariaLabel="Zona Waktu Rekap Default"
+                    options={[
+                      { value: 'Asia/Jakarta', label: 'WIB (Asia/Jakarta · UTC+7)' },
+                      { value: 'Asia/Makassar', label: 'WITA (Asia/Makassar · UTC+8)' },
+                      { value: 'Asia/Jayapura', label: 'WIT (Asia/Jayapura · UTC+9)' },
+                    ]}
+                  />
+                </div>
               </div>
 
               <div className="admin-toggle-row">
                 <div>
                   <div className="admin-row-title">Aktifkan Jadwal Rekap Harian</div>
                   <div className="admin-row-sub">
-                    Mengirim ringkasan pemakaian harian otomatis sesuai jam WIB di atas.
+                    Mengirim ringkasan pemakaian harian otomatis sesuai jam &amp; zona waktu di atas.
                   </div>
                 </div>
                 <button

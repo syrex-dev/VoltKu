@@ -456,7 +456,7 @@ export function PlanUpgradeModal({
     }
   }
 
-  const handleCancelOrder = async () => {
+  const cancelPendingOrder = async ({ nextStage = 'tier', feedbackText = '' } = {}) => {
     if (!token || !pending?.id) return
     setCancelling(true)
     setFeedback(null)
@@ -468,12 +468,12 @@ export function PlanUpgradeModal({
         onLogout
       )
       setLocalPending(null)
-      setBrowseStage('method')
+      setBrowseStage(nextStage)
       setProofBase64('')
       setProofName('')
       setFeedback({
         type: 'success',
-        text: 'Tagihan sebelumnya dibatalkan. Silakan pilih paket atau metode lain.',
+        text: feedbackText || 'Transaksi dibatalkan.',
       })
       if (onUpgradeSubmitted) await onUpgradeSubmitted()
     } catch (err) {
@@ -481,6 +481,22 @@ export function PlanUpgradeModal({
     } finally {
       setCancelling(false)
     }
+  }
+
+  const handleChangeMethod = async () => {
+    if (pending?.requested_tier) setSelectedPlanSlug(pending.requested_tier)
+    if (pending?.billing_cycle) setBillingCycle(pending.billing_cycle)
+    await cancelPendingOrder({
+      nextStage: 'method',
+      feedbackText: 'Tagihan sebelumnya dibatalkan. Silakan pilih metode pembayaran lain.',
+    })
+  }
+
+  const handleCancelOrder = async () => {
+    await cancelPendingOrder({
+      nextStage: 'tier',
+      feedbackText: 'Transaksi dibatalkan. Anda dapat memilih paket lain kapan saja.',
+    })
   }
 
   const pendingTypeMeta = TYPE_META[pending?.payment_method_type] || TYPE_META.bank
@@ -840,15 +856,26 @@ export function PlanUpgradeModal({
                       {submitting ? 'Mengirim Bukti...' : 'Saya Sudah Bayar & Kirim Bukti'}
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={cancelling || submitting}
-                    onClick={handleCancelOrder}
-                  >
-                    <RotateCcw size={14} />
-                    <span>{cancelling ? 'Membatalkan...' : 'Ganti Metode'}</span>
-                  </button>
+                  <div className="plan-cta-secondary-row">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={cancelling || submitting}
+                      onClick={handleChangeMethod}
+                    >
+                      <RotateCcw size={14} />
+                      <span>{cancelling ? 'Memproses...' : 'Ganti Metode'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger-ghost"
+                      disabled={cancelling || submitting}
+                      onClick={handleCancelOrder}
+                    >
+                      <XCircle size={14} />
+                      <span>{cancelling ? 'Membatalkan...' : 'Batalkan Transaksi'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -857,7 +884,7 @@ export function PlanUpgradeModal({
                   type="button"
                   className="btn btn-primary plan-cta-primary"
                   disabled={cancelling}
-                  onClick={handleCancelOrder}
+                  onClick={handleChangeMethod}
                 >
                   <RotateCcw size={15} />
                   <span>Buat Tagihan Baru</span>

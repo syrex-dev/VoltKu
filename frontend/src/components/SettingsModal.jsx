@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { X, Check, Sliders, Shield } from 'lucide-react'
+import { getPreferredTimeZoneTag } from '../utils/formatters'
 
 export function SettingsModal({
   isOpen,
@@ -189,7 +190,7 @@ export function SettingsModal({
                 max="23"
                 required
               />
-              <span className="input-affix-suffix">:00 WIB</span>
+              <span className="input-affix-suffix">:00 {getPreferredTimeZoneTag()}</span>
             </div>
           </div>
 

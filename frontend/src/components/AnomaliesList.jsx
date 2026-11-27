@@ -8,7 +8,7 @@ import {
   TrendingUp,
   Moon,
 } from 'lucide-react'
-import { formatDateTimeWIB } from '../utils/formatters'
+import { formatDateTimeWIB, getPreferredTimeZoneTag } from '../utils/formatters'
 
 function getAnomalyMeta(item) {
   const type = item?.type || ''
@@ -142,7 +142,7 @@ export function AnomaliesList({
                   {desc && <p className="anomaly-item-desc">{desc}</p>}
 
                   <div className="anomaly-item-time num-tabular">
-                    {formatDateTimeWIB(item.ts)} WIB
+                    {formatDateTimeWIB(item.ts)} {getPreferredTimeZoneTag()}
                   </div>
                 </div>
               </div>

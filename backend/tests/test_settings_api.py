@@ -115,4 +115,36 @@ def test_patch_settings_rejects_nan_inf_and_out_of_bounds():
     res_h_24 = client.patch("/api/settings", json={"report_hour": 24}, headers=auth_headers)
     assert res_h_24.status_code == 422
 
+    # Tolak report_timezone tidak dikenal
+    res_tz_bad = client.patch(
+        "/api/settings", json={"report_timezone": "Mars/Olympus"}, headers=auth_headers
+    )
+    assert res_tz_bad.status_code == 422
+
+    app.dependency_overrides.clear()
+
+
+def test_patch_settings_supports_wita_and_wit_timezones():
+    setup_test_db()
+    res_default = client.get("/api/settings", headers=auth_headers)
+    assert res_default.status_code == 200
+    assert res_default.json()["report_timezone"] == "Asia/Jakarta"
+
+    res_wita = client.patch(
+        "/api/settings",
+        json={"report_hour": 20, "report_timezone": "Asia/Makassar"},
+        headers=auth_headers,
+    )
+    assert res_wita.status_code == 200
+    assert res_wita.json()["report_hour"] == 20
+    assert res_wita.json()["report_timezone"] == "Asia/Makassar"
+
+    res_wit = client.patch(
+        "/api/settings",
+        json={"report_timezone": "Asia/Jayapura"},
+        headers=auth_headers,
+    )
+    assert res_wit.status_code == 200
+    assert res_wit.json()["report_timezone"] == "Asia/Jayapura"
+
     app.dependency_overrides.clear()

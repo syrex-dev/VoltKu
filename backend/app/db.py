@@ -163,6 +163,7 @@ def init_db(target_engine: Engine = engine) -> None:
         "power_limit_w": "2200",
         "alert_cooldown_min": "30",
         "report_hour": "21",
+        "report_timezone": "Asia/Jakarta",
         "report_enabled": "true",
     }
     local_session = sessionmaker(autocommit=False, autoflush=False, bind=target_engine)

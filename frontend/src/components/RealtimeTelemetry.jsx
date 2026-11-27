@@ -1,6 +1,12 @@
 import React from 'react'
 import { Zap, Wifi, WifiOff, ChevronRight } from 'lucide-react'
-import { formatNum, formatRp, formatTimeWIB, formatDateTimeWIB } from '../utils/formatters'
+import {
+  formatNum,
+  formatRp,
+  formatTimeWIB,
+  formatDateTimeWIB,
+  getPreferredTimeZoneTag,
+} from '../utils/formatters'
 
 export function RealtimeTelemetry({
   latest,
@@ -166,7 +172,7 @@ export function RealtimeTelemetry({
           <div className="grouped-row">
             <span className="grouped-row-label">Pembaruan Data</span>
             <span className="grouped-row-val num-tabular">
-              {ts ? `${formatTimeWIB(ts)} WIB` : '-'}
+              {ts ? `${formatTimeWIB(ts)} ${getPreferredTimeZoneTag()}` : '-'}
             </span>
           </div>
         </div>

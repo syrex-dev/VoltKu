@@ -10,6 +10,7 @@ from app.auth import get_current_user
 from app.db import get_db
 from app.models import Setting, UserSetting
 from app.services.scheduler import reschedule_daily_report
+from app.services.timezone_utils import is_supported_timezone, normalize_timezone_name
 
 router = APIRouter(
     prefix="/api/settings", tags=["Settings"], dependencies=[Depends(get_current_user)]
@@ -23,6 +24,7 @@ class SettingsResponse(BaseModel):
     alert_cooldown_min: int
     extra_percent: float
     report_hour: int
+    report_timezone: str = "Asia/Jakarta"
     report_enabled: bool
 
 
@@ -32,6 +34,7 @@ class SettingsUpdateRequest(BaseModel):
     alert_cooldown_min: Optional[int] = None
     extra_percent: Optional[float] = None
     report_hour: Optional[int] = None
+    report_timezone: Optional[str] = None
     report_enabled: Optional[bool] = None
 
 
@@ -57,6 +60,7 @@ def format_settings_response(settings_map: dict[str, str]) -> dict[str, Any]:
         "alert_cooldown_min": int(settings_map.get("alert_cooldown_min", "30")),
         "extra_percent": float(settings_map.get("extra_percent", "0.0")),
         "report_hour": int(settings_map.get("report_hour", "21")),
+        "report_timezone": normalize_timezone_name(settings_map.get("report_timezone")),
         "report_enabled": settings_map.get("report_enabled", "true").lower() in ("true", "1"),
     }
 
@@ -100,6 +104,7 @@ def apply_settings_updates(
     alert_cooldown_min: Optional[int] = None,
     extra_percent: Optional[float] = None,
     report_hour: Optional[int] = None,
+    report_timezone: Optional[str] = None,
     report_enabled: Optional[bool] = None,
     user_id: Optional[int] = None,
 ) -> None:
@@ -178,8 +183,34 @@ def apply_settings_updates(
                 detail={"error": {"code": 422, "message": "Report hour must be between 0 and 23"}},
             )
         _upsert_setting(session, "report_hour", str(report_hour), user_id=user_id)
-        if user_id is None:
-            reschedule_daily_report(report_hour)
+
+    if report_timezone is not None:
+        if not is_supported_timezone(report_timezone):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": 422,
+                        "message": (
+                            "Timezone tidak valid. Gunakan Asia/Jakarta (WIB), "
+                            "Asia/Makassar (WITA), Asia/Jayapura (WIT), Asia/Singapore, atau UTC."
+                        ),
+                    }
+                },
+            )
+        _upsert_setting(
+            session,
+            "report_timezone",
+            normalize_timezone_name(report_timezone),
+            user_id=user_id,
+        )
+
+    if user_id is None and (report_hour is not None or report_timezone is not None):
+        merged_global = get_all_settings(session, user_id=None)
+        reschedule_daily_report(
+            int(merged_global.get("report_hour", "21")),
+            normalize_timezone_name(merged_global.get("report_timezone")),
+        )
 
     if report_enabled is not None:
         val_str = "true" if report_enabled else "false"
@@ -201,6 +232,7 @@ def update_settings_endpoint(
         alert_cooldown_min=req.alert_cooldown_min,
         extra_percent=req.extra_percent,
         report_hour=req.report_hour,
+        report_timezone=req.report_timezone,
         report_enabled=req.report_enabled,
         user_id=uid,
     )

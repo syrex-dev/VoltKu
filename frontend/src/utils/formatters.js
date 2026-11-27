@@ -1,6 +1,7 @@
-import { getPreferredTimeZone } from './userPrefs'
+import { getPreferredTimeZone, getTimeZoneShortLabel } from './userPrefs'
 
-// Formatters (Default strict Intl Asia/Jakarta, mendukung preferensi zona tampilan user)
+// Formatters (Default Asia/Jakarta, otomatis mengikuti preferensi zona waktu user WIB/WITA/WIT)
+export const getPreferredTimeZoneTag = () => getTimeZoneShortLabel(getPreferredTimeZone())
 export const formatRp = (val) => {
   if (val === null || val === undefined || isNaN(val)) return 'Rp -'
   return new Intl.NumberFormat('id-ID', {

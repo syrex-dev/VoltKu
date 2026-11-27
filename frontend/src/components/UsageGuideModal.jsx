@@ -290,9 +290,10 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
                   <div className="ug-feat-copy">
                     <strong>2. Atur Golongan Tarif PLN &amp; Batas MCB</strong>
                     <p>
-                      Buka tab <strong>Setelan</strong> atau ketuk <strong>Atur Alat</strong> pada
-                      panel untuk memilih tarif PLN R-1/R-2/Bisnis agar hitungan biaya Rupiah dan
-                      proyeksi akhir bulan akurat sesuai meteran rumah.
+                      Buka tab <strong>Tarif &amp; Daya</strong> atau ketuk{' '}
+                      <strong>Atur Alat</strong> pada panel untuk memilih tarif PLN R-1/R-2/Bisnis
+                      agar hitungan biaya Rupiah dan proyeksi akhir bulan akurat sesuai meteran
+                      rumah.
                     </p>
                   </div>
                 </div>

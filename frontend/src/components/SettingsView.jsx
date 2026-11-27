@@ -16,11 +16,17 @@ import {
   RotateCcw,
   Calculator,
   Clock,
+  Globe,
   Sun,
   Moon,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatNum, formatRp } from '../utils/formatters'
+import {
+  INDONESIAN_TIMEZONES,
+  getTimeZoneShortLabel,
+  useUserPrefs,
+} from '../utils/userPrefs'
 
 const PRESET_ROOMS = ['Panel Utama', 'Ruang Tamu', 'Kamar Tidur', 'Dapur', 'Lantai 2', 'Warung']
 
@@ -177,12 +183,12 @@ function TariffPresetDropdown({ currentTariffNum, selectedPresetId, disabled, on
   )
 }
 
-function formatHourLabel(hour) {
+function formatHourLabel(hour, tzShort = 'WIB') {
   const h = Math.max(0, Math.min(23, Number(hour) || 0))
-  return `${String(h).padStart(2, '0')}:00 WIB`
+  return `${String(h).padStart(2, '0')}:00 ${tzShort}`
 }
 
-function HourPickerDropdown({ value, disabled, onChange }) {
+function HourPickerDropdown({ value, tzShort = 'WIB', disabled, onChange }) {
   const [isOpen, setIsOpen] = useState(false)
   const wrapRef = useRef(null)
 
@@ -217,7 +223,7 @@ function HourPickerDropdown({ value, disabled, onChange }) {
       >
         <span className="settings-hour-trigger-left">
           <Clock size={15} />
-          <span className="num-tabular">{formatHourLabel(value)}</span>
+          <span className="num-tabular">{formatHourLabel(value, tzShort)}</span>
         </span>
         <ChevronDown size={15} className="settings-hour-caret" />
       </button>
@@ -226,7 +232,7 @@ function HourPickerDropdown({ value, disabled, onChange }) {
         <div className="settings-hour-popover" role="listbox" aria-label="Pilih jam laporan harian">
           <div className="header-panel-popover-head">
             <span>Pilih Jam Kirim</span>
-            <span className="header-panel-count">WIB</span>
+            <span className="header-panel-count">{tzShort}</span>
           </div>
           <div className="settings-hour-grid">
             {Array.from({ length: 24 }, (_, hour) => {
@@ -271,12 +277,14 @@ export function SettingsView({
   onOpenTerms,
   appConfig = {},
 }) {
+  const { prefs, updatePrefs } = useUserPrefs()
   const [tariff, setTariff] = useState('1444.70')
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [powerLimit, setPowerLimit] = useState(2200)
   const [cooldown, setCooldown] = useState(30)
   const [extraPercent, setExtraPercent] = useState(0)
   const [reportHour, setReportHour] = useState(21)
+  const [reportTimezone, setReportTimezone] = useState(() => prefs.timezone || 'Asia/Jakarta')
   const [reportEnabled, setReportEnabled] = useState(true)
   const [sysMsg, setSysMsg] = useState(null)
   const [sysErr, setSysErr] = useState(false)
@@ -298,6 +306,7 @@ export function SettingsView({
         cooldown: 30,
         extraPercent: 0,
         reportHour: 21,
+        reportTimezone: prefs.timezone || 'Asia/Jakarta',
         reportEnabled: true,
       }
     }
@@ -311,9 +320,10 @@ export function SettingsView({
       cooldown: settings.alert_cooldown_min ?? 30,
       extraPercent: settings.extra_percent ?? 0,
       reportHour: settings.report_hour ?? 21,
+      reportTimezone: settings.report_timezone || prefs.timezone || 'Asia/Jakarta',
       reportEnabled: settings.report_enabled !== false,
     }
-  }, [settings])
+  }, [settings, prefs.timezone])
 
   useEffect(() => {
     setTariff(syncedSnapshot.tariff)
@@ -321,6 +331,7 @@ export function SettingsView({
     setCooldown(syncedSnapshot.cooldown)
     setExtraPercent(syncedSnapshot.extraPercent)
     setReportHour(syncedSnapshot.reportHour)
+    setReportTimezone(syncedSnapshot.reportTimezone)
     setReportEnabled(syncedSnapshot.reportEnabled)
   }, [syncedSnapshot])
 
@@ -338,6 +349,7 @@ export function SettingsView({
   const parsedExtraPct = Number(extraPercent) || 0
   const effectiveTariffPerKwh = parsedBaseTariff * (1 + Math.max(0, parsedExtraPct) / 100)
   const sample100KwhCost = Math.round(effectiveTariffPerKwh * 100)
+  const activeTzShort = getTimeZoneShortLabel(reportTimezone || prefs.timezone)
 
   const isDirty =
     mode === 'global' &&
@@ -346,6 +358,7 @@ export function SettingsView({
       Number(cooldown) !== Number(syncedSnapshot.cooldown) ||
       Number(extraPercent) !== Number(syncedSnapshot.extraPercent) ||
       Number(reportHour) !== Number(syncedSnapshot.reportHour) ||
+      String(reportTimezone) !== String(syncedSnapshot.reportTimezone) ||
       Boolean(reportEnabled) !== Boolean(syncedSnapshot.reportEnabled))
 
   const handleResetSystem = () => {
@@ -354,6 +367,7 @@ export function SettingsView({
     setCooldown(syncedSnapshot.cooldown)
     setExtraPercent(syncedSnapshot.extraPercent)
     setReportHour(syncedSnapshot.reportHour)
+    setReportTimezone(syncedSnapshot.reportTimezone)
     setReportEnabled(syncedSnapshot.reportEnabled)
     setSysMsg(null)
     setSysErr(false)
@@ -418,11 +432,13 @@ export function SettingsView({
       alert_cooldown_min: parseInt(cooldown, 10),
       extra_percent: parseFloat(extraPercent) || 0,
       report_hour: parseInt(reportHour, 10),
+      report_timezone: reportTimezone || 'Asia/Jakarta',
       report_enabled: Boolean(reportEnabled),
     }
 
     try {
       await onSave(payload)
+      updatePrefs({ timezone: payload.report_timezone })
       setSysErr(false)
       setSysMsg('Pengaturan tarif & peringatan berhasil disimpan.')
       setTimeout(() => setSysMsg(null), 3000)
@@ -599,7 +615,7 @@ export function SettingsView({
   return (
     <div className="settings-single-wrap settings-stack-col">
       {/* Ringkasan Konfigurasi Aktif */}
-      <section className="settings-overview-strip" aria-label="Ringkasan setelan aktif">
+      <section className="settings-overview-strip" aria-label="Ringkasan tarif dan daya aktif">
         <div className="settings-overview-pill">
           <span className="settings-overview-label">Tarif Efektif</span>
           <strong className="settings-overview-val num-tabular">
@@ -615,7 +631,7 @@ export function SettingsView({
         <div className="settings-overview-pill">
           <span className="settings-overview-label">Rekap Harian</span>
           <strong className="settings-overview-val num-tabular">
-            {reportEnabled ? formatHourLabel(reportHour) : 'Nonaktif'}
+            {reportEnabled ? formatHourLabel(reportHour, activeTzShort) : 'Nonaktif'}
           </strong>
         </div>
       </section>
@@ -833,8 +849,37 @@ export function SettingsView({
 
             {reportEnabled && (
               <div className="settings-report-hour-block">
+                <label className="field-label">
+                  Zona Waktu Daerah (WIB / WITA / WIT)
+                </label>
+                <div className="settings-tz-pills">
+                  {INDONESIAN_TIMEZONES.map((z) => {
+                    const activeZone = (reportTimezone || 'Asia/Jakarta') === z.id
+                    return (
+                      <button
+                        key={z.id}
+                        type="button"
+                        disabled={!isAuthenticated}
+                        className={`settings-tz-pill ${activeZone ? 'selected' : ''}`}
+                        onClick={() => {
+                          setReportTimezone(z.id)
+                          updatePrefs({ timezone: z.id })
+                        }}
+                      >
+                        <Globe size={12} />
+                        <strong>{z.short}</strong>
+                        <span>{z.offset}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <small className="field-hint" style={{ display: 'block', marginBottom: 10 }}>
+                  Waktu dicatat UTC di server dan dikirim serta ditampilkan sesuai zona lokal Anda (
+                  {activeTzShort}).
+                </small>
+
                 <label className="field-label" htmlFor="settings-view-report-hour">
-                  Jam Kirim Rekap Harian
+                  Jam Kirim Rekap Harian ({activeTzShort})
                 </label>
                 <div className="room-chips-row cols-4" style={{ marginBottom: 8 }}>
                   {REPORT_HOUR_QUICK.map((h) => (
@@ -842,15 +887,19 @@ export function SettingsView({
                       key={h}
                       type="button"
                       disabled={!isAuthenticated}
-                      className={`room-chip num-tabular ${Number(reportHour) === h ? 'selected' : ''}`}
+                      className={`room-chip is-hour-chip num-tabular ${
+                        Number(reportHour) === h ? 'selected' : ''
+                      }`}
                       onClick={() => setReportHour(h)}
                     >
-                      {formatHourLabel(h)}
+                      <span>{String(h).padStart(2, '0')}:00</span>
+                      <span className="hour-chip-tz">{activeTzShort}</span>
                     </button>
                   ))}
                 </div>
                 <HourPickerDropdown
                   value={reportHour}
+                  tzShort={activeTzShort}
                   disabled={!isAuthenticated}
                   onChange={(hour) => setReportHour(hour)}
                 />
@@ -873,7 +922,7 @@ export function SettingsView({
                   </button>
                 </div>
               ) : (
-                <span className="settings-synced-note">Setelan sudah tersinkronisasi</span>
+                <span className="settings-synced-note">Tarif &amp; aturan sudah tersinkronisasi</span>
               )}
 
               <button

@@ -4,7 +4,7 @@ import {
   Zap,
   BarChart3,
   ShieldAlert,
-  Sliders,
+  SlidersHorizontal,
   Bell,
   Settings2,
   User,
@@ -233,7 +233,7 @@ export function Header({
   const homeNav = [
     { id: 'alerts', label: getUiText(loc, 'navAlerts'), icon: Bell, badge: globalAnomalyCount },
     { id: 'home', label: getUiText(loc, 'navHome'), icon: Home, isCenterHome: true },
-    { id: 'settings', label: getUiText(loc, 'navSettings'), icon: Sliders },
+    { id: 'settings', label: getUiText(loc, 'navSettings'), icon: SlidersHorizontal },
   ]
 
   const deviceNav = [

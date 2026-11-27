@@ -271,6 +271,7 @@ class AdminAppSettingsUpdateRequest(BaseModel):
     alert_cooldown_min: Optional[int] = None
     extra_percent: Optional[float] = None
     report_hour: Optional[int] = None
+    report_timezone: Optional[str] = None
     report_enabled: Optional[bool] = None
 
 

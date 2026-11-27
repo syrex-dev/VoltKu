@@ -17,11 +17,17 @@ from app.services.report_generator import (
     run_weekly_report_job,
 )
 from app.services.retention import run_retention_job
+from app.services.timezone_utils import (
+    DEFAULT_TIMEZONE_ID,
+    get_timezone_short_label,
+    normalize_timezone_name,
+    resolve_zoneinfo,
+)
 
 logger = logging.getLogger(__name__)
-TZ_WIB = ZoneInfo("Asia/Jakarta")
+TZ_WIB = ZoneInfo(DEFAULT_TIMEZONE_ID)
 
-# Konfigurasi scheduler: Asia/Jakarta, 1 worker, coalesce=True, misfire_grace_time=3600s
+# Konfigurasi scheduler: 1 worker, coalesce=True, misfire_grace_time=3600s
 scheduler = AsyncIOScheduler(
     timezone=TZ_WIB,
     job_defaults={
@@ -32,32 +38,59 @@ scheduler = AsyncIOScheduler(
 )
 
 
-def _get_setting_report_hour() -> int:
+def _get_setting_report_schedule() -> tuple[int, str]:
+    hour_val = 21
+    tz_val = DEFAULT_TIMEZONE_ID
     try:
         with SessionLocal() as session:
-            val = session.scalar(select(Setting.value).where(Setting.key == "report_hour"))
-            if val is not None:
-                return int(val)
+            raw_hour = session.scalar(select(Setting.value).where(Setting.key == "report_hour"))
+            if raw_hour is not None:
+                hour_val = int(raw_hour)
+            raw_tz = session.scalar(select(Setting.value).where(Setting.key == "report_timezone"))
+            if raw_tz:
+                tz_val = normalize_timezone_name(raw_tz)
     except Exception as err:
-        logger.warning("Could not read report_hour from DB: %s", err)
-    return 21
+        logger.warning("Could not read report schedule from DB: %s", err)
+    return hour_val, tz_val
 
 
-def reschedule_daily_report(new_hour: int) -> None:
-    """Memperbarui jadwal laporan harian sesuai nilai baru settings.report_hour."""
+def _get_setting_report_hour() -> int:
+    hour_val, _ = _get_setting_report_schedule()
+    return hour_val
+
+
+def reschedule_daily_report(
+    new_hour: Optional[int] = None,
+    timezone_name: Optional[str] = None,
+) -> None:
+    """Memperbarui jadwal laporan harian sesuai jam & zona waktu (WIB/WITA/WIT)."""
     if not scheduler.running:
         return
     job = scheduler.get_job("daily_report_job")
     if job:
-        trigger = CronTrigger(hour=new_hour, minute=0, timezone=TZ_WIB)
+        db_hour, db_tz = _get_setting_report_schedule()
+        target_hour = db_hour if new_hour is None else int(new_hour)
+        target_tz = normalize_timezone_name(timezone_name or db_tz)
+        trigger = CronTrigger(hour=target_hour, minute=0, timezone=resolve_zoneinfo(target_tz))
         scheduler.reschedule_job("daily_report_job", trigger=trigger)
-        logger.info("Rescheduled daily_report_job to %02d:00 WIB", new_hour)
+        logger.info(
+            "Rescheduled daily_report_job to %02d:00 %s (%s)",
+            target_hour,
+            get_timezone_short_label(target_tz),
+            target_tz,
+        )
 
 
-def init_scheduler_jobs(report_hour: Optional[int] = None) -> None:
+def init_scheduler_jobs(
+    report_hour: Optional[int] = None,
+    report_timezone: Optional[str] = None,
+) -> None:
     """Mendaftarkan seluruh background job terjadwal."""
+    db_hour, db_tz = _get_setting_report_schedule()
     if report_hour is None:
-        report_hour = _get_setting_report_hour()
+        report_hour = db_hour
+    tz_name = normalize_timezone_name(report_timezone or db_tz)
+    report_tz = resolve_zoneinfo(tz_name)
 
     # 1. Job Alert L1: dievaluasi tiap 15 detik dari jendela readings (bukan jalur ingest)
     if not scheduler.get_job("alert_l1_job"):
@@ -81,11 +114,11 @@ def init_scheduler_jobs(report_hour: Optional[int] = None) -> None:
             coalesce=True,
         )
 
-    # 3. Job Laporan Harian: mengikuti settings.report_hour (misal 21.00 WIB)
+    # 3. Job Laporan Harian: mengikuti report_hour & report_timezone pengguna/operator
     if not scheduler.get_job("daily_report_job"):
         scheduler.add_job(
             run_daily_report_job,
-            trigger=CronTrigger(hour=report_hour, minute=0, timezone=TZ_WIB),
+            trigger=CronTrigger(hour=report_hour, minute=0, timezone=report_tz),
             id="daily_report_job",
             replace_existing=True,
             max_instances=1,

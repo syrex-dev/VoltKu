@@ -27,6 +27,7 @@ import { formatDateTimeWIB, formatRp } from '../utils/formatters'
 import {
   APP_VERSION_TAG,
   clearAppLock,
+  detectDeviceTimeZone,
   getAppLockConfig,
   getUiText,
   triggerHaptic,
@@ -284,7 +285,7 @@ export function ProfileModal({
     setLockCfg(getAppLockConfig())
     updatePrefs({
       locale: 'id',
-      timezone: 'Asia/Jakarta',
+      timezone: detectDeviceTimeZone(),
       vibration: true,
       monthlyBudgetRp: 0,
       budgetAlertEnabled: false,
@@ -791,7 +792,13 @@ export function ProfileModal({
               )}
 
               {activeView === 'timezone' && (
-                <TimeZoneSubView prefs={prefs} updatePrefs={updatePrefs} />
+                <TimeZoneSubView
+                  prefs={prefs}
+                  updatePrefs={updatePrefs}
+                  onSyncServerTimezone={(tzId) =>
+                    onSaveSettings?.({ report_timezone: tzId })?.catch?.(() => {})
+                  }
+                />
               )}
 
               {activeView === 'schedules' && (
