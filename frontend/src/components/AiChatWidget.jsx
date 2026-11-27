@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Send, X, MessageCircle } from 'lucide-react'
-import { EnergyAssistantIcon } from './VoltKuIcons'
+import { Send, X } from 'lucide-react'
 import { apiRequest } from '../api/client'
+import mascotAvatarImg from '../assets/mascot/voltku-avatar.jpg'
+import mascotAnalyzeImg from '../assets/mascot/voltku-analyze.jpg'
 
 const QUICK_PROMPTS = [
   'Berapa biaya listrik hari ini?',
@@ -112,8 +113,10 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
           aria-label="Buka Asisten Energi VoltKu"
           title="Asisten Energi VoltKu"
         >
-          <EnergyAssistantIcon size={17} />
-          <span>Asisten</span>
+          <span className="ai-chat-fab-avatar" aria-hidden="true">
+            <img src={mascotAvatarImg} alt="" />
+          </span>
+          <span>Tanya VoltKu</span>
         </button>
       )}
 
@@ -121,7 +124,9 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
         <div className="ai-chat-drawer" role="dialog" aria-label="Asisten Energi VoltKu">
           <div className="ai-chat-header">
             <div className="ai-chat-title">
-              <EnergyAssistantIcon size={18} />
+              <span className="ai-chat-header-avatar" aria-hidden="true">
+                <img src={mascotAvatarImg} alt="" />
+              </span>
               <div>
                 <strong>Asisten Energi VoltKu</strong>
                 <span className="ai-chat-sub">Analisa pemakaian &amp; tagihan berbasis data riil</span>
@@ -140,7 +145,9 @@ export function AiChatWidget({ token, onUnauthorized, hidden = false }) {
           <div className="ai-chat-body" ref={scrollRef}>
             {messages.length === 0 && (
               <div className="ai-chat-empty">
-                <MessageCircle size={26} />
+                <div className="ai-chat-empty-illus" aria-hidden="true">
+                  <img src={mascotAnalyzeImg} alt="" />
+                </div>
                 <p>Tanyakan pemakaian kWh, jam paling boros, proyeksi tagihan, atau anomali panel Anda.</p>
                 <div className="ai-chat-chips">
                   {QUICK_PROMPTS.map((qp) => (

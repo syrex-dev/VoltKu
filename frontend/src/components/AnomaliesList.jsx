@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react'
 import {
-  ShieldCheck,
   AlertCircle,
   WifiOff,
   Zap,
@@ -9,6 +8,8 @@ import {
   Moon,
 } from 'lucide-react'
 import { formatDateTimeWIB, getPreferredTimeZoneTag } from '../utils/formatters'
+import mascotEcoBadgeImg from '../assets/mascot/voltku-eco-badge.jpg'
+import mascotAlertImg from '../assets/mascot/voltku-alert.jpg'
 
 function getAnomalyMeta(item) {
   const type = item?.type || ''
@@ -79,29 +80,53 @@ export function AnomaliesList({
       </div>
 
       {list.length > 0 && (
-        <div className="anomaly-filter-bar">
-          {[
-            { id: 'all', label: `Semua (${list.length})` },
-            { id: 'critical', label: `Kritis (${critCount})` },
-            { id: 'warning', label: `Peringatan (${warnCount})` },
-          ].map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              className={`admin-filter-pill ${sevFilter === f.id ? 'active' : ''}`}
-              onClick={() => setSevFilter(f.id)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="anomaly-alert-hero">
+            <span className="anomaly-alert-hero-thumb" aria-hidden="true">
+              <img src={mascotAlertImg} alt="" />
+            </span>
+            <div className="anomaly-alert-hero-copy">
+              <strong>
+                {critCount > 0
+                  ? `${critCount} Peringatan Kritis Memerlukan Perhatian`
+                  : `${warnCount} Catatan Peringatan Terdeteksi`}
+              </strong>
+              <span>
+                Periksa kondisi panel, tegangan, atau beban listrik Anda pada rincian di bawah.
+              </span>
+            </div>
+          </div>
+
+          <div className="anomaly-filter-bar">
+            {[
+              { id: 'all', label: `Semua (${list.length})` },
+              { id: 'critical', label: `Kritis (${critCount})` },
+              { id: 'warning', label: `Peringatan (${warnCount})` },
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={`admin-filter-pill ${sevFilter === f.id ? 'active' : ''}`}
+                onClick={() => setSevFilter(f.id)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       {visibleList.length === 0 ? (
         <div className="empty-healthy-card">
-          <div className="healthy-icon-wrap">
-            <ShieldCheck size={26} />
-          </div>
+          {list.length === 0 ? (
+            <div className="healthy-mascot-wrap" aria-hidden="true">
+              <img src={mascotEcoBadgeImg} alt="" />
+            </div>
+          ) : (
+            <div className="healthy-icon-wrap" aria-hidden="true">
+              <AlertCircle size={24} />
+            </div>
+          )}
           <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-main)' }}>
             {list.length === 0 ? 'Semua Berjalan Normal' : 'Tidak Ada Catatan pada Filter Ini'}
           </div>

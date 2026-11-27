@@ -29,6 +29,7 @@ import { formatDateTimeWIB, formatRp } from '../utils/formatters'
 import { compressImageToDataUrl } from '../utils/imageCompress'
 import { useAuthImage } from '../utils/authImage'
 import { emitSyncSignal, subscribeSyncSignal } from '../utils/liveSync'
+import mascotProBannerImg from '../assets/mascot/voltku-pro-banner.jpg'
 
 const TYPE_META = {
   qris: { label: 'QRIS', icon: QrCode },
@@ -1015,9 +1016,17 @@ export function PlanUpgradeModal({
 
             {/* TAHAP 1: Daftar Paket Dinamis dari Admin (Gratis + Semua Paket Berbayar Aktif) */}
             {browseStage === 'tier' && (
-              <div
-                className={`plan-compare-grid ${catalogPlans.length > 2 ? 'is-multi' : ''}`}
-              >
+              <>
+                <div className="plan-pro-showcase">
+                  <img
+                    src={mascotProBannerImg}
+                    alt="VoltKu Pro Monitoring Listrik Pintar"
+                    className="plan-pro-showcase-img"
+                  />
+                </div>
+                <div
+                  className={`plan-compare-grid ${catalogPlans.length > 2 ? 'is-multi' : ''}`}
+                >
                 {catalogPlans.map((planItem) => {
                   const isFreeCard = Boolean(planItem.is_default_free || planItem.slug === 'free')
                   const pBaseMonth = Number(planItem.price_monthly_rp ?? 0)
@@ -1232,6 +1241,7 @@ export function PlanUpgradeModal({
                   )
                 })}
               </div>
+              </>
             )}
 
             {/* TAHAP 2: Pilih Siklus Bulanan / Tahunan */}

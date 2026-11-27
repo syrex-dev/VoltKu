@@ -3,58 +3,13 @@ import { Zap, Wifi, WifiOff, Plus, LogIn, ShieldCheck, AlertTriangle, RotateCcw 
 import { HeroBannerCarousel } from './HeroBannerCarousel'
 import { RoomFilterBar } from './RoomFilterBar'
 import { formatNum } from '../utils/formatters'
+import mascotEmptyPanelImg from '../assets/mascot/voltku-empty-panel.jpg'
 
 function EmptySmartBoxIllustration() {
   return (
-    <svg viewBox="0 0 180 140" className="ewl-empty-svg" aria-hidden="true">
-      <defs>
-        <linearGradient id="ewlOrbBg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#dbeafe" stopOpacity="0.85" />
-          <stop offset="100%" stopColor="#eff6ff" stopOpacity="0.45" />
-        </linearGradient>
-        <linearGradient id="ewlBoxTop" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="100%" stopColor="#e2e8f0" />
-        </linearGradient>
-        <linearGradient id="ewlBoxFront" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f1f5f9" />
-          <stop offset="100%" stopColor="#cbd5e1" />
-        </linearGradient>
-        <linearGradient id="ewlBoltGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="100%" stopColor="#1677ff" />
-        </linearGradient>
-      </defs>
-
-      <circle cx="90" cy="74" r="52" fill="url(#ewlOrbBg)" className="ewl-empty-orb" />
-      <circle cx="32" cy="48" r="4.5" fill="#93c5fd" opacity="0.7" />
-      <circle cx="146" cy="58" r="5" fill="#60a5fa" opacity="0.55" />
-      <circle cx="132" cy="116" r="3.5" fill="#93c5fd" opacity="0.65" />
-      <circle cx="48" cy="110" r="3" fill="#cbd5e1" opacity="0.8" />
-
-      {/* Dashed signal trail to floating bolt badge */}
-      <path
-        d="M92 66 C100 44, 118 36, 127 26"
-        fill="none"
-        stroke="#60a5fa"
-        strokeWidth="2"
-        strokeDasharray="3.5 3.5"
-        strokeLinecap="round"
-      />
-      <circle cx="131" cy="22" r="12" fill="url(#ewlBoltGrad)" />
-      <path
-        d="M132.5 16.5 L127.5 23 H131.5 L130.2 28.2 L135.2 21.5 H131.2 Z"
-        fill="#ffffff"
-      />
-
-      {/* Isometric Smart Panel Box */}
-      <path d="M52 68 L90 52 L128 68 L90 84 Z" fill="url(#ewlBoxTop)" stroke="#cbd5e1" strokeWidth="1.2" />
-      <path d="M52 68 L90 84 V116 L52 100 Z" fill="url(#ewlBoxFront)" stroke="#cbd5e1" strokeWidth="1.2" />
-      <path d="M128 68 L90 84 V116 L128 100 Z" fill="#dbe3ee" stroke="#cbd5e1" strokeWidth="1.2" />
-      {/* Open flaps */}
-      <path d="M52 68 L39 58 L77 42 L90 52 Z" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1.2" />
-      <path d="M128 68 L141 58 L103 42 L90 52 Z" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1.2" />
-    </svg>
+    <div className="ewl-empty-mascot-wrap" aria-hidden="true">
+      <img src={mascotEmptyPanelImg} alt="" className="ewl-empty-mascot-img" />
+    </div>
   )
 }
 

@@ -7,6 +7,9 @@ import { SettingsView } from '../SettingsView'
 import { HeroBannerCarousel } from '../HeroBannerCarousel'
 import { AdminHeroBannersCard } from '../AdminHeroBannersCard'
 import { AdminPanel } from '../AdminPanel'
+import { AiChatWidget } from '../AiChatWidget'
+import { AnomaliesList } from '../AnomaliesList'
+import { OnboardingTour } from '../OnboardingTour'
 import { AppLockSubView } from '../ProfileSubViews'
 import { getAppLockConfig } from '../../utils/userPrefs'
 
@@ -265,6 +268,25 @@ describe('VoltKu Paket & Profil modal render guards', () => {
     expect(html).toContain('admin-subnav-bar')
     expect(html).toContain('admin-nav-tab active')
     expect(html).toContain('Web User')
+  })
+
+  it('renders VoltKu mascot visuals across AiChatWidget, AnomaliesList, OnboardingTour, and PlanUpgradeModal', () => {
+    const chatHtml = renderToStaticMarkup(<AiChatWidget token="tok" />)
+    expect(chatHtml).toContain('ai-chat-fab-avatar')
+    expect(chatHtml).toContain('Tanya VoltKu')
+
+    const healthyHtml = renderToStaticMarkup(<AnomaliesList anomalies={[]} />)
+    expect(healthyHtml).toContain('healthy-mascot-wrap')
+
+    const alertHtml = renderToStaticMarkup(
+      <AnomaliesList
+        anomalies={[{ id: 1, ts: 1730000000, type: 'power_limit', severity: 'critical', message: 'Overload' }]}
+      />
+    )
+    expect(alertHtml).toContain('anomaly-alert-hero')
+
+    const tourHtml = renderToStaticMarkup(<OnboardingTour isOpen />)
+    expect(tourHtml).toContain('guide-illus-mascot')
   })
 })
 

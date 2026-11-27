@@ -13327,3 +13327,208 @@ button,
   color: #fcd34d;
   background: rgba(245, 158, 11, 0.16);
 }
+
+/* ==========================================================================
+   VOLTKU MASCOT ILLUSTRATIONS (CHATBOT, EMPTY STATES, ONBOARDING, PRO)
+   ========================================================================== */
+.ai-chat-fab {
+  padding: 7px 14px 7px 8px;
+  border-radius: 9999px;
+}
+
+.ai-chat-fab-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.22);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-chat-fab-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.24);
+}
+
+.ai-chat-header-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.65);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-chat-header-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.24);
+}
+
+.ai-chat-empty-illus {
+  width: 112px;
+  height: 112px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  margin-bottom: 4px;
+}
+
+.ai-chat-empty-illus img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.22);
+}
+
+.ewl-empty-mascot-wrap {
+  width: 164px;
+  height: 128px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ewl-empty-mascot-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.24);
+}
+
+.healthy-mascot-wrap {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #ffffff;
+  border: 2px solid rgba(16, 185, 129, 0.28);
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.14);
+}
+
+.healthy-mascot-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.24);
+}
+
+.anomaly-alert-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+[data-theme="dark"] .anomaly-alert-hero {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+.anomaly-alert-hero-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  flex-shrink: 0;
+}
+
+.anomaly-alert-hero-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.22);
+}
+
+.anomaly-alert-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.anomaly-alert-hero-copy strong {
+  font-size: 13.5px;
+  color: var(--text-main);
+}
+
+.anomaly-alert-hero-copy span {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.guide-illus-mascot {
+  width: 100%;
+  max-width: 240px;
+  height: 146px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: #ffffff;
+  transform: scale(1.04);
+}
+
+.guide-illus-mascot.is-badge {
+  width: 146px;
+  height: 146px;
+  border-radius: 50%;
+  transform: scale(1.2);
+}
+
+.guide-illus-stage {
+  overflow: hidden;
+  background: #ffffff;
+}
+
+[data-theme="dark"] .guide-illus-stage {
+  background: #f8fafc;
+}
+
+.plan-pro-showcase {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
+}
+
+.plan-pro-showcase-img {
+  width: 100%;
+  height: 132px;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+@media (max-width: 480px) {
+  .plan-pro-showcase-img {
+    height: 112px;
+  }
+}
