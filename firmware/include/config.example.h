@@ -4,7 +4,7 @@
 // File config.h asli MASUK KE .gitignore dan JANGAN PERNAH di-commit.
 //
 // Untuk produk jual lepas:
-// - Pembeli mengatur Wi-Fi rumah melalui Captive Portal (MonitorListrik-XXXXXX),
+// - Pembeli mengatur Wi-Fi rumah melalui Captive Portal (VoltKu-XXXXXX),
 //   kredensial disimpan permanen ke NVS Flash ESP32.
 // - Biarkan WIFI_SSID sebagai "NAMA_WIFI_ANDA" jika ingin unit langsung masuk
 //   mode pairing saat pertama kali dinyalakan.

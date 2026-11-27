@@ -778,9 +778,11 @@ void setup() {
   if (strlen(MQTT_CA_CERT) > 20) {
     mqttClient.setCACert(MQTT_CA_CERT);
   } else {
+    Serial.println("[MQTT][SEC] PERINGATAN: MQTT_CA_CERT kosong, fallback TLS tanpa verifikasi CA.");
     mqttClient.setInsecure();
   }
 #else
+  Serial.println("[MQTT][SEC] PERINGATAN: MQTT_CA_CERT belum didefinisikan, fallback TLS insecure.");
   mqttClient.setInsecure();
 #endif
 #endif

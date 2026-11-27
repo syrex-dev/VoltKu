@@ -205,6 +205,7 @@ def create_access_token(
     expires_delta: Optional[timedelta] = None,
     role: str = "admin",
     user_id: Optional[int] = None,
+    token_version: Optional[int] = None,
 ) -> str:
     """Membuat token JWT HS256 dengan klaim role (admin/user) dan user_id opsional."""
     now = datetime.now(timezone.utc)
@@ -217,6 +218,8 @@ def create_access_token(
     }
     if user_id is not None:
         payload["uid"] = int(user_id)
+    if token_version is not None:
+        payload["tv"] = int(token_version)
     secret = _resolve_jwt_secret()
     return jwt.encode(payload, secret, algorithm="HS256")
 
@@ -257,6 +260,19 @@ def get_current_user(
             raise HTTPException(
                 status_code=401,
                 detail={"error": {"code": 401, "message": "User account inactive or not found"}},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        user_tv = int(getattr(user, "token_version", 0) or 0)
+        token_tv = int(payload.get("tv", 0) or 0)
+        if token_tv != user_tv:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": {
+                        "code": 401,
+                        "message": "Sesi berakhir. Silakan masuk kembali.",
+                    }
+                },
                 headers={"WWW-Authenticate": "Bearer"},
             )
         payload["user_id"] = user.id

@@ -87,6 +87,10 @@ def ensure_multi_tenant_columns(target_engine: Engine) -> None:
             conn.execute(text("ALTER TABLE users ADD COLUMN plan_expires_at INTEGER NULL"))
         if "plan_updated_at" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN plan_updated_at INTEGER NULL"))
+        if "token_version" not in user_cols:
+            conn.execute(
+                text("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
+            )
         user_indexes = {idx["name"] for idx in inspect(conn).get_indexes("users")}
         if "uq_users_google_sub" not in user_indexes:
             conn.execute(

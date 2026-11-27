@@ -308,7 +308,8 @@ def test_user_profile_update_change_password_and_overview_smtp():
         json={"new_password": "SandiGoogle77"},
     )
     assert g_set_pw.status_code == 200
-    me_g = client.get("/api/users/me", headers=g_headers).json()
+    g_fresh_headers = {"Authorization": f"Bearer {g_set_pw.json()['token']}"}
+    me_g = client.get("/api/users/me", headers=g_fresh_headers).json()
     assert me_g["auth_provider"] == "both"
     assert me_g["has_local_password"] is True
 

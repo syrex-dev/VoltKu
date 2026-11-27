@@ -270,7 +270,12 @@ def register_user(
     session.commit()
     session.refresh(user)
 
-    token = create_access_token(subject=user.email, role="user", user_id=user.id)
+    token = create_access_token(
+        subject=user.email,
+        role="user",
+        user_id=user.id,
+        token_version=int(getattr(user, "token_version", 0) or 0),
+    )
     return {
         "token": token,
         "token_type": "bearer",
@@ -347,7 +352,12 @@ def login_user(
     session.commit()
     session.refresh(user)
 
-    token = create_access_token(subject=user.email, role="user", user_id=user.id)
+    token = create_access_token(
+        subject=user.email,
+        role="user",
+        user_id=user.id,
+        token_version=int(getattr(user, "token_version", 0) or 0),
+    )
     return {
         "token": token,
         "token_type": "bearer",
@@ -479,7 +489,12 @@ def login_with_google(
     session.refresh(user)
     user_login_limiter.record_success(client_ip)
 
-    token = create_access_token(subject=user.email, role="user", user_id=user.id)
+    token = create_access_token(
+        subject=user.email,
+        role="user",
+        user_id=user.id,
+        token_version=int(getattr(user, "token_version", 0) or 0),
+    )
     return {
         "token": token,
         "token_type": "bearer",
@@ -587,6 +602,7 @@ def change_my_password(
         )
 
     user.password_hash = hash_password(req.new_password)
+    user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
     if (user.auth_provider or "").lower() == "google":
         user.auth_provider = "both"
     now_utc = int(datetime.now(timezone.utc).timestamp())
@@ -599,10 +615,33 @@ def change_my_password(
         .values(used_at=now_utc)
     )
     session.commit()
+    fresh_token = create_access_token(
+        subject=user.email,
+        role="user",
+        user_id=user.id,
+        token_version=user.token_version,
+    )
     return {
         "changed": True,
+        "token": fresh_token,
         "message": "Kata sandi berhasil diperbarui.",
     }
+
+
+@router.post("/logout-all", response_model=dict[str, Any])
+def logout_all_sessions(
+    current: dict[str, Any] = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    """Mencabut seluruh token JWT aktif user di semua perangkat dengan menaikkan token_version."""
+    if current.get("role") != "user" or current.get("user_id") is None:
+        raise _api_error(status.HTTP_403_FORBIDDEN, "Hanya berlaku untuk akun pengguna.")
+    user = session.get(User, int(current["user_id"]))
+    if not user or not user.is_active:
+        raise _api_error(status.HTTP_404_NOT_FOUND, "User not found")
+    user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+    session.commit()
+    return {"revoked": True}
 
 
 @router.get("/upgrade-request", response_model=list[dict[str, Any]])
@@ -1104,6 +1143,7 @@ def reset_password_with_token(
         )
 
     user.password_hash = hash_password(req.new_password)
+    user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
     if (user.auth_provider or "").lower() == "google":
         user.auth_provider = "both"
     session.execute(

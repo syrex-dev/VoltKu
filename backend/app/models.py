@@ -37,6 +37,7 @@ class User(Base):
     plan_expires_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     plan_updated_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[int] = mapped_column(
         Integer, default=lambda: int(datetime.now(timezone.utc).timestamp()), nullable=False
     )

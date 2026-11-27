@@ -21,7 +21,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { EnergyAssistantIcon, TierShieldIcon } from './VoltKuIcons'
-import { apiRequest } from '../api/client'
+import { apiRequest, setStoredUserToken } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
 import {
   APP_VERSION_TAG,
@@ -75,6 +75,7 @@ export function ProfileModal({
   theme = 'light',
   onToggleTheme,
   onLogout,
+  onTokenRefreshed,
   onReplayTour,
   onOpenUsageGuide,
   onOpenTerms,
@@ -198,6 +199,10 @@ export function ProfileModal({
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
+      if (res?.token) {
+        setStoredUserToken(res.token)
+        if (onTokenRefreshed) onTokenRefreshed(res.token)
+      }
       if (onUserUpdated && currentUser) {
         onUserUpdated({
           ...currentUser,

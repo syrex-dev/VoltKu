@@ -157,3 +157,55 @@ def test_mqtt_ingest_client_applies_tls_when_enabled(monkeypatch):
         mock_insecure.assert_not_called()
     get_settings.cache_clear()
 
+
+def test_token_revocation_on_password_change_and_logout_all():
+    from app.db import get_db
+    from mysql_test_helper import open_clean_test_session
+
+    _, session = open_clean_test_session()
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    register_limiter.reset()
+    client = TestClient(app)
+
+    try:
+        reg = client.post(
+            "/api/users/register",
+            json={
+                "name": "Token Revoke User",
+                "email": "revoke_test@voltku.id",
+                "password": "sandi_lama_123",
+                "accept_terms": True,
+            },
+            headers={"CF-Connecting-IP": "198.51.100.88"},
+        )
+        assert reg.status_code == 201
+        tok1 = reg.json()["token"]
+        h1 = {"Authorization": f"Bearer {tok1}"}
+        assert client.get("/api/users/me", headers=h1).status_code == 200
+
+        # Ubah kata sandi -> tok1 otomatis hangus, token baru tetap valid
+        chg = client.post(
+            "/api/users/change-password",
+            headers=h1,
+            json={"current_password": "sandi_lama_123", "new_password": "sandi_baru_456"},
+        )
+        assert chg.status_code == 200
+        tok2 = chg.json()["token"]
+        h2 = {"Authorization": f"Bearer {tok2}"}
+        assert client.get("/api/users/me", headers=h1).status_code == 401
+        assert client.get("/api/users/me", headers=h2).status_code == 200
+
+        # Logout semua sesi -> tok2 juga langsung hangus
+        out_all = client.post("/api/users/logout-all", headers=h2)
+        assert out_all.status_code == 200
+        assert client.get("/api/users/me", headers=h2).status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+

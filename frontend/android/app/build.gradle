@@ -28,14 +28,28 @@ android {
                 keyPassword "android"
             }
         }
+        release {
+            def relKs = System.getenv("VOLTKU_RELEASE_KEYSTORE")
+            if (relKs && file(relKs).exists()) {
+                storeFile file(relKs)
+                storePassword System.getenv("VOLTKU_RELEASE_KEYSTORE_PASSWORD") ?: ""
+                keyAlias System.getenv("VOLTKU_RELEASE_KEY_ALIAS") ?: ""
+                keyPassword System.getenv("VOLTKU_RELEASE_KEY_PASSWORD") ?: ""
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            def relKs = System.getenv("VOLTKU_RELEASE_KEYSTORE")
+            if (relKs && file(relKs).exists()) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     applicationVariants.all { variant ->

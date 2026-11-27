@@ -1717,6 +1717,10 @@ function CustomerPortalRoot() {
             currentUser={currentUser}
             token={userToken}
             onLogout={handleLogout}
+            onTokenRefreshed={(newTok) => {
+              setStoredUserToken(newTok)
+              setUserToken(newTok)
+            }}
             onUserUpdated={(updatedUser) => setCurrentUser(updatedUser)}
             theme={theme}
             onToggleTheme={toggleTheme}
