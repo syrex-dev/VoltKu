@@ -14,6 +14,8 @@ import {
   RefreshCw,
   CreditCard,
   Crown,
+  MoreHorizontal,
+  Check,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
 import { formatTimeWIB } from '../utils/formatters'
@@ -39,6 +41,7 @@ export function AdminPanel({
   refreshSignal = 0,
 }) {
   const [adminTab, setAdminTab] = useState('overview')
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const [overview, setOverview] = useState(null)
   const [users, setUsers] = useState([])
   const [devices, setDevices] = useState([])
@@ -597,10 +600,73 @@ export function AdminPanel({
         )}
       </main>
 
-      {/* Mobile Bottom Nav khusus Panel Admin */}
+      {/* Mobile Bottom Nav khusus Panel Admin (5 kolom pas layar tanpa terpotong) */}
+      {mobileMoreOpen && (
+        <div
+          className="admin-more-sheet-backdrop"
+          onClick={() => setMobileMoreOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="admin-more-sheet"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label="Menu Admin Lainnya"
+          >
+            <div className="admin-more-sheet-head">
+              <span>Menu Lainnya</span>
+              <button
+                type="button"
+                className="btn-icon-close"
+                onClick={() => setMobileMoreOpen(false)}
+                aria-label="Tutup menu"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="admin-more-sheet-list">
+              {[
+                { id: 'devices', label: 'Perangkat', sub: 'Kelola panel ESP32 & stok unit', icon: Cpu },
+                { id: 'anomalies', label: 'Anomali', sub: 'Riwayat deteksi & peringatan daya', icon: ShieldAlert },
+                { id: 'settings', label: 'Pengaturan', sub: 'Identitas app, legal & freemium', icon: Sliders },
+              ].map((item) => {
+                const Icon = item.icon
+                const isActive = adminTab === item.id
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`admin-more-item ${isActive ? 'active' : ''}`}
+                    onClick={() => {
+                      setAdminTab(item.id)
+                      setMobileMoreOpen(false)
+                      window.scrollTo({ top: 0, behavior: 'smooth' })
+                    }}
+                  >
+                    <span className="admin-more-item-ico">
+                      <Icon size={17} />
+                    </span>
+                    <span className="admin-more-item-copy">
+                      <strong>{item.label}</strong>
+                      <span>{item.sub}</span>
+                    </span>
+                    {isActive && <Check size={16} className="brand-blue-text" />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav className="mobile-bottom-nav" aria-label="Navigasi Panel Admin">
         <div className="bottom-nav-inner">
-          {tabs.map((t) => {
+          {[
+            { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
+            { id: 'users', label: 'Pengguna', icon: Users },
+            { id: 'payments', label: 'Bayar', icon: CreditCard, badge: pendingUpgradesCount },
+            { id: 'plans', label: 'Paket', icon: Crown },
+          ].map((t) => {
             const Icon = t.icon
             const isActive = adminTab === t.id
             return (
@@ -609,17 +675,37 @@ export function AdminPanel({
                 type="button"
                 className={`bottom-nav-item ${isActive ? 'active' : ''}`}
                 onClick={() => {
+                  setMobileMoreOpen(false)
                   setAdminTab(t.id)
                   window.scrollTo({ top: 0, behavior: 'smooth' })
                 }}
               >
                 <div className="bottom-nav-icon-box">
                   <Icon size={20} className="bottom-nav-icon" />
+                  {t.badge > 0 && (
+                    <span className="bottom-nav-badge">{t.badge > 9 ? '9+' : t.badge}</span>
+                  )}
                 </div>
                 <span className="bottom-nav-label">{t.label}</span>
               </button>
             )
           })}
+
+          <button
+            type="button"
+            className={`bottom-nav-item ${
+              mobileMoreOpen || ['devices', 'anomalies', 'settings'].includes(adminTab)
+                ? 'active'
+                : ''
+            }`}
+            aria-expanded={mobileMoreOpen}
+            onClick={() => setMobileMoreOpen((v) => !v)}
+          >
+            <div className="bottom-nav-icon-box">
+              <MoreHorizontal size={20} className="bottom-nav-icon" />
+            </div>
+            <span className="bottom-nav-label">Lainnya</span>
+          </button>
         </div>
       </nav>
 

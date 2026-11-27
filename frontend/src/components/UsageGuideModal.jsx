@@ -260,20 +260,6 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
                 </p>
                 <StepPhoneMockup stepNum={5} />
               </div>
-
-              {onStartAddDevice && (
-                <button
-                  type="button"
-                  className="ewl-primary-pill-btn ug-cta-btn"
-                  onClick={() => {
-                    onClose()
-                    onStartAddDevice()
-                  }}
-                >
-                  <Plus size={17} strokeWidth={2.5} />
-                  <span>Pasang Panel Sekarang</span>
-                </button>
-              )}
             </div>
           ) : (
             <div className="ug-article">
@@ -339,16 +325,32 @@ export function UsageGuideModal({ isOpen, onClose, onStartAddDevice }) {
                   </div>
                 </div>
               </div>
-
-              <button
-                type="button"
-                className="ewl-primary-pill-btn ug-cta-btn"
-                onClick={onClose}
-              >
-                <Sparkles size={16} />
-                <span>Mengerti, Kembali ke Beranda</span>
-              </button>
             </div>
+          )}
+        </div>
+
+        <div className="ug-sticky-footer">
+          {guideTab === 'pairing' && onStartAddDevice ? (
+            <button
+              type="button"
+              className="ewl-primary-pill-btn ug-cta-btn"
+              onClick={() => {
+                onClose()
+                onStartAddDevice()
+              }}
+            >
+              <Plus size={17} strokeWidth={2.5} />
+              <span>Pasang Panel Sekarang</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="ewl-primary-pill-btn ug-cta-btn"
+              onClick={onClose}
+            >
+              <Sparkles size={16} />
+              <span>Mengerti, Kembali ke Beranda</span>
+            </button>
           )}
         </div>
       </div>
