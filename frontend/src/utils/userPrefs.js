@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 
 const PREFS_STORAGE_KEY = 'voltku_user_prefs_v1'
-const PATTERN_LOCK_KEY = 'voltku_pattern_lock_v1'
+const APP_LOCK_KEY = 'voltku_app_lock_v2'
+const LEGACY_PATTERN_LOCK_KEY = 'voltku_pattern_lock_v1'
 const FEEDBACK_LOG_KEY = 'voltku_user_feedback_v1'
 const PREFS_EVENT = 'voltku:prefs-updated'
 
@@ -77,7 +78,7 @@ export const VOLTKU_CHANGELOG = [
     badge: 'Terbaru',
     items: [
       'Arsitektur Profil multi-halaman dengan Pengaturan khusus, Ekosistem Koneksi, dan Tentang Aplikasi.',
-      'Tambahan Kunci Pola Aplikasi 3x3 (terhash SHA-256 lokal) untuk proteksi privasi ekstra.',
+      'Keamanan Aplikasi adaptif: PIN 6 Digit + Sidik Jari / Biometrik (menyesuaikan dukungan sensor perangkat).',
       'Pemilih Bahasa (Indonesia & English), Zona Waktu tampilan (WIB/WITA/WIT), serta getaran haptik.',
       'Menu Jadwal Laporan Telegram & Target Anggaran Listrik Bulanan + VoltKu Labs.',
     ],
@@ -127,7 +128,7 @@ const UI_STRINGS = {
     aboutTitle: 'Tentang Aplikasi',
     editNameTitle: 'Ubah Nama',
     passwordTitle: 'Kata Sandi',
-    patternTitle: 'Kunci Pola Aplikasi',
+    appLockTitle: 'PIN & Sidik Jari',
     languageTitle: 'Bahasa Antarmuka',
     timezoneTitle: 'Zona Waktu Tampilan',
     schedulesTitle: 'Jadwal Laporan & Target',
@@ -157,7 +158,7 @@ const UI_STRINGS = {
     aboutTitle: 'About App',
     editNameTitle: 'Edit Name',
     passwordTitle: 'Password',
-    patternTitle: 'Pattern Lock',
+    appLockTitle: 'PIN & Biometrics',
     languageTitle: 'Language',
     timezoneTitle: 'Time Zone',
     schedulesTitle: 'Report & Budget Schedule',
@@ -277,8 +278,8 @@ export function triggerHaptic(durationMs = 12) {
   }
 }
 
-export async function hashPatternSequence(nodes = []) {
-  const payload = `voltku:pattern:v1:${nodes.join('-')}`
+export async function hashPinCode(pin = '') {
+  const payload = `voltku:pin:v2:${String(pin || '').trim()}`
   try {
     if (typeof window !== 'undefined' && window.crypto?.subtle) {
       const encoded = new TextEncoder().encode(payload)
@@ -300,45 +301,89 @@ export async function hashPatternSequence(nodes = []) {
   return `${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`
 }
 
-export function getPatternLockConfig() {
-  const saved = readStorageJson(PATTERN_LOCK_KEY, null)
-  if (!saved || !saved.hash) {
-    return { enabled: false, hash: '', updatedAt: 0 }
-  }
-  return {
-    enabled: Boolean(saved.enabled),
-    hash: String(saved.hash),
-    updatedAt: Number(saved.updatedAt || 0),
-  }
-}
-
-export async function savePatternLock(nodes = []) {
-  const hash = await hashPatternSequence(nodes)
-  const record = {
-    enabled: true,
-    hash,
-    updatedAt: Math.floor(Date.now() / 1000),
-  }
-  writeStorageJson(PATTERN_LOCK_KEY, record)
-  return record
-}
-
-export function clearPatternLock() {
+export function getAppLockConfig() {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.removeItem(PATTERN_LOCK_KEY)
+      window.localStorage.removeItem(LEGACY_PATTERN_LOCK_KEY)
     }
   } catch {
     // ignore
   }
-  return { enabled: false, hash: '', updatedAt: 0 }
+  const saved = readStorageJson(APP_LOCK_KEY, null)
+  if (!saved || !saved.pinHash) {
+    return {
+      enabled: false,
+      pinHash: '',
+      biometricEnabled: false,
+      biometricCredentialId: '',
+      updatedAt: 0,
+    }
+  }
+  return {
+    enabled: Boolean(saved.enabled),
+    pinHash: String(saved.pinHash),
+    biometricEnabled: Boolean(saved.biometricEnabled),
+    biometricCredentialId: String(saved.biometricCredentialId || ''),
+    updatedAt: Number(saved.updatedAt || 0),
+  }
 }
 
-export async function verifyPatternLock(nodes = []) {
-  const cfg = getPatternLockConfig()
-  if (!cfg.enabled || !cfg.hash) return true
-  const candidate = await hashPatternSequence(nodes)
-  return candidate === cfg.hash
+export async function savePinLock(pin = '', biometricOpts = null) {
+  const prev = getAppLockConfig()
+  const pinHash = await hashPinCode(pin)
+  const record = {
+    enabled: true,
+    pinHash,
+    biometricEnabled:
+      biometricOpts && typeof biometricOpts.biometricEnabled === 'boolean'
+        ? biometricOpts.biometricEnabled
+        : prev.biometricEnabled,
+    biometricCredentialId:
+      biometricOpts?.credentialId !== undefined
+        ? biometricOpts.credentialId
+        : prev.biometricCredentialId,
+    updatedAt: Math.floor(Date.now() / 1000),
+  }
+  writeStorageJson(APP_LOCK_KEY, record)
+  return record
+}
+
+export function updateAppLockBiometric({ biometricEnabled = false, biometricCredentialId = '' }) {
+  const prev = getAppLockConfig()
+  if (!prev.enabled || !prev.pinHash) return prev
+  const next = {
+    ...prev,
+    biometricEnabled: Boolean(biometricEnabled),
+    biometricCredentialId: biometricEnabled ? String(biometricCredentialId || prev.biometricCredentialId || '') : '',
+    updatedAt: Math.floor(Date.now() / 1000),
+  }
+  writeStorageJson(APP_LOCK_KEY, next)
+  return next
+}
+
+export function clearAppLock() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(APP_LOCK_KEY)
+      window.localStorage.removeItem(LEGACY_PATTERN_LOCK_KEY)
+    }
+  } catch {
+    // ignore
+  }
+  return {
+    enabled: false,
+    pinHash: '',
+    biometricEnabled: false,
+    biometricCredentialId: '',
+    updatedAt: 0,
+  }
+}
+
+export async function verifyPinCode(pin = '') {
+  const cfg = getAppLockConfig()
+  if (!cfg.enabled || !cfg.pinHash) return true
+  const candidate = await hashPinCode(pin)
+  return candidate === cfg.pinHash
 }
 
 export function saveUserFeedbackEntry(entry) {

@@ -26,8 +26,8 @@ import { apiRequest } from '../api/client'
 import { formatDateTimeWIB, formatRp } from '../utils/formatters'
 import {
   APP_VERSION_TAG,
-  clearPatternLock,
-  getPatternLockConfig,
+  clearAppLock,
+  getAppLockConfig,
   getUiText,
   triggerHaptic,
   useUserPrefs,
@@ -36,6 +36,7 @@ import {
   AboutDetailSubView,
   AboutHubSubView,
   AccountDetailSubView,
+  AppLockSubView,
   ChangelogSubView,
   CreditsSubView,
   EcosystemSubView,
@@ -46,7 +47,6 @@ import {
   MyPanelsSubView,
   OfficialChannelsSubView,
   PasswordSubView,
-  PatternLockSubView,
   RateFeedbackModal,
   SchedulesBudgetSubView,
   SettingsSubView,
@@ -91,7 +91,7 @@ export function ProfileModal({
 }) {
   const { prefs, updatePrefs } = useUserPrefs()
   const [viewStack, setViewStack] = useState(['main'])
-  const [lockCfg, setLockCfg] = useState(() => getPatternLockConfig())
+  const [lockCfg, setLockCfg] = useState(() => getAppLockConfig())
   const [showRateModal, setShowRateModal] = useState(false)
 
   // Account edit states
@@ -114,7 +114,7 @@ export function ProfileModal({
       setConfirmPassword('')
       setAccountMsg(null)
       setShowRateModal(false)
-      setLockCfg(getPatternLockConfig())
+      setLockCfg(getAppLockConfig())
     }
   }, [isOpen, currentUser?.name])
 
@@ -245,7 +245,7 @@ export function ProfileModal({
   const proEffPrice = Number(proCfg.effective_monthly_price_rp ?? proCfg.price_monthly_rp ?? 30000)
   const proBasePrice = Number(proCfg.price_monthly_rp ?? proEffPrice)
   const proHasPromo = Boolean(proCfg.promo_active) && proBasePrice > proEffPrice
-  const showPlanCard = Boolean(plan && plan.freemium_enabled !== false)
+  const showPlanCard = Boolean(currentUser)
   const isPro = Boolean(plan?.is_pro)
   const tierShortLabel = isPro
     ? (plan?.plan_name || 'Pro').replace(/^VoltKu\s+/i, '').trim() || 'Pro'
@@ -263,7 +263,7 @@ export function ProfileModal({
     settings: getUiText(prefs.locale, 'settingsTitle'),
     'edit-name': getUiText(prefs.locale, 'editNameTitle'),
     password: getUiText(prefs.locale, 'passwordTitle'),
-    'pattern-lock': getUiText(prefs.locale, 'patternTitle'),
+    'app-lock': getUiText(prefs.locale, 'appLockTitle'),
     language: getUiText(prefs.locale, 'languageTitle'),
     timezone: getUiText(prefs.locale, 'timezoneTitle'),
     schedules: getUiText(prefs.locale, 'schedulesTitle'),
@@ -280,8 +280,8 @@ export function ProfileModal({
   }
 
   const handleResetLocalPrefs = () => {
-    clearPatternLock()
-    setLockCfg(getPatternLockConfig())
+    clearAppLock()
+    setLockCfg(getAppLockConfig())
     updatePrefs({
       locale: 'id',
       timezone: 'Asia/Jakarta',
@@ -436,26 +436,41 @@ export function ProfileModal({
                   </button>
                 </div>
 
-                {/* Kartu Membership VIP + Strip Penawaran */}
+                {/* Kartu Tawaran Paket / Keanggotaan (Selalu tampil di bawah Profil) */}
                 {showPlanCard && (
                   <div className="profile-vip-stack">
-                    <div className={`profile-vip-card ${isPro ? 'is-pro' : ''}`}>
+                    <div className={`profile-vip-card ${isPro ? 'is-pro' : 'is-offer'}`}>
                       <div className="profile-vip-top">
                         <div className={`profile-vip-icon ${isPro ? 'is-pro' : ''}`}>
                           {isPro ? <Crown size={19} /> : <Gem size={19} />}
                         </div>
                         <div className="profile-vip-copy">
-                          <div className="profile-vip-title">
-                            {isPro ? `${plan.plan_name} Aktif` : `Tingkatkan ke ${proCfg.name}`}
+                          <div className="profile-vip-title-row">
+                            <span className="profile-vip-title">
+                              {isPro
+                                ? `${plan?.plan_name || 'Paket Pro'} Aktif`
+                                : `Paket ${proCfg.name || 'VoltKu Pro'}`}
+                            </span>
+                            {!isPro && proHasPromo && (
+                              <span className="profile-vip-promo-pill">
+                                {proCfg.promo_label || 'PROMO'}
+                              </span>
+                            )}
                           </div>
                           <div className="profile-vip-sub">
                             {isPro
-                              ? plan.expires_at
+                              ? plan?.expires_at
                                 ? `Berlaku hingga ${formatDateTimeWIB(plan.expires_at)}`
                                 : 'Keanggotaan berbayar aktif permanen'
                               : proHasPromo
-                                ? `${proMaxText} & riwayat ${proCfg.history_days} hari · Promo ${formatRp(proEffPrice)}/bln (normal ${formatRp(proBasePrice)})`
+                                ? `${proMaxText} · Riwayat ${proCfg.history_days} hr · `
                                 : `${proMaxText} & riwayat ${proCfg.history_days} hari · Mulai ${formatRp(proEffPrice)}/bln`}
+                            {!isPro && proHasPromo && (
+                              <span className="num-tabular">
+                                <span className="profile-vip-strike">{formatRp(proBasePrice)}</span>{' '}
+                                <strong>{formatRp(proEffPrice)}/bln</strong>
+                              </span>
+                            )}
                           </div>
                         </div>
                         {onOpenPlanModal && (
@@ -469,7 +484,7 @@ export function ProfileModal({
                           >
                             {isPro
                               ? 'Detail'
-                              : plan.pending_upgrade
+                              : plan?.pending_upgrade
                                 ? 'Cek Status'
                                 : 'Upgrade'}
                           </button>
@@ -492,7 +507,7 @@ export function ProfileModal({
                             Riwayat: <strong>{historyDays} hari</strong>
                           </span>
                         </div>
-                        {plan.pending_upgrade && !isPro && (
+                        {plan?.pending_upgrade && !isPro && (
                           <span className="profile-vip-pending-tag">
                             {plan.pending_upgrade.status === 'awaiting_payment'
                               ? 'Menunggu bayar'
@@ -521,7 +536,7 @@ export function ProfileModal({
                         }}
                       >
                         <Crown size={14} />
-                        <span>Buka proyeksi tagihan, ekspor CSV &amp; deteksi anomali penuh</span>
+                        <span>Bandingkan semua paket, promo harga coret &amp; pakai kupon</span>
                         <ChevronRight size={14} style={{ marginLeft: 'auto' }} />
                       </button>
                     )}
@@ -760,8 +775,9 @@ export function ProfileModal({
                 />
               )}
 
-              {activeView === 'pattern-lock' && (
-                <PatternLockSubView
+              {activeView === 'app-lock' && (
+                <AppLockSubView
+                  currentUser={currentUser}
                   onLockChanged={(nextCfg) => setLockCfg(nextCfg)}
                   onTestLockScreen={() => {
                     onClose()
@@ -819,8 +835,6 @@ export function ProfileModal({
 
               {activeView === 'labs' && (
                 <LabsSubView
-                  theme={theme}
-                  onToggleTheme={onToggleTheme}
                   prefs={prefs}
                   updatePrefs={updatePrefs}
                   isPro={isPro}
@@ -848,7 +862,6 @@ export function ProfileModal({
                   tgHandle={tgHandle}
                   supportEmail={supportEmail}
                   onNavigate={navigateTo}
-                  onOpenRateModal={() => setShowRateModal(true)}
                   onOpenTerms={onOpenTerms}
                 />
               )}

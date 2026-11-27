@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(VoltKuPushBridgePlugin.class);
+        registerPlugin(VoltKuBiometricPlugin.class);
         super.onCreate(savedInstanceState);
         VoltKuNotificationHelper.ensureChannels(this);
     }

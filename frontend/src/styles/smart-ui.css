@@ -12014,3 +12014,238 @@ button,
 [data-theme="dark"] .pay-discount-pill.is-voucher {
   color: #34d399;
 }
+
+/* =========================================================================
+   Adaptive PIN + Fingerprint App Lock & Enhanced Profile Offer Styles
+   ========================================================================= */
+
+.profile-vip-card.is-offer {
+  background: linear-gradient(135deg, #172554 0%, #1d4ed8 55%, #0284c7 100%);
+  box-shadow: 0 12px 26px rgba(29, 78, 216, 0.24);
+  border: 1px solid rgba(147, 197, 253, 0.25);
+}
+
+[data-theme="dark"] .profile-vip-card.is-offer {
+  background: linear-gradient(135deg, #111c3a 0%, #1e3a8a 60%, #0e7490 100%);
+  border-color: rgba(56, 189, 248, 0.28);
+}
+
+.profile-vip-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.profile-vip-promo-pill {
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.profile-vip-strike {
+  text-decoration: line-through;
+  opacity: 0.72;
+  font-size: 11px;
+}
+
+.profile-bio-cap-banner {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.profile-bio-cap-banner.is-ready {
+  background: rgba(16, 185, 129, 0.11);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #047857;
+}
+
+[data-theme="dark"] .profile-bio-cap-banner.is-ready {
+  color: #34d399;
+}
+
+.profile-bio-cap-banner.is-pin-only {
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.app-lock-badge-ring {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(22, 119, 255, 0.12);
+  color: #1677ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.app-lock-badge-ring.is-success {
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+}
+
+.app-lock-bio-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  margin-bottom: 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(16, 185, 129, 0.38);
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.14s ease, background-color 0.15s ease;
+}
+
+[data-theme="dark"] .app-lock-bio-pill {
+  color: #34d399;
+}
+
+.app-lock-bio-pill:active {
+  transform: scale(0.97);
+}
+
+.pin-pad-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 0 4px;
+  width: 100%;
+}
+
+.pin-pad-shell.is-error .pin-dots-row {
+  animation: pinShake 0.36s ease-in-out;
+}
+
+@keyframes pinShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-8px);
+  }
+  40% {
+    transform: translateX(8px);
+  }
+  60% {
+    transform: translateX(-5px);
+  }
+  80% {
+    transform: translateX(5px);
+  }
+}
+
+.pin-dots-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 22px;
+}
+
+.pin-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.65);
+  background: transparent;
+  transition: transform 0.14s ease, background-color 0.14s ease, border-color 0.14s ease;
+}
+
+.pin-dot.is-filled {
+  background: #1677ff;
+  border-color: #1677ff;
+  transform: scale(1.15);
+}
+
+.pin-dot.is-error,
+.pin-dot.is-filled.is-error {
+  background: #e11d48;
+  border-color: #e11d48;
+}
+
+.pin-dot.is-success,
+.pin-dot.is-filled.is-success {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.pin-keypad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 64px);
+  gap: 12px 18px;
+  justify-content: center;
+}
+
+.pin-key-btn {
+  width: 64px;
+  height: 56px;
+  border-radius: 18px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-inset);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 21px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.1s ease, background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.pin-key-btn:hover:not(:disabled) {
+  border-color: rgba(22, 119, 255, 0.45);
+  background: rgba(22, 119, 255, 0.08);
+}
+
+.pin-key-btn:active:not(:disabled) {
+  transform: scale(0.93);
+  background: rgba(22, 119, 255, 0.16);
+}
+
+.pin-key-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pin-key-btn.is-action {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+.pin-key-btn.is-biometric {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.pin-key-spacer {
+  width: 64px;
+  height: 56px;
+}

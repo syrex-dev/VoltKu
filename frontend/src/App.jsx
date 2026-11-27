@@ -39,12 +39,12 @@ import { ProfileModal } from './components/ProfileModal'
 import { ResetPasswordScreen } from './components/ResetPasswordScreen'
 import { AiChatWidget } from './components/AiChatWidget'
 import { BrandLogo } from './components/BrandLogo'
-import { AppLockOverlay } from './components/PatternLockGrid'
+import { AppLockOverlay } from './components/AppLockSecurity'
 import {
-  clearPatternLock,
-  getPatternLockConfig,
+  clearAppLock,
+  getAppLockConfig,
   useUserPrefs,
-  verifyPatternLock,
+  verifyPinCode,
 } from './utils/userPrefs'
 import {
   fetchAndNotifyNewInboxItems,
@@ -229,7 +229,7 @@ function CustomerPortalRoot() {
   const { theme, toggleTheme } = useThemePreference(publicAppConfig.default_theme)
   const { prefs } = useUserPrefs()
   const [isAppLocked, setIsAppLocked] = useState(() =>
-    Boolean(getStoredUserToken() && getPatternLockConfig().enabled)
+    Boolean(getStoredUserToken() && getAppLockConfig().enabled)
   )
 
   const [userToken, setUserToken] = useState(() => {
@@ -1619,10 +1619,10 @@ function CustomerPortalRoot() {
         appName={appName}
         theme={theme}
         BrandLogoComponent={BrandLogo}
-        verifyPatternFn={verifyPatternLock}
+        verifyPinFn={verifyPinCode}
         onUnlock={() => setIsAppLocked(false)}
         onResetAndLogout={() => {
-          clearPatternLock()
+          clearAppLock()
           setIsAppLocked(false)
           handleLogout()
         }}
