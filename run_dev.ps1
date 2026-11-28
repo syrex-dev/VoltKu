@@ -1,10 +1,10 @@
-# Skrip Menjalankan Proyek Monitor Listrik (DigiPoint IoT / VoltKu)
+# Skrip Menjalankan Proyek Monitor Listrik Pintar (VoltKu)
 # Port Khusus Terisolasi:
 # - Backend FastAPI: 8088 (Mencegah bentrok dengan php artisan serve di port 8000)
 # - Frontend Vite: 5188 (Mencegah bentrok dengan HidroPilot & Vite default di port 5173)
 
 Write-Host "=====================================================" -ForegroundColor Cyan
-Write-Host " Memulai Monitor Listrik (DigiPoint IoT) " -ForegroundColor Green
+Write-Host " Memulai Monitor Listrik Pintar (VoltKu) " -ForegroundColor Green
 Write-Host " Backend API : http://127.0.0.1:8088" -ForegroundColor Yellow
 Write-Host " Frontend Dev: http://127.0.0.1:5188" -ForegroundColor Yellow
 Write-Host "=====================================================" -ForegroundColor Cyan
