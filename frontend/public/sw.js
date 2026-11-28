@@ -1,4 +1,4 @@
-const CACHE_NAME = 'voltku-pwa-v6';
+const CACHE_NAME = 'voltku-pwa-v7';
 const PRECACHE_ASSETS = [
   '/offline.html',
   '/manifest.webmanifest?v=6',

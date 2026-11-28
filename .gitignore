@@ -78,5 +78,6 @@ frontend/android/local.properties
 
 # Dokumen akademik & laporan lokal (jangan ikut push / deploy)
 akademik/
+VoltKu Mascot/
 
 

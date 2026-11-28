@@ -61,7 +61,7 @@
       ) {
         window.addEventListener('load', function () {
           navigator.serviceWorker
-            .register('/sw.js?v=6')
+            .register('/sw.js?v=7')
             .then(function (reg) {
               reg.update().catch(function () {});
             })
@@ -70,8 +70,8 @@
           navigator.serviceWorker.addEventListener('controllerchange', function () {
             if (refreshing) return;
             try {
-              if (sessionStorage.getItem('voltku_sw_reloaded_v6')) return;
-              sessionStorage.setItem('voltku_sw_reloaded_v6', '1');
+              if (sessionStorage.getItem('voltku_sw_reloaded_v7')) return;
+              sessionStorage.setItem('voltku_sw_reloaded_v7', '1');
             } catch (e) {}
             refreshing = true;
             window.location.reload();

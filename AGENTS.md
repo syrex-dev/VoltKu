@@ -30,3 +30,11 @@ Baca `README.md` dan dokumen di `docs/` sebelum mengerjakan tugas. Kontrak data 
 - Endpoint API butuh autentikasi kecuali `/healthz` dan `/api/login`.
 - Telegram hanya melayani `chat_id` dalam allowlist.
 - Jangan membuka port MQTT ke internet tanpa TLS.
+
+## Deployment, GitHub, Server & APK (Wajib Otomatis Setelah Update)
+- Folder `akademik/` dan `VoltKu Mascot/` adalah aset/dokumen lokal yang **TIDAK BOLEH** di-commit atau di-push ke GitHub (pastikan selalu ada di `.gitignore` dan periksa `git status` sebelum commit).
+- Setiap selesai melakukan update di proyek VoltKu, langsung jalankan alur rilis berikut secara otomatis:
+  1. **Verifikasi & Build**: Jika mengubah `frontend/`, jalankan `npm run lint`, `npm test`, dan `npm run build` (output ke `dashboard/`). Jika mengubah `backend/`, jalankan `ruff check .` dan `pytest`.
+  2. **Auto Push ke GitHub**: Stage hanya file proyek yang sah (tanpa `akademik/` dan `VoltKu Mascot/`), buat commit yang jelas, lalu `git push origin master`.
+  3. **Auto Pull ke Server**: Jalankan sinkronisasi server melalui SSH (`ssh synemax-server "/usr/local/bin/voltku-autosync.sh"`) agar `/var/www/voltku` langsung `git pull` dan me-restart `voltku.service`.
+  4. **Auto Update APK**: Push ke `master` yang menyentuh `frontend/**` otomatis memicu `.github/workflows/build-apk.yml` untuk membangun ulang `VoltKu.apk` dan memperbarui GitHub Release `voltku-apk`. Pantau status workflow GitHub Actions hingga selesai (atau picu `build-apk.yml` bila diperlukan).
