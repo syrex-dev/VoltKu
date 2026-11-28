@@ -13,3 +13,8 @@ ee1fc1f1a5ca1b99651244eba6a5efea1cd9e236:backend/tests/test_auth.py:generic-api-
 36afae246c087adb3c4a40b9e0112bdc39de943e:backend/tests/test_auth.py:generic-api-key:57
 36afae246c087adb3c4a40b9e0112bdc39de943e:backend/tests/test_auth.py:generic-api-key:75
 36afae246c087adb3c4a40b9e0112bdc39de943e:backend/tests/test_auth.py:generic-api-key:93
+933fe23008018c3d746bf487988d2812196dcaa1:backend/tests/test_security_hardening.py:generic-api-key:197
+8f3f1461e66892ecfc2369ab171fd9c4abf3ad5d:backend/tests/test_push_notifications.py:generic-api-key:60
+8f3f1461e66892ecfc2369ab171fd9c4abf3ad5d:backend/tests/test_push_notifications.py:generic-api-key:62
+
+
