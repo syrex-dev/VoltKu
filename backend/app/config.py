@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     app_name: str = "VoltKu"
     app_env: str = "production"
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8088
     tz: str = "Asia/Jakarta"
 
     # Database & Perangkat
@@ -71,6 +71,10 @@ class Settings(BaseSettings):
         "https://localhost,"
         "http://localhost,"
         "capacitor://localhost,"
+        "http://localhost:5188,"
+        "http://127.0.0.1:5188,"
+        "http://localhost:8088,"
+        "http://127.0.0.1:8088,"
         "http://localhost:5173,"
         "http://127.0.0.1:5173,"
         "http://127.0.0.1:8000"
